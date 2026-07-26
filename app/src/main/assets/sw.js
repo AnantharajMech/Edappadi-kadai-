@@ -32,21 +32,23 @@ if (workbox) {
     })
   );
 
-  // Cache static image assets (local or external), especially Unsplash product images
-  // Cache-First strategy to ensure super fast loading and zero data consumption on subsequent sessions
+  // Cache static image assets (local or external), especially Unsplash and Firebase storage product images
+  // StaleWhileRevalidate strategy to load cached image instantly for speed while fetching latest image from network
   workbox.routing.registerRoute(
     ({ request, url }) => request.destination === 'image' || 
                           url.origin.includes('unsplash.com') || 
-                          url.origin.includes('images.unsplash.com'),
-    new workbox.strategies.CacheFirst({
+                          url.origin.includes('images.unsplash.com') ||
+                          url.origin.includes('firebasestorage.googleapis.com') ||
+                          url.origin.includes('cloudinary.com'),
+    new workbox.strategies.StaleWhileRevalidate({
       cacheName: 'image-cache',
       plugins: [
         new workbox.cacheableResponse.CacheableResponsePlugin({
           statuses: [0, 200],
         }),
         new workbox.expiration.ExpirationPlugin({
-          maxEntries: 150,
-          maxAgeSeconds: 60 * 24 * 60 * 60, // 60 Days
+          maxEntries: 200,
+          maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
           purgeOnQuotaError: true,
         }),
       ],

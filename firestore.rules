@@ -74,9 +74,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Users: allow anyone to read/write profiles to ensure registration/updates always succeed
+    // Users: allow owner or admin to read/write profiles to secure customer PII
     match /ek_users/{userId} {
-      allow read, write: if true;
+      allow get: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create: if true;
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow delete: if isAdmin();
     }
 
     // Legacy/Simplification users collection
