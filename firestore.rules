@@ -160,9 +160,13 @@ service cloud.firestore {
       allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == docId);
     }
 
-    // Settings: anyone can read, only admin writes
+    // Email OTP Config settings: ADMIN-ONLY read/write (contains Gmail SMTP credentials)
+    match /ek_settings/emailConfig {
+      allow read, write: if isAdmin();
+    }
+    // Settings: anyone can read non-sensitive configs, only admin writes
     match /ek_settings/{docId} {
-      allow read: if true;
+      allow read: if docId != 'emailConfig';
       allow write: if isAdmin();
     }
 

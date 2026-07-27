@@ -5550,7 +5550,7 @@
                 <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px;">
                   <!-- Profile Photo Preview -->
                   <div style="width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: #f3f4f6; border: 2px solid var(--accent-orange); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img id="rider-photo-preview" src="https://www.w3schools.com/howto/img_avatar.png" style="width: 100%; height: 100%; object-fit: cover;" alt="Rider Preview" loading="lazy">
+                    <img id="rider-photo-preview" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>" style="width: 100%; height: 100%; object-fit: cover;" alt="Rider Preview" loading="lazy">
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1;">
                     <!-- Hidden File Input -->
@@ -6295,6 +6295,43 @@
           <div style="margin-top: 10px; padding: 10px; background: #161616; border-radius: 10px; display: flex; align-items: center; justify-content: space-between;">
             <span style="font-size:11px; color:#aaa;">Test SMS integration config:</span>
             <button class="btn" onclick="testCurrentSmsConfig()" style="width:auto; padding: 4px 10px; font-size: 11px; height: 28px; background: rgba(245,158,11,0.15); color: var(--accent-orange); border: 1px solid var(--accent-orange); border-radius: 6px; font-weight:700;">Test SMS 📲</button>
+          </div>
+        </div>
+
+        <!-- EMAIL OTP SETTINGS (GMAIL SMTP) CARD -->
+        <div class="card" style="margin-top: 15px; border: 1.5px solid rgba(59, 130, 246, 0.3); background: linear-gradient(135deg, rgba(59, 130, 246, 0.04) 0%, rgba(10,10,10,0.95) 100%);">
+          <h4 style="font-size: 14px; text-transform: uppercase; color: #60a5fa; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>📧</span> <span>Email OTP Settings (Gmail SMTP) / ஜிமெயில் பாஸ்வேர்ட் மீட்டமைப்பு</span>
+            </span>
+            <span id="email-otp-status-badge" style="font-size: 10px; padding: 2px 8px; border-radius: 6px; background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.4); text-transform: uppercase; font-weight: 700;">Not Configured</span>
+          </h4>
+          <p style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.45;">
+            வாடிக்கையாளர்கள் கடவுச்சொல்லை மறந்துவிட்டால் (Password Reset) OTP அனுப்ப பயன்படும் Gmail முகவரி மற்றும் App Password சேமிக்கவும்.
+          </p>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-weight: 700; font-size:12px; color:#ccc; display:block; margin-bottom:6px;">
+              Gmail Address / ஜிமெயில் முகவரி
+            </label>
+            <input type="email" id="setting-gmail-user" class="form-control" placeholder="e.g. edappadikadai@gmail.com" style="font-family:'Poppins', sans-serif; font-size: 12.5px; height: 44px; background:#111; color:#fff; border:1px solid #222; border-radius:10px; padding:10px 14px; width:100%;">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="font-weight: 700; font-size:12px; color:#ccc; display:block; margin-bottom:6px;">
+              Gmail App Password / ஜிமெயில் ஆப் பாஸ்வேர்ட் (16-Digit Code)
+            </label>
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="password" id="setting-gmail-pass" class="form-control" placeholder="16-character App Password (e.g. abcd efgh ijkl mnop)" style="font-family:'Monaco', 'Consolas', monospace; font-size: 12.5px; height: 46px; background:#111; color:#fff; border:1px solid #222; border-radius:10px; padding:10px 42px 10px 14px; width:100%;">
+              <button type="button" onclick="toggleGmailPassVisibility()" id="btn-toggle-gmail-pass-vis" style="position: absolute; right: 10px; background: transparent; border: none; color: #888; cursor: pointer; font-size: 16px; padding: 4px;">👁️</button>
+            </div>
+            <p style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">Note: Use a 16-character Google App Password from your Google Account > Security settings (Requires 2FA enabled on your Google Account).</p>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 16px;">
+            <button class="btn" onclick="saveAdminEmailOtpConfig()" style="flex: 1; height: 40px; background: linear-gradient(135deg, #2563eb, #1d4ed8); border: none; color: #fff; border-radius: 10px; font-weight: 800; font-size: 12px; cursor: pointer; box-shadow: 0 4px 12px rgba(37,99,235,0.3); display: flex; align-items: center; justify-content: center; gap: 6px;">
+              💾 SAVE EMAIL OTP CREDENTIALS
+            </button>
           </div>
         </div>
 
@@ -7511,16 +7548,37 @@
       return defaultVal;
     }
 
+    function areProductFieldsEqual(p1, p2) {
+      if (!p1 || !p2) return false;
+      return p1.id === p2.id &&
+             Number(p1.pricePerKg || 0) === Number(p2.pricePerKg || 0) &&
+             Number(p1.stockKg || 0) === Number(p2.stockKg || 0) &&
+             Boolean(p1.isOutOfStock) === Boolean(p2.isOutOfStock) &&
+             String(p1.englishName || "").trim() === String(p2.englishName || "").trim() &&
+             String(p1.tamilName || "").trim() === String(p2.tamilName || "").trim() &&
+             String(p1.category || "").trim().toLowerCase() === String(p2.category || "").trim().toLowerCase() &&
+             String(p1.imageUrl || "").trim() === String(p2.imageUrl || "").trim() &&
+             String(p1.unit || "").trim().toLowerCase() === String(p2.unit || "").trim().toLowerCase() &&
+             String(p1.sellingUnit || "").trim().toLowerCase() === String(p2.sellingUnit || "").trim().toLowerCase() &&
+             Boolean(p1.isSpecial) === Boolean(p2.isSpecial) &&
+             Boolean(p1.isHidden) === Boolean(p2.isHidden) &&
+             Number(p1.revision || 0) === Number(p2.revision || 0) &&
+             Number(p1.order !== undefined ? p1.order : (p1.displayOrder !== undefined ? p1.displayOrder : 999)) ===
+             Number(p2.order !== undefined ? p2.order : (p2.displayOrder !== undefined ? p2.displayOrder : 999));
+    }
+
     function getImageUrlWithCacheBuster(url, updatedAt) {
       if (!url) return 'https://images.unsplash.com/photo-1544025162-d76694265947?w=200';
       if (url.startsWith('data:')) return url;
 
-      let buster = Date.now();
-      if (updatedAt) {
-        const parsed = new Date(updatedAt).getTime();
-        if (!isNaN(parsed)) {
-          buster = parsed;
-        }
+      if (!updatedAt) return url; // Preserve native browser image caching
+
+      let buster = null;
+      const parsed = new Date(updatedAt).getTime();
+      if (!isNaN(parsed)) {
+        buster = Math.floor(parsed / 1000);
+      } else {
+        return url;
       }
 
       if (url.match(/([?&])(t|v)=\d+/)) {
@@ -7877,6 +7935,9 @@
       return list;
     }
     function markOrderAsHiddenByCustomer(orderId) {
+      if (typeof selectedTrackOrderId !== "undefined" && selectedTrackOrderId === orderId) {
+        selectedTrackOrderId = null;
+      }
       const list = getCustomerHiddenOrderIds();
       if (!list.includes(orderId)) {
         list.push(orderId);
@@ -10195,7 +10256,7 @@
       }
 
         if (typeof currentScreen !== 'undefined' && currentScreen !== screenId && currentScreen !== 'screen-splash' && screenId !== 'screen-splash') {
-          showLyoTransitLoader(null, 450);
+          // showLyoTransitLoader(null, 450); // Bypassed for instant tab navigation
         }
 
         if (!isNavigatingBack && typeof currentScreen !== 'undefined' && currentScreen !== screenId && currentScreen !== 'screen-splash') {
@@ -11940,21 +12001,7 @@
             const currentAuthUser = firebase.auth().currentUser;
             if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== adminEmail.trim().toLowerCase()) {
               debugLog("[Auth Autologout] Current authenticated user is different. Signing out first...");
-              await firebase.auth().signOut();
-              await new Promise(resolve => {
-                let unsubscribe = null;
-                const timer = setTimeout(() => {
-                  if (unsubscribe) unsubscribe();
-                  resolve();
-                }, 2000);
-                unsubscribe = firebase.auth().onAuthStateChanged(user => {
-                  if (!user) {
-                    clearTimeout(timer);
-                    if (unsubscribe) unsubscribe();
-                    resolve();
-                  }
-                });
-              });
+              await firebase.auth().signOut().catch(e => console.warn(e));
             }
           }
 
@@ -12102,22 +12149,7 @@
                 const currentAuthUser = firebase.auth().currentUser;
                 if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== authEmail.trim().toLowerCase()) {
                   debugLog("[Auth Autologout] Current authenticated delivery is different. Signing out first...");
-                  await firebase.auth().signOut();
-                  await new Promise(resolve => {
-                    let unsubscribe = null;
-                    const timer = setTimeout(() => {
-                      if (unsubscribe) unsubscribe();
-                      resolve();
-                    }, 2000);
-                    unsubscribe = firebase.auth().onAuthStateChanged(user => {
-                      if (!user) {
-                        clearTimeout(timer);
-                        if (unsubscribe) unsubscribe();
-                        resolve();
-                      }
-                    });
-                  });
-                  debugLog("[Auth Autologout] Confirmed signOut complete before delivery signIn.");
+                  await firebase.auth().signOut().catch(e => console.warn(e));
                 }
               }
 
@@ -12151,7 +12183,7 @@
                     phone: cleanPhone,
                     email: legacyData.email || legacyData.authEmail || `rider_${cleanPhone || uid.slice(-6)}@lyo.delivery`,
                     vehicleNo: legacyData.vehicleNo || legacyData.vehicle || "",
-                    photoUrl: legacyData.photoUrl || legacyData.photo || "https://www.w3schools.com/howto/img_avatar.png",
+                    photoUrl: legacyData.photoUrl || legacyData.photo || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>",
                     isActive: legacyData.isActive !== false && legacyData.active !== false && legacyData.isActiveRider !== false,
                     payoutType: (legacyData.payoutType || legacyData.salaryType || "PER_ORDER").toUpperCase(),
                     payoutAmount: legacyData.payoutAmount || legacyData.salaryRate || 35,
@@ -15827,7 +15859,7 @@
 
       let html = '';
       matches.forEach(p => {
-        const isOutOfStock = p.isOutOfStock || p.stockKg <= 0;
+        updateProductAvailability(p); const isOutOfStock = p.isOutOfStock || p.stockKg <= 0 || (p.isScheduled && p.isAvailable === false);
         const nameText = currentLang === 'ta' ? p.tamilName : cleanProductName(p.englishName);
         const subText = currentLang === 'ta' ? cleanProductName(p.englishName) : p.tamilName;
         const priceText = getProductPriceText(p, currentLang);
@@ -16128,6 +16160,7 @@
       try {
         let rawLocalProducts = getDataCached('ek_products', []);
         let products = rawLocalProducts;
+        if (Array.isArray(products)) { products.forEach(p => { if (p) updateProductAvailability(p); }); }
         const catList = getCategoriesList() || [];
         const grid = document.getElementById('home-product-grid');
         const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
@@ -16213,8 +16246,7 @@
                 if (hasRealSpecImage) {
                   specImgHtml = `
                     <div class="lazy-image-container" style="height: 78px; border-radius: 10px; margin: 6px 6px 0 6px; overflow: hidden; position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center;" ${isOutOfStock ? '' : `onclick="openProductModalDetail('${pidStr}')"`}>
-                      <img data-src="${getImageUrlWithCacheBuster(imgUrl, p.updatedAt)}" class="lazy-image-main special-img" style="height: 78px; width: 100%; object-fit: cover; border-radius: 10px;" alt="${cleanProductName(String(p.englishName || ''))}" loading="lazy" decoding="async" onerror="handleProductImageError(this, '${pCatStr}')">
-                      <img src="${getBlurPlaceholderUrl(getImageUrlWithCacheBuster(imgUrl, p.updatedAt))}" class="lazy-image-placeholder" style="height: 78px; width: 100%; object-fit: cover; border-radius: 10px; position: absolute; top:0; left:0;" alt="loader">
+                      <img src="${getImageUrlWithCacheBuster(imgUrl, p.updatedAt)}" data-src="${getImageUrlWithCacheBuster(imgUrl, p.updatedAt)}" class="lazy-image-main special-img" style="height: 78px; width: 100%; object-fit: cover; border-radius: 10px;" alt="${cleanProductName(String(p.englishName || ''))}" loading="lazy" decoding="async" onerror="handleProductImageError(this, '${pCatStr}')">
                     </div>
                   `;
                 } else {
@@ -16313,7 +16345,7 @@
 
         const categoryOrdersHash = catListForSorting.map(c => `${c.id}:${c.order}`).join(',');
         const filterKey = String(activeCategory) + '::' + searchQuery + '::' + categoryOrdersHash;
-        const dataHash = filtered.map(p => `${p ? p.id : ''}:${p ? p.stockKg : ''}:${p ? p.isOutOfStock : ''}:${p ? p.pricePerKg : ''}:${p ? (p.updatedAt || p.createdAt || '') : ''}:${(p && p.imageUrl ? String(p.imageUrl) : '').slice(-12)}`).join('|');
+        const dataHash = filtered.map(p => `${p ? p.id : ''}:${p ? p.stockKg : ''}:${p ? p.isOutOfStock : ''}:${p ? p.pricePerKg : ''}:${p ? String(p.imageUrl || '').trim() : ''}:${p ? String(p.englishName || '').trim() : ''}:${p ? (p.sellingUnit || p.unit || '') : ''}`).join('|');
         const combinedKey = filterKey + '::' + dataHash;
 
         if (filtered.length === 0) {
@@ -16396,8 +16428,7 @@
             if (hasRealImage) {
               imgHtml = `
                 <div class="product-card-img-container lazy-image-container">
-                  <img data-src="${getImageUrlWithCacheBuster(imgUrl, p.updatedAt)}" class="lazy-image-main" style="width: 100%; height: 100%; object-fit: cover;" alt="${cleanProductName(String(p.englishName || ''))}" loading="lazy" decoding="async" onerror="handleProductImageError(this, '${pCatStr}')">
-                  <img src="${getBlurPlaceholderUrl(getImageUrlWithCacheBuster(imgUrl, p.updatedAt))}" class="lazy-image-placeholder" style="width: 100%; height: 100%; object-fit: cover;" alt="loader">
+                  <img src="${getImageUrlWithCacheBuster(imgUrl, p.updatedAt)}" data-src="${getImageUrlWithCacheBuster(imgUrl, p.updatedAt)}" class="lazy-image-main" style="width: 100%; height: 100%; object-fit: cover;" alt="${cleanProductName(String(p.englishName || ''))}" loading="lazy" decoding="async" onerror="handleProductImageError(this, '${pCatStr}')">
                 </div>
               `;
             } else {
@@ -16423,7 +16454,7 @@
             const weightHtml = `<span style="font-size: 10px; color: var(--text-muted); font-weight: 600; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 6px; display: inline-block; white-space: nowrap;">${weightText}</span>`;
 
             const cardHtml = `
-              <div class="product-grid-card" id="card-prod-${pidStr}" onclick="openProductModalDetail('${pidStr}')">
+              <div class="product-grid-card" id="card-prod-${pidStr}" data-image-url="${imgUrl}" onclick="openProductModalDetail('${pidStr}')">
                 ${overlayHtml}
                 ${imgHtml}
                 <div class="product-card-details" style="display: flex !important; flex-direction: column !important; justify-content: center !important; gap: 2px !important; flex-grow: 1 !important; min-width: 0 !important; min-height: 90px !important; height: auto !important; padding: 0 !important;">
@@ -16448,7 +16479,44 @@
                 </div>
               </div>
             `;
-            batchHtml += cardHtml;
+            const existingCard = document.getElementById('card-prod-' + pidStr);
+            if (existingCard) {
+              const oldImgUrl = existingCard.getAttribute('data-image-url') || '';
+              if (oldImgUrl !== imgUrl) {
+                existingCard.setAttribute('data-image-url', imgUrl);
+                const oldImgContainer = existingCard.querySelector('.product-card-img-container');
+                if (oldImgContainer) {
+                  const tempDiv = document.createElement('div');
+                  tempDiv.innerHTML = imgHtml.trim();
+                  if (tempDiv.firstElementChild) {
+                    oldImgContainer.replaceWith(tempDiv.firstElementChild);
+                  }
+                }
+              }
+              const priceEl = existingCard.querySelector('.product-price');
+              if (priceEl) priceEl.innerText = getProductPriceText(p, currentLang);
+
+              const titleEl = existingCard.querySelector('h4');
+              if (titleEl) titleEl.innerText = cleanProductName(String(p.englishName || ''));
+
+              const taEl = existingCard.querySelector('.tamil-text');
+              if (taEl) taEl.innerText = String(p.tamilName || '');
+
+              const addBtn = existingCard.querySelector('.btn-add-orange');
+              if (addBtn) {
+                if (isOutOfStock) addBtn.setAttribute('disabled', 'true');
+                else addBtn.removeAttribute('disabled');
+              }
+
+              let overlayEl = existingCard.querySelector('.stock-overlay-light');
+              if (isOutOfStock && !overlayEl) {
+                existingCard.insertAdjacentHTML('afterbegin', `<div class="stock-overlay-light">${currentLang === 'ta' ? 'கையிருப்பு இல்லை' : 'Out Of Stock'}</div>`);
+              } else if (!isOutOfStock && overlayEl) {
+                overlayEl.remove();
+              }
+            } else {
+              batchHtml += cardHtml;
+            }
           }
         }
 
@@ -18281,21 +18349,7 @@
         const weatherBrief = document.getElementById('briefing-weather-temp')?.innerText || "34°C - Partly Cloudy";
         const trafficBrief = document.getElementById('briefing-traffic-status')?.innerText || "Green / Low Congestion";
 
-        window.isConfirmingOrder = true;
-
-        showCustomConfirm(
-          currentLang === 'ta' ? "⛈️ நேரலை நிலவரம் & ஆர்டர்" : "⛈️ Real-Time Briefing & Order",
-          currentLang === 'ta'
-            ? `⛈️ தற்போதைய நேரலை நிலவரம்:\n• வானிலை: ${weatherBrief}\n• போக்குவரத்து: ${trafficBrief}\n\nவானிலை மற்றும் போக்குவரத்து விநியோகத்திற்கு மிகவும் சாதகமாக உள்ளது. ஆர்டரை இறுதி செய்யலாமா?`
-            : `⛈️ Real-Time Edappadi Briefing:\n• Weather: ${weatherBrief}\n• Traffic: ${trafficBrief}\n\nConditions are highly optimal for sweet, safe delivery. Proceed to finalize order?`,
-          () => {
-            window.isConfirmingOrder = false;
-            actualPlaceOrder();
-          },
-          () => {
-            window.isConfirmingOrder = false;
-          }
-        );
+        actualPlaceOrder();
       } catch (err) {
         window.isConfirmingOrder = false;
         console.error("Critical error in placeOrder:", err);
@@ -22128,7 +22182,7 @@
         badgeElement.innerText = latestTrackable.status.toUpperCase();
         badgeElement.className = `badge badge-${latestTrackable.status}`;
 
-        const formattedTime = new Date(latestTrackable.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const formattedTime = safeFormatTime(latestTrackable.updatedAt || latestTrackable.createdAt);
         document.getElementById('track-order-time').innerText = formattedTime;
 
         const itemsSummaryList = document.getElementById('track-items-summary-list');
@@ -22268,7 +22322,7 @@
           if (cancelBtnContainer) cancelBtnContainer.style.display = 'none';
           if (rejBox) rejBox.style.display = 'none';
 
-        } else if (latestTrackable.status === 'rejected') {
+        } else if (['rejected', 'cancelled', 'canceled'].includes(String(latestTrackable.status || '').toLowerCase().trim())) {
           if (celebrationContainer) {
             celebrationContainer.style.display = 'block';
             celebrationContainer.style.background = 'linear-gradient(135deg, #111827 0%, #7f1d1d 100%)';
@@ -22290,7 +22344,7 @@
                   ${currentLang === 'ta' ? 'காரணம்:' : 'Reason:'}
                 </p>
                 <p style="font-size: 12px; color: #fff; font-weight: 600;">
-                  ${latestTrackable.rejectionReason || (currentLang === 'ta' ? "குறிப்பிட்ட காரணம் எதுவும் தெரிவிக்கப்படவில்லை." : "No reason specified.")}
+                  ${latestTrackable.rejectionReason || latestTrackable.cancelledReason || latestTrackable.cancelReason || (currentLang === 'ta' ? "வாடிக்கையாளரால் / நிர்வாகியால் ரத்து செய்யப்பட்டது." : "Cancelled by customer/admin.")}
                 </p>
               </div>
 
@@ -22350,7 +22404,7 @@
               const rPhone = riderObj ? riderObj.phone : (latestTrackable.assignedExecutivePhone || "9042681532");
               const cleanPhone = rPhone.replace(/\D/g, '').slice(-10);
 
-              const photoUrl = (riderObj && riderObj.photoUrl) ? riderObj.photoUrl : "https://www.w3schools.com/howto/img_avatar.png";
+              const photoUrl = (riderObj && riderObj.photoUrl) ? riderObj.photoUrl : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
               const rating = (riderObj && (riderObj.averageRating || riderObj.rating)) ? (riderObj.averageRating || riderObj.rating) : null;
 
               const statusOnline = riderObj ? (riderObj.isActive !== false) : true;
@@ -22853,7 +22907,21 @@
         ? `ஆர்டர் ${orderId}-க்கான நேரலை இணைப்பு நகலெடுக்கப்பட்டது! 📋`
         : `Live tracking link for order ${orderId} copied to clipboard! 📋`;
 
-      copyTextToClipboardGeneral(shareUrl, msg);
+      const shareText = currentLang === 'ta'
+        ? `எடப்பாடி கடை ஆர்டர் #${orderId} நேரலை வரைபடத்தைப் பார்க்க இந்த லிங்கை க்ளிக் செய்யவும்: ${shareUrl}`
+        : `Track your Edappadi Kadai order #${orderId} live here: ${shareUrl}`;
+
+      if (navigator.share) {
+        navigator.share({
+          title: `Edappadi Kadai Order #${orderId}`,
+          text: shareText,
+          url: shareUrl
+        }).catch(() => {
+          copyTextToClipboardGeneral(shareUrl, msg);
+        });
+      } else {
+        copyTextToClipboardGeneral(shareUrl, msg);
+      }
     }
 
     function toggleTrackerItemsCollapse() {
@@ -24822,6 +24890,10 @@
         try { loadAdminSmsSettingsUI(settings); } catch(e) {}
       }
 
+      if (typeof loadAdminEmailOtpConfig === 'function') {
+        try { loadAdminEmailOtpConfig(); } catch(e) {}
+      }
+
       if (typeof renderAdminDeliveryZones === 'function') {
         try { renderAdminDeliveryZones(); } catch(e) {}
       }
@@ -26433,38 +26505,7 @@ ${o.items.map((it, idx) => {
           ensureRequiredFields(targetProduct);
         }
 
-        if (typeof db !== 'undefined' && db && targetProduct) {
-          try {
-            if (submitBtn) submitBtn.innerText = "Syncing with Cloud... ⏳";
-            const isPermitted = await verifyAdminWritePermission(`syncProductToCloudWithRetry for ID: ${targetProduct.id}`);
-            if (!isPermitted) {
-              throw new Error("ADMIN_WRITE_DENIED");
-            }
-            logProductWriteAudit(isEdit ? 'update' : 'create', targetProduct.id, 'syncProductToCloudWithRetry');
-            await db.collection('ek_products').doc(targetProduct.id).set(cleanFirestoreData(targetProduct));
-            debugLog("✓ Firestore Updated for product:", targetProduct.id);
-            debugLog(`[Cloud Sync] Product ${targetProduct.id} synced successfully directly during save.`);
-            debugLog("[Storage Debug] Firestore imageUrl updated to:", targetProduct.imageUrl);
-
-            debugLog("[Data Flow Audit] Admin Firestore project ID:", firebaseConfig.projectId);
-            debugLog("[Data Flow Audit] Customer Firestore project ID:", firebaseConfig.projectId);
-            debugLog("[Data Flow Audit] Admin write collection/path: ek_products");
-            debugLog("[Data Flow Audit] Customer read collection/path: ek_products");
-            debugLog("[Data Flow Audit] New product document ID:", targetProduct.id);
-            debugLog("[Data Flow Audit] Full saved product object:", JSON.stringify(targetProduct));
-
-            removePendingSyncEntry('product', targetProduct.id);
-          } catch (syncErr) {
-            console.error("Firestore cloud sync failed during product save:", syncErr);
-            if (submitBtn) {
-              submitBtn.disabled = false;
-              submitBtn.innerText = originalBtnText;
-            }
-            showToast("Cloud sync failed. Check internet and try again. / மேகக்கணி ஒத்திசைவு தோல்வி. இணையதளத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.", "error");
-            return;
-          }
-        }
-
+        // OPTIMISTIC UI UPDATE: Save to local state and show success popup INSTANTLY!
         if (isEdit) {
           const idx = products.findIndex(p => p.id === editingProductId);
           if (idx !== -1) {
@@ -26503,6 +26544,23 @@ ${o.items.map((it, idx) => {
           closeAdminAddProductModalDetail();
         }
         renderAdminDashboard();
+
+        // Background Cloud Sync (Non-blocking)
+        if (typeof db !== 'undefined' && db && targetProduct) {
+          (async () => {
+            try {
+              const isPermitted = await verifyAdminWritePermission(`syncProductToCloudWithRetry for ID: ${targetProduct.id}`);
+              if (!isPermitted) throw new Error("ADMIN_WRITE_DENIED");
+              logProductWriteAudit(isEdit ? 'update' : 'create', targetProduct.id, 'syncProductToCloudWithRetry');
+              await db.collection('ek_products').doc(targetProduct.id).set(cleanFirestoreData(targetProduct));
+              debugLog("✓ Background Firestore Update successful for product:", targetProduct.id);
+              removePendingSyncEntry('product', targetProduct.id);
+            } catch (syncErr) {
+              console.error("Background Firestore sync failed for product:", syncErr);
+              showToast("Cloud sync pending. Will retry automatically.", "info");
+            }
+          })();
+        }
       } catch (saveError) {
         console.error("Critical error saving product:", saveError);
         const submitBtn = document.getElementById('prod-submit-btn');
@@ -26814,47 +26872,12 @@ ${o.items.map((it, idx) => {
         };
         ensureRequiredFields(targetProduct);
 
-        if (typeof db !== 'undefined' && db && targetProduct) {
-          try {
-            if (submitBtn) submitBtn.innerHTML = "Syncing with Cloud... ⏳";
-            const isPermitted = await verifyAdminWritePermission(`syncProductToCloudWithRetry for ID: ${targetProduct.id}`);
-            if (!isPermitted) {
-              throw new Error("ADMIN_WRITE_DENIED");
-            }
-            logProductWriteAudit('update', targetProduct.id, 'syncProductToCloudWithRetry');
-            await db.collection('ek_products').doc(targetProduct.id).set(cleanFirestoreData(targetProduct));
-            debugLog("✓ Firestore Updated for product:", targetProduct.id);
-            debugLog(`[Cloud Sync] Product ${targetProduct.id} synced successfully directly during edit.`);
-            debugLog("[Storage Debug] Firestore imageUrl updated to:", targetProduct.imageUrl);
-
-            debugLog("[Data Flow Audit] Admin Firestore project ID:", firebaseConfig.projectId);
-            debugLog("[Data Flow Audit] Customer Firestore project ID:", firebaseConfig.projectId);
-            debugLog("[Data Flow Audit] Admin write collection/path: ek_products");
-            debugLog("[Data Flow Audit] Customer read collection/path: ek_products");
-            debugLog("[Data Flow Audit] New product document ID:", targetProduct.id);
-            debugLog("[Data Flow Audit] Full saved product object:", JSON.stringify(targetProduct));
-
-            removePendingSyncEntry('product', targetProduct.id);
-          } catch (syncErr) {
-            console.error("Firestore cloud sync failed during product edit:", syncErr);
-            if (submitBtn) {
-              submitBtn.disabled = false;
-              submitBtn.innerHTML = originalBtnText;
-            }
-            showToast("Cloud sync failed. Check internet and try again. / மேகக்கணி ஒத்திசைவு தோல்வி. இணையதளத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.", "error");
-            return;
-          }
-        }
-
+        // OPTIMISTIC UI UPDATE: Update local state and show success popup INSTANTLY!
         products[idx] = targetProduct;
         saveData('ek_products', products);
 
         if (oldImageUrl && oldImageUrl !== finalImg) {
           deleteStorageImageByUrl(oldImageUrl);
-        }
-
-        if (typeof fetchProductsOnce === 'function') {
-          fetchProductsOnce();
         }
 
         if (submitBtn) {
@@ -26872,6 +26895,23 @@ ${o.items.map((it, idx) => {
           "✏️ வெற்றிகரமாக மாற்றி அமைக்கப்பட்டது!",
           `தயாரிப்பு <strong>${tamilName} (${englishName})</strong> விவரங்கள் வெற்றிகரமாக மாற்றி அமைக்கப்பட்டு உங்கள் கடையில் சேமிக்கப்பட்டது.<br><br><span style="font-size:11.5px;color:var(--text-muted);">Successfully Updated! The product details have been modified.</span>`
         );
+
+        // Background Cloud Sync (Non-blocking)
+        if (typeof db !== 'undefined' && db && targetProduct) {
+          (async () => {
+            try {
+              const isPermitted = await verifyAdminWritePermission(`syncProductToCloudWithRetry for ID: ${targetProduct.id}`);
+              if (!isPermitted) throw new Error("ADMIN_WRITE_DENIED");
+              logProductWriteAudit('update', targetProduct.id, 'syncProductToCloudWithRetry');
+              await db.collection('ek_products').doc(targetProduct.id).set(cleanFirestoreData(targetProduct));
+              debugLog("✓ Background Firestore Edit Update successful for product:", targetProduct.id);
+              removePendingSyncEntry('product', targetProduct.id);
+            } catch (syncErr) {
+              console.error("Background Firestore sync failed during product edit:", syncErr);
+              showToast("Cloud sync pending. Will retry automatically.", "info");
+            }
+          })();
+        }
       } catch (saveError) {
         console.error("Critical error saving edited product:", saveError);
         const submitBtn = event.target.querySelector('button[type="submit"]');
@@ -27467,7 +27507,7 @@ ${o.items.map((it, idx) => {
       if (urlVal) {
         document.getElementById('rider-photo-preview').src = urlVal;
       } else {
-        document.getElementById('rider-photo-preview').src = "https://www.w3schools.com/howto/img_avatar.png";
+        document.getElementById('rider-photo-preview').src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
       }
     }
 
@@ -27496,7 +27536,7 @@ ${o.items.map((it, idx) => {
       const vehicleNo = document.getElementById('add-exec-vehicle') ? document.getElementById('add-exec-vehicle').value.trim() : '';
       const isActive = document.getElementById('add-exec-active') ? document.getElementById('add-exec-active').checked : true;
 
-      let photoUrl = "https://www.w3schools.com/howto/img_avatar.png";
+      let photoUrl = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
 
       const list = getData('ek_delivery_persons', []) || [];
 
@@ -27661,7 +27701,7 @@ ${o.items.map((it, idx) => {
         }
       } else {
         const existingUrl = document.getElementById('add-exec-photo').value.trim();
-        photoUrl = existingUrl || "https://www.w3schools.com/howto/img_avatar.png";
+        photoUrl = existingUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
       }
 
       if (tempAppCreated && tempApp) {
@@ -27770,7 +27810,7 @@ ${o.items.map((it, idx) => {
       document.getElementById('add-exec-active').checked = isActiveVal;
       document.getElementById('active-status-text').innerText = isActiveVal ? "Active (உள்நுழையலாம்)" : "Inactive (உள்நுழைய முடியாது)";
 
-      document.getElementById('rider-photo-preview').src = exec.photoUrl || "https://www.w3schools.com/howto/img_avatar.png";
+      document.getElementById('rider-photo-preview').src = exec.photoUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
 
       document.getElementById('admin-delivery-form-title').innerText = "✏️ Edit Delivery Partner Details";
       document.getElementById('exec-submit-btn').innerText = currentLang === 'ta' ? "சேமி ✓" : "Save Changes ✓";
@@ -27806,7 +27846,7 @@ ${o.items.map((it, idx) => {
       selectedRiderFile = null;
       selectedRiderFileBase64 = null;
       document.getElementById('add-exec-file').value = '';
-      document.getElementById('rider-photo-preview').src = "https://www.w3schools.com/howto/img_avatar.png";
+      document.getElementById('rider-photo-preview').src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
 
       onSalaryTypeChange();
     }
@@ -28879,6 +28919,90 @@ STRICT PROTOCOLS:
 
         showToast("Reset to built-in Gemini key!", "info");
         loadAdminAiKeyConfig();
+      }
+    }
+
+    function toggleGmailPassVisibility() {
+      const elPass = document.getElementById('setting-gmail-pass');
+      const btn = document.getElementById('btn-toggle-gmail-pass-vis');
+      if (!elPass) return;
+      if (elPass.type === 'password') {
+        elPass.type = 'text';
+        if (btn) btn.innerText = '🙈';
+      } else {
+        elPass.type = 'password';
+        if (btn) btn.innerText = '👁️';
+      }
+    }
+
+    async function loadAdminEmailOtpConfig() {
+      const elUser = document.getElementById('setting-gmail-user');
+      const elPass = document.getElementById('setting-gmail-pass');
+      const elBadge = document.getElementById('email-otp-status-badge');
+
+      let gmailUser = '';
+      let gmailPass = '';
+
+      if (typeof db !== 'undefined' && db) {
+        try {
+          const doc = await db.collection('ek_settings').doc('emailConfig').get();
+          if (doc.exists) {
+            const data = doc.data();
+            if (data) {
+              gmailUser = data.gmailUser || '';
+              gmailPass = data.gmailPass || '';
+            }
+          }
+        } catch (e) {
+          console.warn('[Email OTP Settings] Could not fetch emailConfig from Firestore:', e);
+        }
+      }
+
+      if (elUser) elUser.value = gmailUser;
+      if (elPass) elPass.value = gmailPass;
+
+      if (elBadge) {
+        if (gmailUser && gmailPass) {
+          elBadge.innerText = 'Active (Configured)';
+          elBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+          elBadge.style.color = '#10b981';
+          elBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        } else {
+          elBadge.innerText = 'Not Configured';
+          elBadge.style.background = 'rgba(148, 163, 184, 0.2)';
+          elBadge.style.color = '#94a3b8';
+          elBadge.style.borderColor = 'rgba(148, 163, 184, 0.4)';
+        }
+      }
+    }
+
+    async function saveAdminEmailOtpConfig() {
+      const elUser = document.getElementById('setting-gmail-user');
+      const elPass = document.getElementById('setting-gmail-pass');
+
+      const gmailUser = elUser ? elUser.value.trim() : '';
+      const gmailPass = elPass ? elPass.value.trim() : '';
+
+      if (!gmailUser || !gmailPass) {
+        showToast("Please enter both Gmail Address and Gmail App Password.", "warning");
+        return;
+      }
+
+      if (typeof db !== 'undefined' && db) {
+        try {
+          await db.collection('ek_settings').doc('emailConfig').set({
+            gmailUser: gmailUser,
+            gmailPass: gmailPass,
+            updatedAt: new Date().toISOString()
+          });
+          showToast("✅ Email OTP credentials saved successfully to ek_settings/emailConfig!", "success");
+          loadAdminEmailOtpConfig();
+        } catch (err) {
+          console.error("Firestore emailConfig write failed:", err);
+          showToast("Error saving Email OTP settings: " + err.message, "error");
+        }
+      } else {
+        showToast("Database connection not ready.", "error");
       }
     }
 
@@ -32955,6 +33079,12 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
             debugLog('[Cloud Sync] Snapshot from local cache — merging safely.');
           }
 
+          const docChanges = snapshot.docChanges ? snapshot.docChanges({ includeMetadataChanges: false }) : [];
+          if (docChanges.length === 0 && localProducts.length > 0 && !snapshot.metadata.fromCache) {
+            debugLog('[Cloud Sync] Metadata-only server confirmation snapshot — zero document field changes detected, skipping re-render.');
+            return;
+          }
+
           const localProducts = getData('ek_products');
           const localProductsMap = new Map(localProducts.map(p => [p.id, p]));
           let modifiedProducts = false;
@@ -32991,13 +33121,13 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
                 } else if (localRev > cloudRev) {
                   debugLog(`[Cloud Sync] Guard: Retaining local product ${cloudProd.id} state due to superior local revision (${localRev} > ${cloudRev}).`);
                 } else {
-                  const cloudTime = new Date(cloudProd.updatedAt || cloudProd.createdAt || 0).getTime();
-                  const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-                  if (cloudTime > localTime) {
+                  if (!areProductFieldsEqual(existing, cloudProd)) {
                     localProductsMap.set(cloudProd.id, cloudProd);
                     modifiedProducts = true;
                   } else {
-                    debugLog(`[Cloud Sync] Guard: Retaining local product ${cloudProd.id} state as local state of equal or newer timestamp exists (Local: ${localTime}, Cloud: ${cloudTime}).`);
+                    existing.updatedAt = cloudProd.updatedAt || existing.updatedAt;
+                    existing.createdAt = cloudProd.createdAt || existing.createdAt;
+                    debugLog(`[Cloud Sync] Guard: Retaining local product ${cloudProd.id} as actual field values are unchanged.`);
                   }
                 }
               }
@@ -34277,17 +34407,20 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
           upiStatusMsg = params['status'] || "";
         }
 
+        const hasRealTxnRef = !!(upiTxnId || upiApprovalRefNo);
+        
         if (!upiTxnId) {
-          upiTxnId = "TXN-" + orderData.order.id;
+          upiTxnId = "UNVERIFIED-TXN-" + orderData.order.id;
         }
         if (!upiApprovalRefNo) {
-          upiApprovalRefNo = "REF-" + Math.floor(100000000000 + Math.random() * 900000000000);
+          upiApprovalRefNo = "UNVERIFIED-REF-" + Math.floor(100000000000 + Math.random() * 900000000000);
         }
 
         orderData.order.upiTxnId = upiTxnId;
         orderData.order.upiApprovalRefNo = upiApprovalRefNo;
-        orderData.order.upiResponseCode = upiResponseCode || "00";
-        orderData.order.upiStatus = upiStatusMsg || "SUCCESS";
+        orderData.order.upiResponseCode = upiResponseCode || (hasRealTxnRef ? "00" : "PENDING");
+        orderData.order.upiStatus = hasRealTxnRef ? (upiStatusMsg || "SUCCESS") : "PENDING_VERIFICATION";
+        orderData.order.paymentStatus = hasRealTxnRef ? "PAID" : "PENDING_VERIFICATION";
         orderData.order.paymentMethod = "UPI Payment";
 
         showToast(currentLang === 'ta' ? "கட்டணம் வெற்றிகரமாக செலுத்தப்பட்டது! 🎉" : "Payment Successful! 🎉", "success");
@@ -35162,45 +35295,43 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
     }
 
     function bootstrapApplication() {
-      const hardFallbackTimer = setTimeout(() => {
-        const splash = document.getElementById('screen-splash');
-        if (splash && splash.classList.contains('active')) {
-          console.warn('[Hard Fallback] Splash stuck beyond 3s — routing safely based on active session.');
-          try {
-            if (typeof enforceRememberMeValidationOnStartup === 'function') enforceRememberMeValidationOnStartup();
-            if (typeof validateAndSanitizeSessions === 'function') validateAndSanitizeSessions();
+      // 1. INSTANT SYNCHRONOUS LOCAL SESSION ROUTING (Zero Network Wait)
+      try {
+        if (typeof enforceRememberMeValidationOnStartup === 'function') enforceRememberMeValidationOnStartup();
+        if (typeof validateAndSanitizeSessions === 'function') validateAndSanitizeSessions();
 
-            const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
-            const custSession = typeof getActiveSession === 'function' ? getActiveSession() : null;
-            const deliverySession = typeof getData === 'function' ? getData('ek_delivery_session', null) : null;
+        const urlParams = new URLSearchParams(window.location.search);
+        const trackOrderIdParam = urlParams.get("trackOrderId");
+        
+        if (trackOrderIdParam) {
+          selectedTrackOrderId = trackOrderIdParam.trim();
+          showScreen("screen-track");
+          renderTrackerScreen();
+        } else {
+          const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+          const custSession = typeof getActiveSession === 'function' ? getActiveSession() : null;
+          const deliverySession = typeof getData === 'function' ? getData('ek_delivery_session', null) : null;
 
-            if (adminSession && adminSession.loggedIn) {
-              showScreen('screen-admin');
-            } else if (deliverySession && deliverySession.loggedIn) {
-              showScreen('screen-delivery');
-            } else if (custSession && custSession.loggedIn) {
-              showScreen('screen-home');
-            } else {
-              navigateToHome();
-            }
-          } catch (e) {
-            console.error('[Hard Fallback] Safely routing failed, fallback to home screen:', e);
-            try {
-              document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-              const homeScreen = document.getElementById('screen-home');
-              if (homeScreen) {
-                homeScreen.classList.add('active');
-                currentScreen = 'screen-home';
-                try { renderHomeScreen(); } catch(rh) {}
-                const bottomNav = document.getElementById('app-bottom-nav');
-                if (bottomNav) bottomNav.style.display = 'flex';
-              }
-            } catch (innerErr) {
-              console.error("[Hard Fallback] Complete fallback failed:", innerErr);
-            }
+          if (adminSession && adminSession.loggedIn) {
+            showScreen('screen-admin');
+          } else if (deliverySession && deliverySession.loggedIn) {
+            showScreen('screen-delivery');
+          } else if (custSession && custSession.loggedIn) {
+            showScreen('screen-home');
+          } else {
+            showScreen('screen-home');
           }
         }
-      }, 3000);
+        hideLoadingModal();
+        hideLyoTransitLoader();
+        try {
+          if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.notifyAppLoaded === 'function') {
+            AndroidStorage.notifyAppLoaded();
+          }
+        } catch (ae) {}
+      } catch (e) {
+        console.error('[Instant Session Route] Synchronous local routing failed:', e);
+      }
 
       try {
         const LATEST_VERSION = "2.1.8";
@@ -35372,63 +35503,23 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
 
      prefillLoginCredentials(); populateAdminSelector(); updateNotificationUnreadCount(); updateCartBadge(); applyTranslations(); startRealtimeSync(); registerRealFcmToken();
 
-      // Parallel Concurrent Data Fetching (Settings, Products, Selector Accounts, Meta Sync, Session Audit) - Zero artificial setTimeout delay
+      // Parallel Concurrent Data Fetching (Settings, Products, Selector Accounts, Meta Sync)
       Promise.all([
         fetchSettingsOnce().catch(e => console.warn("fetchSettingsOnce async error:", e)),
         fetchProductsOnce().catch(e => console.warn("fetchProductsOnce async error:", e)),
         fetchSelectorAccounts().catch(e => console.warn("fetchSelectorAccounts async error:", e)),
-        syncWithCloud().catch(e => console.warn("syncWithCloud async error:", e)),
-        Promise.resolve().then(() => {
-          if (typeof enforceRememberMeValidationOnStartup === "function") enforceRememberMeValidationOnStartup();
-          if (typeof validateAndSanitizeSessions === "function") validateAndSanitizeSessions();
-        }).catch(e => console.warn("Session audit error:", e))
+        syncWithCloud().catch(e => console.warn("syncWithCloud async error:", e))
       ]).then(() => {
         try {
-          clearTimeout(hardFallbackTimer);
           hideLoadingModal();
           hideLyoTransitLoader();
-
-          const urlParams = new URLSearchParams(window.location.search);
-          const trackOrderIdParam = urlParams.get("trackOrderId");
-          if (trackOrderIdParam) {
-            selectedTrackOrderId = trackOrderIdParam.trim();
-            showScreen("screen-track");
-            renderTrackerScreen();
-            return;
+          if (currentScreen === 'screen-admin' && typeof renderAdminDashboard === 'function') {
+            renderAdminDashboard();
+          } else if (currentScreen === 'screen-home' && typeof renderHomeScreenProducts === 'function') {
+            renderHomeScreenProducts();
           }
-
-          const adminSession = typeof getAdminSession === "function" ? getAdminSession() : null;
-          const custSession = typeof getActiveSession === "function" ? getActiveSession() : null;
-          const deliverySession = typeof getData === "function" ? getData("ek_delivery_session", null) : null;
-
-          const proceedToTarget = () => {
-            if (adminSession && adminSession.loggedIn) {
-              showScreen("screen-admin");
-            } else if (deliverySession && deliverySession.loggedIn) {
-              showScreen("screen-delivery");
-            } else {
-              showScreen("screen-home");
-            }
-          };
-
-          checkAndShowOnboardingFlow(proceedToTarget);
         } catch (e) {
-          console.error("Splash sequence routing failed, forcing home screen:", e);
-          try {
-            document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-            const home = document.getElementById("screen-home");
-            if (home) {
-              home.classList.add("active");
-              currentScreen = "screen-home";
-            }
-            const bottomNav = document.getElementById("app-bottom-nav");
-            if (bottomNav) bottomNav.style.display = "flex";
-          } catch (finalErr) {
-            console.error("Even direct fallback failed:", finalErr);
-          }
-        } finally {
-          hideLoadingModal();
-          hideLyoTransitLoader();
+          console.error("Background data refresh completion error:", e);
         }
       });
 
@@ -37780,33 +37871,37 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
         let grams = null;
         let count = null;
 
-        let valMatch = line.match(/(\d+)\s*(?:ரூபாய்|ரூபாய்க்கு|ரூ|rs|rupees|rupee)\s*(?:வரை|க்கு)?\s*(.+)/i) ||
-                       line.match(/(.+?)\s*(\d+)\s*(?:ரூபாய்|ரூபாய்க்கு|ரூ|rs|rupees)/i);
+        // 1. Check Rupee / Value match (e.g. ₹50 of tomato, 50 rs chicken, 50 ரூபாய் தக்காளி)
+        let valMatch = line.match(/(?:₹|rs\.?|inr|rupees?|ரூ|ரூபாய்|ரூபாய்க்கு)\s*(\d+)\s*(?:worth|of|for)?\s*(.+)/i) ||
+                       line.match(/(\d+)\s*(?:₹|rs\.?|inr|rupees?|ரூ|ரூபாய்|ரூபாய்க்கு)\s*(?:worth|of|for)?\s*(.+)/i) ||
+                       line.match(/(.+?)\s*(\d+)\s*(?:₹|rs\.?|inr|rupees?|ரூ|ரூபாய்|ரூபாய்க்கு)/i);
 
-        let weightMatch = line.match(/(\d+(?:\.\d+)?|\d+\/\d+)\s*(?:கிராம்|கிலோ|கிலோகிராம்|g|gm|gram|grams|kg|kilo)\s*(.+)/i) ||
+        // 2. Check Weight match (e.g. 1.5 kg chicken, 500g mutton)
+        let weightMatch = line.match(/(\d+(?:\.\d+)?|\d+\/\d+)\s*(?:கிராம்|கிலோ|கிலோகிராம்|g|gm|gram|grams|kg|kilo|kilos)\s*(?:of|for)?\s*(.+)/i) ||
                           line.match(/(.+?)\s*(\d+(?:\.\d+)?|\d+\/\d+)\s*(?:கிராம்|கிலோ|g|gm|kg)/i);
 
-        let volMatch = line.match(/(\d+(?:\.\d+)?|\d+\/\d+)\s*(?:லிட்டர்|லி|l|liter|liters|litre|litres|ml)\s*(.+)/i) ||
+        // 3. Check Volume match (e.g. 1 liter milk)
+        let volMatch = line.match(/(\d+(?:\.\d+)?|\d+\/\d+)\s*(?:லிட்டர்|லி|l|liter|liters|litre|litres|ml)\s*(?:of|for)?\s*(.+)/i) ||
                        line.match(/(.+?)\s*(\d+(?:\.\d+)?)\s*(?:லிட்டர்|l|liter)/i);
 
-        let countMatch = line.match(/(\d+)\s*(?:முட்டை|பீஸ்|பாக்கெட்|கட்டு|பாட்டில்|பெட்டி|egg|eggs|pcs|piece|pieces|packet|packets|bundle)?\s*(.+)/i) ||
-                         line.match(/(.+?)\s*(\d+)\s*(?:எண்ணிக்கை|முட்டை|பீஸ்|pcs)/i);
+        // 4. Check Count/Piece match (e.g. 10 eggs, 2 water bottles)
+        let countMatch = line.match(/^(\d+)\s+(.+)$/i);
 
         if (valMatch) {
           const isFirstNum = /^\d+$/.test(valMatch[1].trim());
           rupees = parseInt(isFirstNum ? valMatch[1] : valMatch[2]);
-          pName = (isFirstNum ? valMatch[2] : valMatch[1]).trim();
+          pName = (isFirstNum ? valMatch[2] : valMatch[1]).trim().replace(/^(of|worth|for)\s+/, "");
         } else if (weightMatch) {
           const isFirstNum = /^[\d\.\/]+$/.test(weightMatch[1].trim());
           const qStr = (isFirstNum ? weightMatch[1] : weightMatch[2]).trim();
-          pName = (isFirstNum ? weightMatch[2] : weightMatch[1]).trim();
+          pName = (isFirstNum ? weightMatch[2] : weightMatch[1]).trim().replace(/^(of|worth|for)\s+/, "");
 
           if (qStr === "1/2" || qStr === "0.5") grams = 500;
           else if (qStr === "1/4" || qStr === "0.25") grams = 250;
           else if (qStr === "3/4" || qStr === "0.75") grams = 750;
           else {
             const num = parseFloat(qStr) || 1;
-            if (line.includes("கிராம்") || line.match(/\bg|gm|gram\b/i)) {
+            if (line.includes("கிராம்") || line.match(/\b(g|gm|gram|grams)\b/i)) {
               grams = Math.round(num);
             } else {
               grams = Math.round(num * 1000);
@@ -37815,12 +37910,12 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
         } else if (volMatch) {
           const isFirstNum = /^[\d\.\/]+$/.test(volMatch[1].trim());
           const qStr = (isFirstNum ? volMatch[1] : volMatch[2]).trim();
-          pName = (isFirstNum ? volMatch[2] : volMatch[1]).trim();
+          pName = (isFirstNum ? volMatch[2] : volMatch[1]).trim().replace(/^(of|worth|for)\s+/, "");
           grams = Math.round((parseFloat(qStr) || 1) * 1000);
         } else if (countMatch) {
-          const isFirstNum = !isNaN(parseInt(countMatch[1].trim()));
-          count = parseInt(isFirstNum ? countMatch[1] : countMatch[2]) || 1;
-          pName = (isFirstNum ? countMatch[2] : countMatch[1]).trim();
+          count = parseInt(countMatch[1].trim()) || 1;
+          pName = countMatch[2].trim().replace(/^(pcs|pcs\.|piece|pieces|nos|nos\.|egg|eggs|muttai|of|for)\s+/, "");
+          if (!pName) pName = rawLine.trim();
         } else {
           pName = line.trim();
         }
@@ -37844,7 +37939,7 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
             finalPrice = Math.round((grams / 1000) * pricePerKg);
           } else if (count) {
             finalWeight = count;
-            const isPiece = ["piece", "pcs", "packet", "bottle", "egg", "eggs", "muttai"].includes(unit.toLowerCase());
+            const isPiece = ["piece", "pcs", "packet", "bottle", "egg", "eggs", "muttai", "nos"].includes(unit.toLowerCase());
             finalPrice = isPiece ? Math.round(count * pricePerKg) : Math.round((count * 1000 / 1000) * pricePerKg);
           } else {
             finalWeight = 1000;
@@ -37891,7 +37986,8 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
 
       return null;
     }
-    window.parseOfflineOrderProposal = parseOfflineOrderProposal;
+    
+window.parseOfflineOrderProposal = parseOfflineOrderProposal;
 
     function getComprehensiveLocalOfflineResponse(queryText, user, activeProducts, orders, settings) {
       const currentLang = (typeof localStorage !== "undefined" && localStorage.getItem("ek_lang")) || "en";
@@ -37903,146 +37999,4 @@ Do NOT include markdown wrapping or extra commentary. Respond ONLY with valid JS
 
       const lowerQ = (queryText || "").toLowerCase();
       if (lowerQ.includes("status") || lowerQ.includes("track") || lowerQ.includes("எப்போ வரும்") || lowerQ.includes("எங்கே") || lowerQ.includes("ஆர்டர்")) {
-        const userOrders = user ? (orders || []).filter(o => o.customerId === user.id || o.customerPhone === user.phone) : [];
-        if (userOrders.length > 0) {
-          const latestOrder = userOrders[userOrders.length - 1];
-          const statusTamil = latestOrder.status === "DELIVERED" ? "டெலிவரி செய்யப்பட்டது" : (latestOrder.status === "OUT_FOR_DELIVERY" ? "டெலிவரிக்கு புறப்பட்டுவிட்டது" : "தயாராகிறது");
-          return {
-            text: isTamil
-              ? `வணக்கம் ${honorific}! உங்கள் சமீபத்திய ஆர்டர் #${latestOrder.id.slice(-6)} நிலை: ${statusTamil}. [ACTION_TRACK]`
-              : `Hello! Your latest order #${latestOrder.id.slice(-6)} status is: ${latestOrder.status}. [ACTION_TRACK]`,
-            proposalData: null,
-            phone: supportPhone,
-            showTrack: true
-          };
-        }
-      }
-
-      const proposal = parseOfflineOrderProposal(queryText, activeProducts, isTamil, honorific);
-      if (proposal) {
-        return {
-          text: proposal.text,
-          proposalData: proposal.proposalData,
-          phone: null,
-          showTrack: false
-        };
-      }
-
-      return {
-        text: isTamil
-          ? `வணக்கம் ${honorific}! எடப்பாடி கடைக்கு உங்களை அன்புடன் வரவேற்கிறோம். 🥩🥦 புதிய பிரஷ் சிக்கன், மட்டன், மீன் மற்றும் காய்கறிகள் கிடைக்கின்றன. என்ன பொருள் வேண்டும் ${honorific}?`
-          : `Welcome to Edappadi Kadai! 🥩🥦 We offer fresh chicken, mutton, fish, and vegetables. What items would you like to order today?`,
-        proposalData: null,
-        phone: null,
-        showTrack: false
-      };
-    }
-    window.getComprehensiveLocalOfflineResponse = getComprehensiveLocalOfflineResponse;
-
-    async function sendLyoAiMessage() {
-      if (lyoIsReplying) return;
-
-      const inputEl = document.getElementById('lyo-ai-input');
-      if (!inputEl) return;
-
-      const queryText = inputEl.value.trim();
-      if (!queryText) return;
-
-      inputEl.value = '';
-      autoGrowLyoInput(inputEl);
-
-      addLyoAiMessage('customer', queryText);
-      addLyoAiMessage('typing');
-      lyoIsReplying = true;
-
-      const user = getActiveUser();
-      const activeProducts = getData('ek_products', []).filter(p => !p.isHidden);
-      const lyoConfig = getLyoAiConfig();
-      const settings = getSettings();
-      const supportPhone = lyoConfig.phone || "8778148899";
-      const customDirectives = lyoConfig.directives || "";
-      const activeOrderCtx = getUserActiveOrderContext(user);
-
-      const catalogSummary = activeProducts.map(p =>
-        `- ${p.englishName} (${p.tamilName}): ₹${p.pricePerKg}/${p.unit||'kg'} [Stock: ${p.isOutOfStock ? 'OUT_OF_STOCK' : (p.stockKg||0)+'kg'}]`
-      ).join('\n');
-
-      const systemInstructions = `You are 'Lyo AI', a highly intelligent virtual grocery assistant for 'Edappadi Kadai', a premium online meat and vegetable delivery service in Tamil Nadu.
-Your primary task is to parse user grocery lists (up to 20+ items in a single go) in Tamil, English, or Tanglish and convert them into a strict structured JSON format.
-
-LIVE REAL-TIME ORDER STATUS CONTEXT (RAG):
-${activeOrderCtx}
-
-CRITICAL ZERO-HALLUCINATION PARSING & TRACKING RULES:
-1. ZERO HALLUCINATION: Match items STRICTLY with the available store catalog:
-${catalogSummary}
-   - NEVER map a requested item to a completely different product or category! (e.g. If user asks for "Chicken", map ONLY to a Chicken item like "Broiler Chicken" or "Country Chicken". NEVER map Chicken to Turmeric Powder or Onion!).
-   - If an item requested by user is NOT in the catalog, extract its name as user requested it.
-2. ORDER TRACKING & RAG SUPPORT:
-   - When the user asks "Where is my order?", "Has the delivery boy started?", "Order status", or "எப்போ வரும்?", check the Live Real-Time Order Status Context above.
-   - Reply as a friendly, helpful customer support agent explaining the exact status in warm Tamil or English with Order ID, status, and rider name if assigned. Append [ACTION_TRACK] tag.
-3. RUPEE vs WEIGHT: "20 ரூபாய்க்கு தக்காளி" (Tomato for 20 rupees) is a VALUE-based request. Do NOT confuse this with 20 Kg.
-4. COD ENFORCEMENT: All orders generated by you MUST have a strict flag "allowed_payment": "COD_ONLY".
-5. CONTACT PHONE FOR ESCALATION: ${supportPhone}
-
-DIRECTIVES & PROMOTIONS:
-${customDirectives}
-
-OUTPUT FORMAT:
-Respond ONLY with a friendly Tamil greeting / response, followed by a JSON code block if items are being ordered.
-
-EXAMPLE FOR ORDERING:
-User: "20 ரூபாய்க்கு தக்காளி 500 ரூபாய்க்கு சிக்கன் 10 முட்டை"
-Response:
-வணக்கம் அண்ணே! நீங்கள் கேட்ட லிஸ்ட் இதோ கூடையில் தயாராக உள்ளது. சரிபார்த்து ஆர்டர் செய்துகொள்ளுங்கள்! 🥦🥩
-
-\`\`\`json
-{
-  "action": "MULTI_ADD_TO_CART",
-  "allowed_payment": "COD_ONLY",
-  "items": [
-    { "name": "Tomato", "request_type": "by_value", "value_rupees": 20 },
-    { "name": "Chicken", "request_type": "by_value", "value_rupees": 500 },
-    { "name": "Egg", "request_type": "by_quantity", "quantity": 10 }
-  ]
-}
-\`\`\`
-If customer asks about delivery or order status, use the Live Real-Time Order Status Context and append [ACTION_TRACK].
-If customer query is off-topic or needs human intervention, append [ACTION_SUPPORT].`;
-
-      const filteredHistory = lyoAiChatHistory.filter(m => m.id !== 'typing' && m.sender !== 'typing' && m.id !== 'msg_greet');
-      const conversationContents = [];
-
-      filteredHistory.slice(-8).forEach(m => {
-        const role = m.sender === 'customer' ? 'user' : 'model';
-        if (m.text) {
-          if (conversationContents.length === 0 || conversationContents[conversationContents.length - 1].role !== role) {
-            conversationContents.push({ role, parts: [{ text: m.text }] });
-          }
-        }
-      });
-
-      if (conversationContents.length === 0 || conversationContents[conversationContents.length - 1].role !== 'user') {
-        conversationContents.push({ role: 'user', parts: [{ text: queryText }] });
-      }
-
-      try {
-        const result = await callAIProvider(systemInstructions, conversationContents, queryText);
-        removeLyoAiTypingBubble();
-
-        if (result && result.text) {
-          let replyText = result.text;
-          let showTrack = replyText.includes('[ACTION_TRACK]');
-          let showSupport = replyText.includes('[ACTION_SUPPORT]');
-
-          let proposalData = null;
-
-          // Attempt to extract JSON code block or raw JSON from AI reply
-          let extractedJsonStr = null;
-          const jsonBlockMatch = replyText.match(/```(?:json|js|javascript)?\s*([\s\S]*?)\s*```/i);
-          if (jsonBlockMatch && jsonBlockMatch[1]) {
-            extractedJsonStr = jsonBlockMatch[1].trim();
-          } else {
-            const rawJsonMatch = replyText.match(/(\{[\s\S]*"(?:action|items)"[\s\S]*\})/i);
-            if (rawJsonMatch && rawJsonMatch[1]) {
-              extractedJsonStr = rawJson
+        const userOrders = user ? (orders |

@@ -735,11 +735,35 @@ exports.sendEmailOtp = functions
     });
 
     const nodemailer = require('nodemailer');
-    const gmailUser = functions.config().gmail.user;
-    const gmailPass = functions.config().gmail.pass;
+    let gmailUser = process.env.GMAIL_USER || '';
+    let gmailPass = process.env.GMAIL_PASS || '';
+
+    try {
+      const emailConfigSnap = await admin.firestore().collection('ek_settings').doc('emailConfig').get();
+      if (emailConfigSnap.exists) {
+        const configData = emailConfigSnap.data();
+        if (configData && configData.gmailUser && configData.gmailPass) {
+          gmailUser = configData.gmailUser.trim();
+          gmailPass = configData.gmailPass.trim();
+        }
+      }
+    } catch (dbErr) {
+      console.warn("Could not read emailConfig from Firestore:", dbErr.message);
+    }
+
+    // Fallback to functions.config() if not found in Firestore
+    if (!gmailUser || !gmailPass) {
+      try {
+        const cfg = functions.config();
+        if (cfg && cfg.gmail) {
+          gmailUser = gmailUser || cfg.gmail.user;
+          gmailPass = gmailPass || cfg.gmail.pass;
+        }
+      } catch (cfgErr) {}
+    }
 
     if (!gmailUser || !gmailPass) {
-      throw new functions.https.HttpsError('failed-precondition', 'Gmail SMTP credentials are not configured.');
+      throw new functions.https.HttpsError('failed-precondition', 'Gmail SMTP credentials are not configured. Please set Gmail Address and App Password in Admin Panel Settings.');
     }
 
     const transporter = nodemailer.createTransport({
@@ -819,5 +843,76 @@ exports.verifyEmailOtpAndResetPassword = functions
       throw new functions.https.HttpsError('internal', err.message);
     }
   });
+
+
+/**
+ * SCHEDULED FIRESTORE BACKUP CLOUD FUNCTION (WEEKLY)
+ * Automatically exports critical Firestore collections (orders, products, ek_admin_accounts, users, ek_orders, ek_products, ek_users)
+ * to a Cloud Storage backup bucket once every week (Sunday at 00:00 IST).
+ */
+exports.scheduledWeeklyFirestoreBackup = functions
+  .region('asia-south1')
+  .pubsub.schedule('every sunday 00:00')
+  .timeZone('Asia/Kolkata')
+  .onRun(async (context) => {
+    const projectId = process.env.GCP_PROJECT || process.env.GCLOUD_PROJECT || 'edappadi-kadai';
+    const collectionsToBackup = ['orders', 'products', 'ek_admin_accounts', 'users', 'ek_orders', 'ek_products', 'ek_users', 'ek_categories'];
+
+    console.log(`[Weekly Backup] Starting scheduled backup for project: ${projectId}`);
+
+    try {
+      // 1. Attempt Managed Firestore Export via Admin API
+      const client = new admin.firestore.v1.FirestoreAdminClient();
+      const databaseName = client.databasePath(projectId, '(default)');
+      const backupBucket = `gs://${projectId}-firestore-backups`;
+
+      const [response] = await client.exportDocuments({
+        name: databaseName,
+        outputUriPrefix: backupBucket,
+        collectionIds: collectionsToBackup
+      });
+      console.log(`[Weekly Backup] Managed Firestore export initiated successfully: ${response.name}`);
+      return { success: true, mode: 'managed_export', operation: response.name };
+    } catch (exportErr) {
+      console.warn('[Weekly Backup] Managed export API unavailable, executing JSON snapshot storage fallback:', exportErr.message);
+      
+      // 2. High-resilience Fallback: Snapshot JSON data directly to Cloud Storage bucket
+      try {
+        const db = admin.firestore();
+        const storage = admin.storage().bucket();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupPayload = {
+          createdAt: new Date().toISOString(),
+          projectId: projectId,
+          collections: {}
+        };
+
+        for (const colName of collectionsToBackup) {
+          const snapshot = await db.collection(colName).get();
+          backupPayload.collections[colName] = snapshot.docs.map(doc => ({
+            _id: doc.id,
+            ...doc.data()
+          }));
+        }
+
+        const fileName = `backups/weekly_backup_${timestamp}.json`;
+        const file = storage.file(fileName);
+        
+        await file.save(JSON.stringify(backupPayload, null, 2), {
+          contentType: 'application/json',
+          metadata: {
+            cacheControl: 'private, max-age=0'
+          }
+        });
+
+        console.log(`[Weekly Backup] JSON snapshot backup successfully saved to Cloud Storage: ${fileName}`);
+        return { success: true, mode: 'json_storage_backup', backupPath: fileName };
+      } catch (fallbackErr) {
+        console.error('[Weekly Backup] Critical failure in weekly backup function:', fallbackErr);
+        throw new functions.https.HttpsError('internal', 'Weekly backup failed: ' + fallbackErr.message);
+      }
+    }
+  });
+
 
 

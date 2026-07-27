@@ -30,6 +30,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -40,6 +55,40 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         var isActivityInForeground = false
+    }
+
+    val isAppLoadedState = androidx.compose.runtime.mutableStateOf(false)
+    val hasLoadFailedState = androidx.compose.runtime.mutableStateOf(false)
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var integrityCheckRunnable: Runnable? = null
+
+    fun onJsAppLoaded() {
+        runOnUiThread {
+            isAppLoadedState.value = true
+            hasLoadFailedState.value = false
+            integrityCheckRunnable?.let { mainHandler.removeCallbacks(it) }
+            android.util.Log.d("INTEGRITY_CHECK", "App integrity check passed: WebView rendered successfully.")
+        }
+    }
+
+    fun scheduleIntegrityCheck() {
+        integrityCheckRunnable?.let { mainHandler.removeCallbacks(it) }
+        val checkRunnable = Runnable {
+            if (!isAppLoadedState.value) {
+                webView?.evaluateJavascript(
+                    "javascript:(function() { return (document.body && document.body.innerHTML.length > 50); })()"
+                ) { result ->
+                    if (result == "true") {
+                        onJsAppLoaded()
+                    } else {
+                        android.util.Log.e("INTEGRITY_CHECK", "Startup integrity check failed or timed out. Showing fallback screen.")
+                        hasLoadFailedState.value = true
+                    }
+                }
+            }
+        }
+        integrityCheckRunnable = checkRunnable
+        mainHandler.postDelayed(checkRunnable, 4000)
     }
 
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
@@ -395,189 +444,249 @@ class MainActivity : ComponentActivity() {
                         .systemBarsPadding()
                         .imePadding()
                 ) { innerPadding ->
-                    val padding = innerPadding // suppress unused variable warning if any
+                    val padding = innerPadding
                     
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { context ->
-                            WebView(context).apply {
-                                this@MainActivity.webView = this
-                                layoutParams = android.view.ViewGroup.LayoutParams(
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    if (hasLoadFailedState.value && !isAppLoadedState.value) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFFF8FAFC))
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "⚠️",
+                                style = MaterialTheme.typography.displayLarge
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "App Failed to Load",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "App failed to load — please reinstall or contact support.\nசெயலி திறக்கவில்லை — தயவுசெய்து மீண்டும் தொடங்கவும்.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF64748B),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Button(
+                                onClick = {
+                                    hasLoadFailedState.value = false
+                                    isAppLoadedState.value = false
+                                    webView?.loadUrl("file:///android_asset/index.html")
+                                    scheduleIntegrityCheck()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF10B981)
                                 )
-                                
-                                // Disable native scrollbars and overscroll effect to deliver premium app look
-                                isVerticalScrollBarEnabled = false
-                                isHorizontalScrollBarEnabled = false
-                                overScrollMode = android.view.View.OVER_SCROLL_NEVER
-                                
-
-                                settings.apply {
-                                    javaScriptEnabled = true
-                                    domStorageEnabled = true
-                                    databaseEnabled = true
-                                    setGeolocationEnabled(true)
-                                    allowFileAccess = true
-                                    allowContentAccess = true
-                                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                                    useWideViewPort = true
-                                    loadWithOverviewMode = true
-                                    cacheMode = WebSettings.LOAD_DEFAULT
-                                    loadsImagesAutomatically = true
-                                    setSupportZoom(false)
-                                    builtInZoomControls = false
-                                    displayZoomControls = false
-                                    offscreenPreRaster = true
-                                    @Suppress("DEPRECATION")
-                                    setRenderPriority(WebSettings.RenderPriority.HIGH)
-                                }
-
-                                // Handle native intent actions (tel, whatsapp, intents, maps)
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        super.onPageFinished(view, url)
-                                        val sharedPrefs = getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
-                                        val token = sharedPrefs.getString("real_fcm_token", "") ?: ""
-                                        if (token.isNotEmpty()) {
-                                            view?.evaluateJavascript(
-                                                "javascript:(function() { " +
-                                                "  if (typeof onAndroidFcmTokenReceived === 'function') { " +
-                                                "    onAndroidFcmTokenReceived('$token'); " +
-                                                "  } " +
-                                                "})()", null
-                                            )
-                                        }
-                                    }
-
-
-
-                                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                                        if (url == null) return false
-                                        if (url.startsWith("file:///")) {
-                                            return false
-                                        }
-                                        
-                                        val isSpecialScheme = !url.startsWith("http://") && !url.startsWith("https://")
-                                                || url.contains("google.com/maps")
-                                                || url.contains("maps.google")
-                                                || url.contains("wa.me")
-                                                || url.startsWith("whatsapp:")
-                                                || url.startsWith("tel:")
-
-                                        if (isSpecialScheme) {
-                                            try {
-                                                val intent = if (url.startsWith("intent:")) {
-                                                    val parsed = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
-                                                    val fallback = parsed.getStringExtra("browser_fallback_url")
-                                                    if (fallback != null && fallback.isNotEmpty()) {
-                                                        Intent(Intent.ACTION_VIEW, Uri.parse(fallback))
-                                                    } else {
-                                                        parsed
-                                                    }
-                                                } else {
-                                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                                }
-                                                context.startActivity(intent)
-                                                return true
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                                // Fallback to basic map or external browser link opening
-                                                if (url.contains("google.com/maps") || url.contains("maps.google")) {
-                                                    try {
-                                                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                                        context.startActivity(browserIntent)
-                                                        return true
-                                                    } catch (e2: Exception) {}
-                                                }
-                                                return true // Suppress the crash / bad web view schemes
-                                            }
-                                        }
-                                        return false
-                                    }
-                                }
-
-                                // OnShowFileChooser WebChromeClient override
-                                webChromeClient = object : WebChromeClient() {
-                                    override fun onGeolocationPermissionsShowPrompt(
-                                        origin: String?,
-                                        callback: GeolocationPermissions.Callback?
-                                    ) {
-                                        val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
-                                            context,
-                                            android.Manifest.permission.ACCESS_FINE_LOCATION
-                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                        val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
-                                            context,
-                                            android.Manifest.permission.ACCESS_COARSE_LOCATION
-                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-                                        if (hasFine || hasCoarse) {
-                                            callback?.invoke(origin, true, true)
-                                        } else {
-                                            pendingGeolocationCallback = callback
-                                            pendingGeolocationOrigin = origin
-                                            locationPermissionLauncher.launch(
-                                                arrayOf(
-                                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                                                )
-                                            )
-                                        }
-                                    }
-
-                                    override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
-                                        if (consoleMessage != null) {
-                                            val logMsg = "[JS Console] ${consoleMessage.message()} (Line: ${consoleMessage.lineNumber()}, Source: ${consoleMessage.sourceId()})"
-                                            if (consoleMessage.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
-                                                android.util.Log.e("WebViewConsole", logMsg)
-                                            } else if (consoleMessage.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.WARNING) {
-                                                android.util.Log.w("WebViewConsole", logMsg)
-                                            } else {
-                                                android.util.Log.d("WebViewConsole", logMsg)
-                                            }
-                                        }
-                                        return true
-                                    }
-
-                                    override fun onShowFileChooser(
-                                        webView: WebView?,
-                                        filePathCallback: ValueCallback<Array<Uri>>?,
-                                        fileChooserParams: FileChooserParams?
-                                    ): Boolean {
-                                        this@MainActivity.filePathCallback?.onReceiveValue(null)
-                                        this@MainActivity.filePathCallback = filePathCallback
-
-                                        try {
-                                            val intent = fileChooserParams?.createIntent()
-                                            if (intent != null) {
-                                                fileChooserLauncher.launch(intent)
-                                            } else {
-                                                val fallbackIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                                                    type = "image/*"
-                                                    addCategory(Intent.CATEGORY_OPENABLE)
-                                                }
-                                                fileChooserLauncher.launch(fallbackIntent)
-                                            }
-                                            return true
-                                        } catch (e: Exception) {
-                                            this@MainActivity.filePathCallback?.onReceiveValue(null)
-                                            this@MainActivity.filePathCallback = null
-                                            return false
-                                        }
-                                    }
-                                }
-
-                                isFocusable = true
-                                isFocusableInTouchMode = true
-                                requestFocus()
-
-                                addJavascriptInterface(WebAppInterface(context), "AndroidStorage")
-
-                                loadUrl("file:///android_asset/index.html")
+                            ) {
+                                Text("Retry / மீண்டும் முயற்சி செய்")
                             }
                         }
-                    )
+                    } else {
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { context ->
+                                WebView(context).apply {
+                                    this@MainActivity.webView = this
+                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    
+                                    // Disable native scrollbars and overscroll effect to deliver premium app look
+                                    isVerticalScrollBarEnabled = false
+                                    isHorizontalScrollBarEnabled = false
+                                    overScrollMode = android.view.View.OVER_SCROLL_NEVER
+                                    
+
+                                    settings.apply {
+                                        javaScriptEnabled = true
+                                        domStorageEnabled = true
+                                        databaseEnabled = true
+                                        setGeolocationEnabled(true)
+                                        allowFileAccess = true
+                                        allowContentAccess = true
+                                        mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                        useWideViewPort = true
+                                        loadWithOverviewMode = true
+                                        cacheMode = WebSettings.LOAD_DEFAULT
+                                        loadsImagesAutomatically = true
+                                        setSupportZoom(false)
+                                        builtInZoomControls = false
+                                        displayZoomControls = false
+                                        offscreenPreRaster = true
+                                        @Suppress("DEPRECATION")
+                                        setRenderPriority(WebSettings.RenderPriority.HIGH)
+                                    }
+
+                                    // Handle native intent actions (tel, whatsapp, intents, maps)
+                                    webViewClient = object : WebViewClient() {
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
+                                            val sharedPrefs = getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
+                                            val token = sharedPrefs.getString("real_fcm_token", "") ?: ""
+                                            if (token.isNotEmpty()) {
+                                                view?.evaluateJavascript(
+                                                    "javascript:(function() { " +
+                                                    "  if (typeof onAndroidFcmTokenReceived === 'function') { " +
+                                                    "    onAndroidFcmTokenReceived('$token'); " +
+                                                    "  } " +
+                                                    "})()", null
+                                                )
+                                            }
+                                            scheduleIntegrityCheck()
+                                        }
+
+                                        override fun onReceivedError(
+                                            view: WebView?,
+                                            request: android.webkit.WebResourceRequest?,
+                                            error: android.webkit.WebResourceError?
+                                        ) {
+                                            super.onReceivedError(view, request, error)
+                                            if (request?.isForMainFrame == true) {
+                                                android.util.Log.e("INTEGRITY_CHECK", "Main frame error: ${error?.description}")
+                                                runOnUiThread {
+                                                    if (!isAppLoadedState.value) {
+                                                        hasLoadFailedState.value = true
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                            if (url == null) return false
+                                            if (url.startsWith("file:///")) {
+                                                return false
+                                            }
+                                            
+                                            val isSpecialScheme = !url.startsWith("http://") && !url.startsWith("https://")
+                                                    || url.contains("google.com/maps")
+                                                    || url.contains("maps.google")
+                                                    || url.contains("wa.me")
+                                                    || url.startsWith("whatsapp:")
+                                                    || url.startsWith("tel:")
+
+                                            if (isSpecialScheme) {
+                                                try {
+                                                    val intent = if (url.startsWith("intent:")) {
+                                                        val parsed = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                                                        val fallback = parsed.getStringExtra("browser_fallback_url")
+                                                        if (fallback != null && fallback.isNotEmpty()) {
+                                                            Intent(Intent.ACTION_VIEW, Uri.parse(fallback))
+                                                        } else {
+                                                            parsed
+                                                        }
+                                                    } else {
+                                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                    }
+                                                    context.startActivity(intent)
+                                                    return true
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                    // Fallback to basic map or external browser link opening
+                                                    if (url.contains("google.com/maps") || url.contains("maps.google")) {
+                                                        try {
+                                                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                            context.startActivity(browserIntent)
+                                                            return true
+                                                        } catch (e2: Exception) {}
+                                                    }
+                                                    return true // Suppress the crash / bad web view schemes
+                                                }
+                                            }
+                                            return false
+                                        }
+                                    }
+
+                                    // OnShowFileChooser WebChromeClient override
+                                    webChromeClient = object : WebChromeClient() {
+                                        override fun onGeolocationPermissionsShowPrompt(
+                                            origin: String?,
+                                            callback: GeolocationPermissions.Callback?
+                                        ) {
+                                            val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                context,
+                                                android.Manifest.permission.ACCESS_FINE_LOCATION
+                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                            val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                context,
+                                                android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                                            if (hasFine || hasCoarse) {
+                                                callback?.invoke(origin, true, true)
+                                            } else {
+                                                pendingGeolocationCallback = callback
+                                                pendingGeolocationOrigin = origin
+                                                locationPermissionLauncher.launch(
+                                                    arrayOf(
+                                                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                                    )
+                                                )
+                                            }
+                                        }
+
+                                        override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                                            if (consoleMessage != null) {
+                                                val logMsg = "[JS Console] ${consoleMessage.message()} (Line: ${consoleMessage.lineNumber()}, Source: ${consoleMessage.sourceId()})"
+                                                if (consoleMessage.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                                                    android.util.Log.e("WebViewConsole", logMsg)
+                                                } else if (consoleMessage.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.WARNING) {
+                                                    android.util.Log.w("WebViewConsole", logMsg)
+                                                } else {
+                                                    android.util.Log.d("WebViewConsole", logMsg)
+                                                }
+                                            }
+                                            return true
+                                        }
+
+                                        override fun onShowFileChooser(
+                                            webView: WebView?,
+                                            filePathCallback: ValueCallback<Array<Uri>>?,
+                                            fileChooserParams: FileChooserParams?
+                                        ): Boolean {
+                                            this@MainActivity.filePathCallback?.onReceiveValue(null)
+                                            this@MainActivity.filePathCallback = filePathCallback
+
+                                            try {
+                                                val intent = fileChooserParams?.createIntent()
+                                                if (intent != null) {
+                                                    fileChooserLauncher.launch(intent)
+                                                } else {
+                                                    val fallbackIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                                                        type = "image/*"
+                                                        addCategory(Intent.CATEGORY_OPENABLE)
+                                                    }
+                                                    fileChooserLauncher.launch(fallbackIntent)
+                                                }
+                                                return true
+                                            } catch (e: Exception) {
+                                                this@MainActivity.filePathCallback?.onReceiveValue(null)
+                                                this@MainActivity.filePathCallback = null
+                                                return false
+                                            }
+                                        }
+                                    }
+
+                                    isFocusable = true
+                                    isFocusableInTouchMode = true
+                                    requestFocus()
+
+                                    addJavascriptInterface(WebAppInterface(context), "AndroidStorage")
+
+                                    loadUrl("file:///android_asset/index.html")
+                                    scheduleIntegrityCheck()
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -686,6 +795,11 @@ class MainActivity : ComponentActivity() {
 
     class WebAppInterface(private val context: Context) {
         private val sharedPreferences = context.getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
+
+        @JavascriptInterface
+        fun notifyAppLoaded() {
+            (context as? MainActivity)?.onJsAppLoaded()
+        }
 
         @JavascriptInterface
         fun hasLocationPermission(): Boolean {
