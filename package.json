@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "acorn": "^8.17.0",
-    "firebase": "^8.10.1",
-    "firebase-admin": "^14.1.0"
-  }
-}
