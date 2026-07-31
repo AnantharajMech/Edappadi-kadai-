@@ -1,0 +1,44 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        firestore.exists(/databases/(default)/documents/ek_admin_accounts/$(request.auth.uid)) &&
+        (
+          firestore.get(/databases/(default)/documents/ek_admin_accounts/$(request.auth.uid)).data.role == 'admin' ||
+          firestore.get(/databases/(default)/documents/ek_admin_accounts/$(request.auth.uid)).data.role == 'superadmin'
+        ) &&
+        firestore.get(/databases/(default)/documents/ek_admin_accounts/$(request.auth.uid)).data.active != false;
+    }
+
+    match /products/{vendorId}/{productId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /avatars/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin() || (
+        isAuthenticated() && (
+          fileName.startsWith("customer_" + request.auth.uid + "_") ||
+          fileName.startsWith("rider_" + request.auth.uid + "_")
+        )
+      );
+    }
+
+    match /branding/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin() && fileName.startsWith("store_");
+    }
+
+    match /rider_profiles/{uid}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+    }
+  }
+}
