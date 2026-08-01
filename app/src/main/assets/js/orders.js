@@ -1,0 +1,3425 @@
+
+    function selectDeliveryTimeSlot(slot, element) {
+      selectedDeliverySlot = slot;
+      document.querySelectorAll('.slot-btns').forEach(btn => {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-pressed', 'false');
+      });
+      if (element) {
+        element.classList.add('active');
+        element.setAttribute('aria-pressed', 'true');
+      }
+      recalculateBill();
+    }
+
+    function selectPaymentMethod(method, element) {
+      selectedPaymentMethod = method;
+      document.querySelectorAll('.pay-btns').forEach(btn => {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-pressed', 'false');
+      });
+      if (element) {
+        element.classList.add('active');
+        element.setAttribute('aria-pressed', 'true');
+      }
+      recalculateBill();
+    }
+
+    async function autoDetectCoordinatesForTarget(targetId, btn) {
+      const origText = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.innerHTML = currentLang === 'ta' ? "🛰️ ஜிபிஎஸ் தேடுகிறது..." : "🛰️ GPS Locating...";
+        btn.disabled = true;
+      }
+      showToast(currentLang === 'ta' ? "🔒 ஜிபிஎஸ் செயற்கைக்கோள் இணைக்கப்படுகிறது..." : "🔒 Connecting to high-accuracy GPS satellites...", "info");
+
+      let lat = 11.5815;
+      let lng = 77.8488;
+      let accuracy = 15;
+      let gotLocation = false;
+
+      if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getNativeLocation === 'function') {
+        const res = AndroidStorage.getNativeLocation();
+        if (res && res !== "PERMISSION_REQUIRED" && res !== "SECURITY_ERROR" && res !== "NO_LOCATION" && !res.startsWith("ERROR") && res !== "NO_LOCATION_SERVICE") {
+          try {
+            const loc = JSON.parse(res);
+            lat = parseFloat(loc.latitude);
+            lng = parseFloat(loc.longitude);
+            accuracy = parseFloat(loc.accuracy || 15);
+            gotLocation = true;
+          } catch(e) {
+            console.warn("Native location parse error:", e);
+          }
+        } else if (res === "PERMISSION_REQUIRED") {
+          showToast(currentLang === 'ta' ? "இருப்பிட அனுமதி தேவை! அனுமதி வழங்கப்பட்டதும் மீண்டும் முயற்சிக்கவும்." : "Location permission is required! Please grant permission and retry.", "warning");
+          if (btn) {
+            btn.innerHTML = origText;
+            btn.disabled = false;
+          }
+          return;
+        }
+      }
+
+      if (!gotLocation && navigator.geolocation) {
+        try {
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0
+            });
+          });
+          lat = position.coords.latitude;
+          lng = position.coords.longitude;
+          accuracy = position.coords.accuracy;
+          gotLocation = true;
+        } catch (err) {
+          console.warn("Browser GPS locate failed:", err);
+        }
+      }
+
+      if (!gotLocation) {
+        showToast(currentLang === 'ta' ? "ஜிபிஎஸ் சிக்னல் கிடைக்கவில்லை! ❌" : "GPS signal lost or permission denied! ❌", "error");
+        if (btn) {
+          btn.innerHTML = origText;
+          btn.disabled = false;
+        }
+        return;
+      }
+
+      const inputEl = document.getElementById(targetId);
+      if (inputEl) {
+        inputEl.setAttribute('data-lat', lat);
+        inputEl.setAttribute('data-lng', lng);
+
+        const initialAddrFallback = "Selected Delivery Location, Edappadi, Salem, Tamil Nadu";
+        inputEl.value = initialAddrFallback;
+        if (typeof syncPrimaryUserAddress === 'function') {
+          syncPrimaryUserAddress(initialAddrFallback, lat, lng);
+        }
+
+        showToast(currentLang === 'ta' ? "🔄 முகவரி கண்டறியப்படுகிறது..." : "🔄 Reverse geocoding accurate address...", "info");
+
+        try {
+          const res = await reverseGeocodeWithRetry(lat, lng);
+          const finalAddr = (res && res.displayName) ? res.displayName : initialAddrFallback;
+          inputEl.value = finalAddr;
+          if (typeof syncPrimaryUserAddress === 'function') {
+            syncPrimaryUserAddress(finalAddr, lat, lng);
+          }
+        } catch (err) {
+          console.warn("Geocoding failed completely, using fallback:", err);
+        }
+
+        inputEl.style.transition = 'all 0.3s ease';
+        inputEl.style.borderColor = '#10b981';
+        inputEl.style.background = 'rgba(16,185,129,0.04)';
+        setTimeout(() => {
+          inputEl.style.borderColor = '';
+          inputEl.style.background = '';
+        }, 1200);
+      }
+
+      if (btn) {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+      }
+
+      const successMsg = currentLang === 'ta'
+        ? `🛰️ ஜிபிஎஸ் இருப்பிடம் வெற்றிகரமாக பெறப்பட்டது! (துல்லியம்: ±${Math.round(accuracy)}m)`
+        : `🛰️ GPS location updated! (Accuracy: ±${Math.round(accuracy)}m)`;
+      showToast(successMsg, "success");
+
+      if (targetId === 'cart-delivery-address') {
+        recalculateBill();
+      }
+    }
+
+    async function placeOrder() {
+      try {
+        const settings = getSettings();
+        if (settings.leaveMode) {
+          showCustomAlert(
+            currentLang === 'ta' ? "🌴 விடுமுறை அறிவிப்பு" : "🌴 Holiday / Leave Notice",
+            settings.leaveNotice || (currentLang === 'ta' ? "மன்னிக்கவும்! கடை தற்காலிகமாக விடுமுறையில் உள்ளது. ஆர்டர் செய்ய இயலாது." : "Sorry, the shop is currently closed on holiday. Ordering is temporarily paused.")
+          );
+          return;
+        }
+        if (window.isPlacingOrder || window.isConfirmingOrder) {
+          showToast(currentLang === 'ta' ? "மன்னிக்கவும்! ஒரு ஆர்டர் ஏற்கனவே செயலாக்கத்தில் உள்ளது." : "Please wait! Your order is already being processed.", "warning");
+          return;
+        }
+        if (cart.length === 0) {
+          showToast("மன்னிக்கவும்! உங்கள் கார்ட் காலியாக உள்ளது. (Your checkout cart is completely empty!)", "error");
+          return;
+        }
+
+        const user = await getAuthenticatedCustomerUser();
+        if (!user) {
+          if (typeof firebase !== 'undefined' && firebase.auth) {
+            const authUser = firebase.auth().currentUser;
+            const reason = !authUser ? "Firebase currentUser is null" : (authUser.isAnonymous ? "Firebase currentUser is anonymous guest" : "No registered user record found");
+            console.warn("[Diagnostic] Authentication unavailable: " + reason);
+          } else {
+            console.error("[Diagnostic] Authentication unavailable: Firebase SDK is not loaded.");
+          }
+          showToast(
+            currentLang === 'ta'
+              ? "ஆர்டர் செய்ய முதலில் லாகின் அல்லது பதிவு செய்து கொள்ளவும்! (Please log in or register first!)"
+              : "Login Required\nPlease log in before placing an order.",
+            "error"
+          );
+          showScreen('screen-login');
+          return;
+        }
+
+        const weatherBrief = document.getElementById('briefing-weather-temp')?.innerText || "34°C - Partly Cloudy";
+        const trafficBrief = document.getElementById('briefing-traffic-status')?.innerText || "Green / Low Congestion";
+
+        actualPlaceOrder();
+      } catch (err) {
+        window.isConfirmingOrder = false;
+        console.error("Critical error in placeOrder:", err);
+        showToast(currentLang === 'ta' ? "ஆர்டர் முயற்சியில் பிழை ஏற்பட்டது: " + err.message : "Error during order placement: " + err.message, "error");
+      }
+    }
+
+    function generateUniqueOrderId() {
+      const now = new Date();
+      const yy = now.getFullYear().toString().slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+
+      const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      let randomStr = '';
+      for (let i = 0; i < 5; i++) {
+        randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return `EK-${yy}${mm}${dd}-${randomStr}`;
+    }
+
+    function removePendingSync(collectionName, docId) {
+      const queue = getData('ek_pending_syncs', []);
+      const filtered = queue.filter(item => !(item.collectionName === collectionName && item.docId === docId));
+      if (queue.length !== filtered.length) {
+        saveData('ek_pending_syncs', filtered);
+        debugLog(`[Queue Sync] Removed pending sync entry for ${collectionName}/${docId}`);
+      }
+    }
+
+    function showCustomerSyncWarningBanner(msg, phone) {
+      const banner = document.getElementById('persistent-customer-sync-banner');
+      if (!banner) return;
+      const settings = typeof getSettings === 'function' ? getSettings() : {};
+      const shopPhone = phone || settings.shopPhone || settings.merchantPhone || settings.phone || "8778148899";
+      const displayMsg = msg || (typeof currentLang !== 'undefined' && currentLang === 'ta'
+        ? `உங்கள் ஆர்டர் சேமிக்கப்பட்டது, ஆனால் கடை இன்னும் உறுதி செய்யவில்லை — தயவுசெய்து எங்களை நேரடியாக தொடர்புகொள்ளவும்: ${shopPhone}`
+        : `Your order is saved but not yet confirmed by the shop — please contact us directly to confirm (${shopPhone})`);
+
+      const textEl = document.getElementById('persistent-customer-sync-text');
+      const callBtn = document.getElementById('persistent-customer-sync-call');
+      if (textEl) textEl.innerText = displayMsg;
+      if (callBtn) {
+        callBtn.href = `tel:${shopPhone}`;
+        callBtn.innerText = `📞 Call (${shopPhone})`;
+      }
+      banner.style.display = 'flex';
+    }
+
+    function hideCustomerSyncWarningBanner() {
+      const banner = document.getElementById('persistent-customer-sync-banner');
+      if (banner) banner.style.display = 'none';
+    }
+
+    function handleStuckOrderSyncFailure(item, durationMs, err) {
+      const settings = typeof getSettings === 'function' ? getSettings() : {};
+      const shopPhone = settings.shopPhone || settings.merchantPhone || settings.phone || "8778148899";
+
+      // 1. Show persistent banner & toast to customer
+      showCustomerSyncWarningBanner(null, shopPhone);
+
+      if (typeof showToast === 'function') {
+        const toastMsg = typeof currentLang !== 'undefined' && currentLang === 'ta'
+          ? `உங்கள் ஆர்டர் சேமிக்கப்பட்டது, ஆனால் கடை இன்னும் உறுதி செய்யவில்லை — தொடர்புகொள்ளவும்: ${shopPhone}`
+          : `Your order is saved but not yet confirmed by the shop — please contact us directly to confirm: ${shopPhone}`;
+        showToast(toastMsg, 'warning');
+      }
+
+      // 2. Log stuck order condition to dedicated Firestore collection ek_sync_alerts
+      if (typeof db !== 'undefined' && db) {
+        const alertDocId = `stuck_order_${item.docId}`;
+        try {
+          db.collection('ek_sync_alerts').doc(alertDocId).set({
+            orderId: item.docId,
+            firstFailedAt: item.firstFailedAt || item.timestamp,
+            stuckDurationMs: durationMs,
+            stuckMinutes: Math.round(durationMs / 60000),
+            errorMessage: err ? (err.message || String(err)) : 'Permission or write failure',
+            customerPhone: item.data?.customerPhone || item.data?.phone || '',
+            customerName: item.data?.customerName || item.data?.name || '',
+            shopPhone: shopPhone,
+            loggedAt: new Date().toISOString(),
+            status: 'unresolved'
+          }, { merge: true }).catch(alertErr => {
+            console.warn('[Sync Alert] Failed to log stuck order to ek_sync_alerts:', alertErr);
+          });
+        } catch (e) {
+          console.warn('[Sync Alert] Exception logging alert:', e);
+        }
+      }
+
+      // 3. Trigger native notification/SMS via AndroidStorage if available
+      if (typeof AndroidStorage !== 'undefined') {
+        const alertMsg = `ALERT: Order ${item.docId} stuck in sync queue for >3 min. Call shop: ${shopPhone}`;
+        if (typeof AndroidStorage.showNativeNotification === 'function') {
+          try { AndroidStorage.showNativeNotification("⚠️ Order Sync Warning", alertMsg); } catch(e){}
+        } else if (typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+          try { AndroidStorage.simulateFcmPushNotification("⚠️ Order Sync Warning", alertMsg); } catch(e){}
+        }
+        if (typeof AndroidStorage.sendSMS === 'function') {
+          try { AndroidStorage.sendSMS(shopPhone, alertMsg); } catch(e){}
+        }
+      }
+    }
+
+    async function checkAdminSyncHealth() {
+      const banner = document.getElementById('admin-sync-health-banner');
+      if (!banner) return;
+
+      const queue = typeof getData === 'function' ? getData('ek_pending_syncs', []) : [];
+      const now = Date.now();
+      const stuckOrders = queue.filter(item => item.collectionName === 'ek_orders' && (now - (item.firstFailedAt || item.timestamp || now)) > 180000);
+
+      let isHealthy = true;
+      let failureReason = '';
+
+      if (typeof db !== 'undefined' && db && typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous) {
+        try {
+          const healthRef = db.collection('ek_orders').doc('_health_check');
+          await healthRef.set({
+            lastTestedAt: new Date().toISOString(),
+            testedBy: firebase.auth().currentUser.uid,
+            status: 'ok'
+          }, { merge: true });
+        } catch (probeErr) {
+          console.warn('[Admin Sync Health] Write access test to ek_orders failed:', probeErr);
+          isHealthy = false;
+          failureReason = probeErr.message || String(probeErr);
+        }
+      }
+
+      if (stuckOrders.length > 0) {
+        isHealthy = false;
+        if (!failureReason) {
+          failureReason = `${stuckOrders.length} order(s) stuck in sync queue for over 3 minutes.`;
+        }
+      }
+
+      if (!isHealthy) {
+        banner.style.display = 'block';
+        banner.innerHTML = `
+          <div style="display: flex; align-items: flex-start; gap: 10px;">
+            <span style="font-size: 20px; flex-shrink: 0;">🚨</span>
+            <div style="flex: 1; min-width: 0;">
+              <strong style="font-size: 13.5px; color: #ffffff; display: block; margin-bottom: 3px;">
+                SYNC HEALTH WARNING: Firestore Order Writes Failing!
+              </strong>
+              <span style="font-size: 12px; color: rgba(255,255,255,0.92); line-height: 1.4; display: block; word-break: break-word;">
+                Write access to <code>ek_orders</code> is failing (${failureReason}). 
+                Customer orders are remaining pending on customer devices. Please verify Firestore Security Rules or database permissions.
+              </span>
+            </div>
+            <button onclick="checkAdminSyncHealth()" style="background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.5); color: #ffffff; padding: 6px 12px; border-radius: 8px; font-size: 11.5px; font-weight: 700; cursor: pointer; flex-shrink: 0; white-space: nowrap;">
+              🔄 Re-test
+            </button>
+          </div>
+        `;
+        const badgeEl = document.getElementById('cloud-status-badge-admin');
+        if (badgeEl) {
+          badgeEl.style.backgroundColor = '#ef4444';
+          badgeEl.title = 'SYNC FAILURE: Order writes to Firestore are failing!';
+        }
+      } else {
+        banner.style.display = 'none';
+        const badgeEl = document.getElementById('cloud-status-badge-admin');
+        if (badgeEl && navigator.onLine) {
+          badgeEl.style.backgroundColor = '#10b981';
+          badgeEl.title = 'Cloud Sync & Order Writes Healthy ✓';
+        }
+      }
+    }
+
+    function queueFailedSync(collectionName, docId, action, data) {
+      debugLog(`[Queue Sync] Queueing failed online write: ${collectionName}/${docId} (${action})`);
+      const queue = getData('ek_pending_syncs', []);
+      const existingIdx = queue.findIndex(item => item.collectionName === collectionName && item.docId === docId);
+      const now = Date.now();
+      const firstFailedAt = (existingIdx !== -1 && (queue[existingIdx].firstFailedAt || queue[existingIdx].timestamp))
+        ? (queue[existingIdx].firstFailedAt || queue[existingIdx].timestamp)
+        : now;
+      const queueEntry = {
+        collectionName,
+        docId,
+        action,
+        data,
+        timestamp: now,
+        firstFailedAt: firstFailedAt
+      };
+      if (existingIdx !== -1) {
+        queue[existingIdx] = queueEntry;
+      } else {
+        queue.push(queueEntry);
+      }
+      saveData('ek_pending_syncs', queue);
+    }
+
+    async function processPendingSyncQueue() {
+      if (!db || !navigator.onLine) return;
+      const queue = getData('ek_pending_syncs', []);
+      if (queue.length === 0) return;
+
+      debugLog(`[Queue Sync] Processing ${queue.length} pending writes in queue...`);
+      const remainingQueue = [];
+      const now = Date.now();
+
+      for (const item of queue) {
+        if (!item.firstFailedAt) {
+          item.firstFailedAt = item.timestamp || now;
+        }
+
+        try {
+          const docRef = db.collection(item.collectionName).doc(item.docId);
+          if (item.action === 'set') {
+            if (['ek_orders', 'ek_products', 'products', 'ek_users', 'users', 'ek_delivery_persons'].includes(item.collectionName)) {
+              try {
+                const cloudDoc = await docRef.get();
+                if (cloudDoc.exists) {
+                  const cloudData = cloudDoc.data();
+                  const cloudTime = cloudData && cloudData.updatedAt ? new Date(cloudData.updatedAt).getTime() : 0;
+                  const localTime = item.data && item.data.updatedAt ? new Date(item.data.updatedAt).getTime() : 0;
+                  if (cloudTime > localTime) {
+                    debugLog(`[Queue Sync] Stale update bypassed for ${item.collectionName}/${item.docId} to protect newer cloud data (${cloudTime} > ${localTime})`);
+                    continue; // Skip writing this item but let it clear from the queue
+                  }
+                }
+              } catch (getErr) {
+                console.warn(`[Queue Sync] Cloud get failed for conflict check:`, getErr);
+                remainingQueue.push(item);
+                if (item.collectionName === 'ek_orders') {
+                  const timeInQueue = now - item.firstFailedAt;
+                  if (timeInQueue > 180000) {
+                    handleStuckOrderSyncFailure(item, timeInQueue, getErr);
+                  }
+                }
+                continue;
+              }
+            }
+
+            if (item.collectionName === 'ek_orders') {
+              await docRef.set(item.data, { merge: true });
+            } else {
+              await docRef.set(item.data);
+            }
+          } else if (item.action === 'update') {
+            await docRef.update(item.data);
+          } else if (item.action === 'delete') {
+            await docRef.delete();
+          }
+          debugLog(`[Queue Sync] Successfully synced pending ${item.collectionName}/${item.docId}`);
+        } catch (err) {
+          console.warn(`[Queue Sync] Failed to sync ${item.collectionName}/${item.docId}, keeping in queue:`, err);
+          remainingQueue.push(item);
+
+          if (item.collectionName === 'ek_orders') {
+            const timeInQueue = now - item.firstFailedAt;
+            if (timeInQueue > 180000) {
+              handleStuckOrderSyncFailure(item, timeInQueue, err);
+            }
+          }
+        }
+      }
+
+      saveData('ek_pending_syncs', remainingQueue);
+      if (remainingQueue.length < queue.length) {
+        triggerGlobalScreenRefresh();
+      }
+
+      const remainingStuckOrders = remainingQueue.filter(i => i.collectionName === 'ek_orders' && (now - (i.firstFailedAt || i.timestamp || now)) > 180000);
+      if (remainingStuckOrders.length === 0) {
+        hideCustomerSyncWarningBanner();
+      }
+    }
+
+    window.addEventListener('online', () => {
+      debugLog("[Network] Back online! Syncing pending queue. 📶");
+      processPendingSyncQueue().then(() => syncWithCloud());
+    });
+
+    // Background interval to auto-retry pending writes every 15 seconds
+    setInterval(() => {
+      if (navigator.onLine && db) {
+        processPendingSyncQueue();
+      }
+    }, 15000);
+
+    async function actualPlaceOrder() {
+      if (window.isPlacingOrder) {
+        console.warn("[Checkout Lock] An order is already being processed.");
+        return;
+      }
+      window.isPlacingOrder = true;
+
+      if (typeof AndroidStorage !== 'undefined') {
+        try {
+          if (!AndroidStorage.hasLocationPermission()) {
+            debugLog("[Contextual Checkout] Location permission is missing during checkout. Triggering native prompt directly...");
+            AndroidStorage.requestLocationPermission();
+            showToast("ஆர்டர் செய்ய இருப்பிட அனுமதி தேவை. அனுமதித்த பின் மீண்டும் ஆர்டரை உறுதி செய்யவும்! (Location permission required for placing order. Please grant it and confirm order!)", "info");
+            window.isPlacingOrder = false;
+            return;
+          }
+        } catch (e) {
+          console.error("Error with native location permission request:", e);
+        }
+      }
+
+      try {
+        const customerProfile = await getAuthenticatedCustomerUser();
+        if (!customerProfile) {
+          if (typeof firebase !== 'undefined' && firebase.auth) {
+            const authUser = firebase.auth().currentUser;
+            const reason = !authUser ? "Firebase currentUser is null" : (authUser.isAnonymous ? "Firebase currentUser is anonymous guest" : "No registered user record found");
+            console.warn("[Diagnostic] Authentication unavailable: " + reason);
+          } else {
+            console.error("[Diagnostic] Authentication unavailable: Firebase SDK is not loaded.");
+          }
+          showToast("மன்னிக்கவும்! மீண்டும் உள்நுழைக வேண்டும். (Session expired, please login.)", "error");
+          window.isPlacingOrder = false;
+          showScreen('screen-login');
+          return;
+        }
+        const addressTextarea = document.getElementById('cart-delivery-address');
+      const address = addressTextarea ? addressTextarea.value.trim() : "";
+      if (!address || address === 'Salem, Tamil Nadu') {
+        showToast(
+          currentLang === 'ta'
+            ? "தயவுசெய்து முதலில் உங்கள் வீட்டு முகவரியை சேர்க்கவும் (Please add your delivery address first)"
+            : "Please add your delivery address first",
+          "error"
+        );
+        if (typeof openSimpleAddressEditor === 'function') {
+          openSimpleAddressEditor();
+        }
+        window.isPlacingOrder = false;
+        return;
+      }
+
+      const latAttr = addressTextarea ? (addressTextarea.getAttribute('data-lat') || (addressTextarea.dataset ? addressTextarea.dataset.lat : null)) : null;
+      const lngAttr = addressTextarea ? (addressTextarea.getAttribute('data-lng') || (addressTextarea.dataset ? addressTextarea.dataset.lng : null)) : null;
+
+      let finalLat = latAttr ? parseFloat(latAttr) : null;
+      let finalLng = lngAttr ? parseFloat(lngAttr) : null;
+
+      if (finalLat === null || isNaN(finalLat)) {
+        finalLat = customerProfile.latitude ? parseFloat(customerProfile.latitude) : null;
+      }
+      if (finalLng === null || isNaN(finalLng)) {
+        finalLng = customerProfile.longitude ? parseFloat(customerProfile.longitude) : null;
+      }
+
+      const isCod = selectedPaymentMethod && selectedPaymentMethod.toUpperCase() === 'COD';
+      let needsManualLocationPin = false;
+
+      const hasValidCoords = (finalLat !== null && !isNaN(finalLat) && finalLng !== null && !isNaN(finalLng));
+
+      if (!hasValidCoords) {
+        if (address && address.length > 5) {
+          if (isCod) {
+            // COD payment skips blocking geocoding completely to proceed instantly
+            needsManualLocationPin = true;
+            debugLog("[Checkout COD Geocode] COD Order: skipping blocking geocoding flow, marking for background attempt.");
+          } else {
+            try {
+              const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
+              if (!geocodeFn) {
+                console.warn("[Checkout Geocode] Geocode service not deployed yet.");
+                needsManualLocationPin = true;
+              } else {
+                debugLog("[Checkout Geocode] Attempting geocoding with 6-second timeout...");
+                const geocodePromise = geocodeFn({ address: address + ', Edappadi, Salem, Tamil Nadu' });
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000));
+                
+                const res = await Promise.race([geocodePromise, timeoutPromise]);
+                if (res && res.data && res.data.latitude) {
+                  finalLat = parseFloat(res.data.latitude);
+                  finalLng = parseFloat(res.data.longitude);
+                  debugLog('[Checkout Geocode] Address geocoded securely:', finalLat, finalLng);
+                } else {
+                  console.warn("[Checkout Geocode] No latitude returned in response.");
+                  needsManualLocationPin = true;
+                  showToast(
+                    currentLang === 'ta'
+                      ? "📍 உங்கள் இருப்பிடத்தை துல்லியமாக கண்டறிய முடியவில்லை. ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டது — எங்கள் அணி விரைவில் தொடர்பு கொள்ளும்."
+                      : "📍 We could not pinpoint your exact location. Order placed successfully — our team will contact you shortly.",
+                    "info"
+                  );
+                }
+              }
+            } catch (geoErr) {
+              console.warn('[Checkout Geocode] Forward geocode failed or timed out:', geoErr);
+              needsManualLocationPin = true;
+              showToast(
+                currentLang === 'ta'
+                  ? "📍 உங்கள் இருப்பிடத்தை துல்லியமாக கண்டறிய முடியவில்லை. ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டது — எங்கள் அணி விரைவில் தொடர்பு கொள்ளும்."
+                  : "📍 We could not pinpoint your exact location. Order placed successfully — our team will contact you shortly.",
+                "info"
+              );
+            }
+          }
+        } else {
+          showToast(
+            currentLang === 'ta'
+              ? "முகவரி மிகவும் குறுகியதாக உள்ளது. முழு முகவரியை உள்ளிடவும்."
+              : "Address is too short. Please enter a complete delivery address.",
+            "error"
+          );
+          window.isPlacingOrder = false;
+          return;
+        }
+      }
+
+      const subtotal = cart.reduce((acc, curr) => acc + curr.totalPrice, 0);
+      const settings = getSettings();
+      const minWeightGrams = parseFloat(settings.minOrderWeight || 50);
+      const minOrderAmount = parseFloat(settings.minOrderAmount || 0);
+      const basketTotalWeight = cart.reduce((acc, item) => acc + item.weightGrams, 0);
+
+      if (basketTotalWeight < minWeightGrams) {
+        showToast(`குறைந்தபட்ச ஆர்டர் எடை (${minWeightGrams}g) இல்லை! (Minimum order weight requirement is not met!)`, "error");
+        window.isPlacingOrder = false;
+        return;
+      }
+      if (subtotal < minOrderAmount) {
+        showToast(`குறைந்தபட்ச ஆர்டர் தொகை (₹${minOrderAmount}) இல்லை! (Minimum order amount requirement is not met!)`, "error");
+        window.isPlacingOrder = false;
+        return;
+      }
+
+      const usePointsCheckbox = document.getElementById('cart-use-loyalty');
+      const useLoyaltyPts = usePointsCheckbox && usePointsCheckbox.checked;
+
+      const financials = calculateOrderFinancials(subtotal, customerProfile, appliedCouponCode, useLoyaltyPts);
+      const randomID = generateUniqueOrderId();
+
+      const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+      const orderUserId = user ? user.uid : (customerProfile ? customerProfile.id : 'offline_guest');
+
+      const sanitizedLat = (finalLat === null || isNaN(finalLat)) ? null : parseFloat(finalLat);
+      const sanitizedLng = (finalLng === null || isNaN(finalLng)) ? null : parseFloat(finalLng);
+
+      let loyaltyMultiplier = 1.0;
+      if (customerProfile.tier === 'silver') {
+        loyaltyMultiplier = 1.5;
+      } else if (customerProfile.tier === 'gold') {
+        loyaltyMultiplier = 2.0;
+      }
+      const pointsEarned = Math.floor((financials.grandTotal / 100) * 10 * loyaltyMultiplier);
+
+      const order = {
+        id: randomID,
+        userId: orderUserId,
+        customerId: orderUserId,
+        customerName: customerProfile.name || "Customer / வாடிக்கையாளர்",
+        customerPhone: customerProfile.phone || (user ? user.phoneNumber : "") || "",
+        customerFcmToken: customerProfile.fcmToken || (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : ''),
+        deliveryAddress: address,
+        deliveryLatitude: sanitizedLat,
+        deliveryLongitude: sanitizedLng,
+        needsManualLocationPin: needsManualLocationPin,
+        deliveryTimeSlot: selectedDeliverySlot,
+        paymentMethod: selectedPaymentMethod,
+        items: [...cart],
+        subtotalAmount: financials.subtotal,
+        deliveryFee: financials.deliveryFee,
+        expressDelivery: false,
+        loyaltyPointsUsed: financials.loyaltyDiscount * 10,
+        loyaltyDiscount: financials.loyaltyDiscount,
+        accruedPoints: pointsEarned,
+        appliedCouponCode: appliedCouponCode || "",
+        couponDiscount: financials.couponDiscount,
+        totalAmount: financials.grandTotal,
+        status: 'pending',
+        orderSource: 'MANUAL',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statusTimestamps: {
+          pending: new Date().toISOString()
+        }
+      };
+
+      // Asynchronous background geocoding if coordinates are missing
+      if (needsManualLocationPin) {
+        setTimeout(async () => {
+          try {
+            const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
+            if (geocodeFn) {
+              debugLog("[Background Geocode] Resolving in background for Order ID:", randomID);
+              const res = await geocodeFn({ address: address + ', Edappadi, Salem, Tamil Nadu' });
+              if (res && res.data && res.data.latitude) {
+                const bgLat = parseFloat(res.data.latitude);
+                const bgLng = parseFloat(res.data.longitude);
+                debugLog("[Background Geocode] Successfully geocoded. Updating Firestore and cache:", randomID, bgLat, bgLng);
+                
+                await db.collection('ek_orders').doc(randomID).update({
+                  deliveryLatitude: bgLat,
+                  deliveryLongitude: bgLng,
+                  needsManualLocationPin: false,
+                  updatedAt: new Date().toISOString()
+                });
+                
+                const cachedOrders = getDataCached('ek_orders', []);
+                const idx = cachedOrders.findIndex(o => o.id === randomID);
+                if (idx !== -1) {
+                  cachedOrders[idx].deliveryLatitude = bgLat;
+                  cachedOrders[idx].deliveryLongitude = bgLng;
+                  cachedOrders[idx].needsManualLocationPin = false;
+                  cachedOrders[idx].updatedAt = new Date().toISOString();
+                  saveData('ek_orders', cachedOrders);
+                }
+              }
+            }
+          } catch (bgErr) {
+            console.warn("[Background Geocode] Background geocoding failed/timed out:", bgErr);
+          }
+        }, 1500);
+      }
+
+      if (selectedPaymentMethod === 'UPI') {
+        showToast(currentLang === 'ta' ? "யுபிஐ செலுத்துதல் துவங்குகிறது... ⏳" : "UPI Payment Initializing... ⏳", "info");
+
+        const pendingOrderData = {
+          order: order,
+          customerProfile: customerProfile,
+          address: address,
+          finalLat: finalLat,
+          finalLng: finalLng,
+          pointsEarned: pointsEarned,
+          financials: financials,
+          user: user,
+          cartSnapshot: [...cart],
+          appliedCouponSnapshot: appliedCouponCode
+        };
+        window.pendingUpiOrderData = pendingOrderData;
+        window.currentUpiAttemptAccount = 'primary';
+        saveData('ek_pending_upi_order_data', pendingOrderData);
+
+        const upiSettings = settings.upiSettings || { upiEnabled: true, currency: 'INR' };
+        let upiMerchantId = settings.merchantUpiId || 'einsteinananth24@okaxis';
+        let upiMerchantName = "Edappadi Kadai";
+        let upiTxnNote = `Order ${order.id} - Edappadi Kadai`;
+        let upiCurrency = upiSettings.currency || 'INR';
+
+        const activeAcc = typeof getActiveUpiAccount === 'function' ? getActiveUpiAccount(settings) : null;
+        if (activeAcc) {
+          upiMerchantId = activeAcc.upiId;
+          upiMerchantName = activeAcc.merchantName || activeAcc.displayName || "Edappadi Kadai";
+          if (activeAcc.note) {
+            upiTxnNote = activeAcc.note.replace(/{id}/g, order.id).replace(/{orderId}/g, order.id);
+          }
+        }
+
+        const upiAmount = order.totalAmount.toFixed(2);
+        const upiTxnRef = order.id;
+        const upiUri = `upi://pay?pa=${encodeURIComponent(upiMerchantId)}&pn=${encodeURIComponent(upiMerchantName)}&tr=${encodeURIComponent(upiTxnRef)}&tn=${encodeURIComponent(upiTxnNote)}&am=${upiAmount}&cu=${encodeURIComponent(upiCurrency)}`;
+
+        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.startUpiPayment === 'function') {
+          debugLog("[UPI Payment] Launching native UPI chooser:", upiUri);
+          const successLaunch = AndroidStorage.startUpiPayment(upiUri);
+          if (!successLaunch) {
+            showToast("யுபிஐ செயலியை திறப்பதில் சிக்கல்! (Failed to launch UPI apps!)", "error");
+            window.isPlacingOrder = false;
+          }
+        } else {
+          console.warn("[UPI Payment] AndroidStorage is undefined. Simulating UPI payment in browser preview.");
+          showCustomConfirm(
+            currentLang === 'ta' ? "📱 யுபிஐ சோதனை" : "📱 UPI Simulation",
+            currentLang === 'ta'
+              ? `[Web Preview] யுபிஐ பணம் செலுத்துதல் வெற்றிகரமாக முடிந்ததா என சோதிக்க விரும்புகிறீர்களா?\n\nமொத்தம்: ₹${upiAmount}\nபெறுநர்: ${upiMerchantId}`
+              : `[Web Preview] Would you like to simulate a successful UPI payment response?\n\nTotal: ₹${upiAmount}\nMerchant: ${upiMerchantId}`,
+            () => {
+              setTimeout(() => {
+                if (typeof window.onAndroidUpiPaymentResult === 'function') {
+                  window.onAndroidUpiPaymentResult('SUCCESS_NO_RESPONSE_DATA');
+                }
+              }, 800);
+            },
+            () => {
+              setTimeout(() => {
+                if (typeof window.onAndroidUpiPaymentResult === 'function') {
+                  window.onAndroidUpiPaymentResult('CANCELLED');
+                }
+              }, 800);
+            }
+          );
+        }
+      } else {
+        showToast("Processing Order / ஆர்டர் செய்யப்படுகிறது... ⏳", "info");
+        showLyoTransitLoader(currentLang === 'ta' ? "உங்களுக்காக ஸ்பெஷலாக ஆர்டர் செய்யப்படுகிறது... 🥩🥦" : "Processing your secure order... 🥩🥦", 1200);
+        await completeOrderPlacement(order, customerProfile, address, finalLat, finalLng, pointsEarned, financials, user, [...cart], appliedCouponCode);
+      }
+      } catch (err) {
+        window.isPlacingOrder = false; // Release lock on error
+        console.error("Critical error in actualPlaceOrder:", err);
+        showToast("ஆர்டர் செய்வதில் பிழை ஏற்பட்டது: " + err.message, "error");
+      } finally {
+        window.isPlacingOrder = false;
+        try { hideLoadingModal(); } catch(e) {}
+        try { hideLyoTransitLoader(); } catch(e) {}
+      }
+    }
+
+    
+/* =========================================================
+   INJECTED PRODUCTION FIXES: completeOrderPlacement & UPI Callback
+   ========================================================= */
+function parseAndroidUpiPaymentResult(statusString) {
+      if (!statusString) return false;
+
+      const trimmed = statusString.trim();
+      if (trimmed === "" || trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "empty" || trimmed === "SUCCESS_NO_RESPONSE_DATA") {
+        return false;
+      }
+
+      const params = {};
+      const parts = trimmed.split('&');
+      for (const part of parts) {
+        const pair = part.split('=');
+        if (pair.length === 2) {
+          params[pair[0].toLowerCase().trim()] = pair[1].trim();
+        } else if (pair.length > 2) {
+          const key = pair[0].toLowerCase().trim();
+          const val = part.substring(part.indexOf('=') + 1).trim();
+          params[key] = val;
+        }
+      }
+
+      const upiTxnId = params['txnid'] || params['txn_id'] || params['transaction_id'] || "";
+      const upiApprovalRefNo = params['approvalrefno'] || params['approval_ref_no'] || params['refid'] || params['ref_id'] || params['txnref'] || params['txn_ref'] || "";
+      const hasRealTxnRef = !!(upiTxnId || upiApprovalRefNo);
+
+      // Do NOT treat any status lacking a real transaction ID or approval ref no as a confirmed success
+      if (!hasRealTxnRef) {
+        return false;
+      }
+
+      const statusVal = (params['status'] || "").toLowerCase();
+      const responseCode = params['responsecode'] || "";
+
+      if (statusVal === 'success' || statusVal === 'completed' || statusVal === 'approved') {
+        return true;
+      }
+
+      if (responseCode === '00' || responseCode === '0') {
+        return true;
+      }
+
+      for (const key in params) {
+        const val = (params[key] || "").toLowerCase();
+        if (val && (val.includes('status=success') || val.includes('status=completed') || val.includes('status=approved') || val === 'success' || val === 'completed')) {
+          return true;
+        }
+      }
+
+      const lower = trimmed.toLowerCase();
+      if (lower.includes('status=success') || lower.includes('status=completed') || lower.includes('status=approved') || lower.includes('status=txn%20success') || lower.includes('status=txn success')) {
+        return true;
+      }
+
+      return false;
+    }
+
+    window.onAndroidUpiPaymentResult = async function(status) {
+      debugLog("[UPI Payment Callback] Raw status response from Native Android:", status);
+
+      let orderData = window.pendingUpiOrderData;
+      if (!orderData) {
+        orderData = getData('ek_pending_upi_order_data', null);
+      }
+
+      if (!orderData) {
+        console.error("[UPI Payment] Critical: No pending UPI order session found!");
+        showToast("மன்னிக்கவும்! அமர்வு காலாவதியானது. (Order session expired!)", "error");
+        window.isPlacingOrder = false;
+        return;
+      }
+
+      let upiTxnId = "";
+      let upiApprovalRefNo = "";
+      let upiResponseCode = "";
+      let upiStatusMsg = "";
+
+      if (status) {
+        const params = {};
+        const parts = status.split('&');
+        for (const part of parts) {
+          const pair = part.split('=');
+          if (pair.length === 2) {
+            params[pair[0].toLowerCase().trim()] = pair[1].trim();
+          } else if (pair.length > 2) {
+            const key = pair[0].toLowerCase().trim();
+            const val = part.substring(part.indexOf('=') + 1).trim();
+            params[key] = val;
+          }
+        }
+
+        upiTxnId = params['txnid'] || params['txn_id'] || params['transaction_id'] || "";
+        upiApprovalRefNo = params['approvalrefno'] || params['approval_ref_no'] || params['refid'] || params['ref_id'] || params['txnref'] || params['txn_ref'] || "";
+        upiResponseCode = params['responsecode'] || params['response_code'] || "";
+        upiStatusMsg = params['status'] || "";
+      }
+
+      const hasRealTxnRef = !!(upiTxnId || upiApprovalRefNo);
+      const isPaid = parseAndroidUpiPaymentResult(status);
+      const normStatus = (status || "").trim().toUpperCase();
+      const isExplicitCancel = normStatus === 'CANCELLED' || normStatus === 'CANCEL' || normStatus === 'FAILED' || normStatus === 'FAILURE';
+
+      if (isPaid && hasRealTxnRef) {
+        debugLog("[UPI Payment] Confirmed payment successful with verified Txn Ref!");
+
+        orderData.order.upiTxnId = upiTxnId;
+        orderData.order.upiApprovalRefNo = upiApprovalRefNo;
+        orderData.order.upiResponseCode = upiResponseCode || "00";
+        orderData.order.upiStatus = upiStatusMsg || "SUCCESS";
+        orderData.order.paymentStatus = "PAID";
+        orderData.order.paymentMethod = "UPI Payment";
+        orderData.order.status = "pending";
+        orderData.order.needsPaymentVerification = false;
+
+        showToast(currentLang === 'ta' ? "கட்டணம் வெற்றிகரமாக செலுத்தப்பட்டது! 🎉" : "Payment Successful! 🎉", "success");
+        showLyoTransitLoader(currentLang === 'ta' ? "உங்களுக்காக ஸ்பெஷலாக ஆர்டர் செய்யப்படுகிறது... 🥩🥦" : "Processing your secure order... 🥩🥦", 1500);
+
+        try {
+          await completeOrderPlacement(
+            orderData.order,
+            orderData.customerProfile,
+            orderData.address,
+            orderData.finalLat,
+            orderData.finalLng,
+            orderData.pointsEarned,
+            orderData.finalFinancials || orderData.financials,
+            orderData.user,
+            orderData.cartSnapshot,
+            orderData.appliedCouponSnapshot
+          );
+        } catch (err) {
+          console.error("[UPI Payment] Failed to finalize order:", err);
+          showToast("ஆர்டர் பதிவு செய்வதில் பிழை: " + err.message, "error");
+        } finally {
+          window.pendingUpiOrderData = null;
+          removeData('ek_pending_upi_order_data');
+        }
+      } else if (!isExplicitCancel) {
+        // Callback received without real transaction ID / approval reference number (e.g. SUCCESS_NO_RESPONSE_DATA)
+        // Mark as payment_pending_verification instead of confirmed paid state.
+        debugLog("[UPI Payment] Unverified callback received (lacking real Txn ID/Ref). Marking order as payment_pending_verification.");
+
+        orderData.order.upiTxnId = upiTxnId || "NO_TXN_REF";
+        orderData.order.upiApprovalRefNo = upiApprovalRefNo || "NO_APPROVAL_REF";
+        orderData.order.upiResponseCode = upiResponseCode || "PENDING_VERIFICATION";
+        orderData.order.upiStatus = "PENDING_VERIFICATION";
+        orderData.order.paymentStatus = "PENDING_VERIFICATION";
+        orderData.order.paymentMethod = "UPI Payment (Unverified)";
+        orderData.order.status = "payment_pending_verification";
+        orderData.order.needsPaymentVerification = true;
+
+        showToast(currentLang === 'ta'
+          ? "யுபிஐ கட்டணம் பெறப்பட்டது. கடை நிர்வாகி சரிபார்க்கிறார்... ⏳"
+          : "UPI payment callback received. Verification pending with shop admin... ⏳", "warning");
+
+        showLyoTransitLoader(currentLang === 'ta'
+          ? "கட்டண விபரம் சரிபார்க்கப்படுகிறது... 🥩🥦"
+          : "Verifying payment confirmation... 🥩🥦", 1800);
+
+        try {
+          await completeOrderPlacement(
+            orderData.order,
+            orderData.customerProfile,
+            orderData.address,
+            orderData.finalLat,
+            orderData.finalLng,
+            orderData.pointsEarned,
+            orderData.finalFinancials || orderData.financials,
+            orderData.user,
+            orderData.cartSnapshot,
+            orderData.appliedCouponSnapshot
+          );
+        } catch (err) {
+          console.error("[UPI Payment] Failed to finalize unverified order:", err);
+          showToast("ஆர்டர் பதிவு செய்வதில் பிழை: " + err.message, "error");
+        } finally {
+          window.pendingUpiOrderData = null;
+          removeData('ek_pending_upi_order_data');
+        }
+      } else {
+        console.warn("[UPI Payment] Payment was cancelled or failed. Status:", status);
+
+        // Automated Failover System to backup UPI ID if primary fails
+        const attempt = window.currentUpiAttemptAccount || 'primary';
+        if (attempt === 'primary') {
+          const settings = getDataCached('ek_settings', DEFAULT_SETTINGS);
+          const upiSettings = settings.upiSettings;
+          if (upiSettings && upiSettings.accounts) {
+            const backup1 = upiSettings.accounts.find(a => a.id === 'backup1' && a.isActive && a.upiId && a.upiId.trim() !== '');
+            if (backup1) {
+              debugLog("[UPI Failover] Primary UPI failed or was cancelled. Automatically failing over to Backup UPI 1:", backup1.upiId);
+              window.currentUpiAttemptAccount = 'backup1';
+
+              showToast(currentLang === 'ta'
+                ? "முதன்மை யுபிஐ தோல்வி! மாற்று வழி மூலம் பணம் செலுத்தப்படுகிறது... 🔄"
+                : "Primary UPI payment did not complete. Launching backup UPI path... 🔄", "info");
+
+              const upiMerchantId = backup1.upiId;
+              const upiMerchantName = backup1.merchantName || backup1.displayName || "Edappadi Kadai";
+              let upiTxnNote = backup1.note || `Order ${orderData.order.id} - Edappadi Kadai`;
+              if (upiTxnNote) {
+                upiTxnNote = upiTxnNote.replace(/{id}/g, orderData.order.id).replace(/{orderId}/g, orderData.order.id);
+              }
+              const upiAmount = orderData.order.totalAmount.toFixed(2);
+              const upiTxnRef = orderData.order.id;
+              const upiCurrency = (upiSettings && upiSettings.currency) || 'INR';
+              const upiUri = `upi://pay?pa=${encodeURIComponent(upiMerchantId)}&pn=${encodeURIComponent(upiMerchantName)}&tr=${encodeURIComponent(upiTxnRef)}&tn=${encodeURIComponent(upiTxnNote)}&am=${upiAmount}&cu=${encodeURIComponent(upiCurrency)}`;
+
+              setTimeout(() => {
+                if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.startUpiPayment === 'function') {
+                  debugLog("[UPI Failover Launch] Launching native UPI chooser for Backup 1:", upiUri);
+                  const successLaunch = AndroidStorage.startUpiPayment(upiUri);
+                  if (!successLaunch) {
+                    showToast("யுபிஐ செயலியை திறப்பதில் சிக்கல்! (Failed to launch UPI apps!)", "error");
+                    resetUpiPlacingOrderState();
+                  }
+                } else {
+                  console.warn("[UPI Failover Launch] AndroidStorage is undefined. Simulating backup UPI payment in browser.");
+                  showCustomConfirm(
+                    currentLang === 'ta' ? "📱 மாற்று யுபிஐ சோதனை" : "📱 Backup UPI Simulation",
+                    currentLang === 'ta'
+                      ? `[Web Preview Failover] முதன்மை கட்டணம் தோல்வியடைந்தது. மாற்று யுபிஐ மூலம் வெற்றிகரமாக செலுத்தப்பட்டதா என சோதிக்க வேண்டுமா?\n\nமொத்தம்: ₹${upiAmount}\nபெறுநர்: ${upiMerchantId}`
+                      : `[Web Preview Failover] Primary payment failed. Would you like to simulate a successful backup UPI payment?\n\nTotal: ₹${upiAmount}\nMerchant: ${upiMerchantId}`,
+                    () => {
+                      setTimeout(() => {
+                        if (typeof window.onAndroidUpiPaymentResult === 'function') {
+                          window.onAndroidUpiPaymentResult('SUCCESS_NO_RESPONSE_DATA');
+                        }
+                      }, 800);
+                    },
+                    () => {
+                      setTimeout(() => {
+                        if (typeof window.onAndroidUpiPaymentResult === 'function') {
+                          window.onAndroidUpiPaymentResult('CANCELLED');
+                        }
+                      }, 800);
+                    }
+                  );
+                }
+              }, 1200);
+              return; // Halt here to allow the retry to complete
+            }
+          }
+        }
+
+        // If backup UPI fails or doesn't exist, display the failure message
+        const title = currentLang === 'ta' ? "❌ கட்டணம் தோல்வி" : "❌ Payment Unsuccessful";
+        const displayBody = currentLang === 'ta'
+          ? "யுபிஐ கட்டணம் ரத்து செய்யப்பட்டது அல்லது தோல்வியடைந்தது. உங்கள் ஆர்டர் பதிவு செய்யப்படவில்லை."
+          : "Payment was not completed. Your order has not been placed.";
+
+        showCustomAlert(title, displayBody);
+        showToast(displayBody, "error");
+
+        resetUpiPlacingOrderState();
+      }
+    };
+
+    function resetUpiPlacingOrderState() {
+      window.isPlacingOrder = false;
+      window.pendingUpiOrderData = null;
+      window.currentUpiAttemptAccount = 'primary';
+      removeData('ek_pending_upi_order_data');
+    }
+
+async function completeOrderPlacement(order, customerProfile, address, finalLat, finalLng, pointsEarned, financials, user, cartItems, appliedCoupon) {
+      if (typeof db !== 'undefined' && db && user) {
+        try {
+          await db.runTransaction(async (transaction) => {
+            const productDocs = [];
+            for (const item of cartItems) {
+              const prodRef = db.collection('ek_products').doc(item.productId);
+              debugLog("[Diagnostic Checkout] Path:", `ek_products/${item.productId}`, "| Operation: transaction read | UID:", user ? user.uid : 'offline', "| order.userId:", order.userId, "| order.customerId:", order.customerId);
+              const docSnap = await transaction.get(prodRef);
+              productDocs.push({ item, docSnap, prodRef });
+            }
+
+            for (const { item, docSnap, prodRef } of productDocs) {
+              if (!docSnap.exists) {
+                throw new Error(`Product ${item.name || item.productId} not found!`);
+              }
+              const pData = docSnap.data();
+              const serverStock = parseFloat(pData.stockKg || 0);
+              const unit = pData.unit || 'kg';
+              const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+              const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+
+              if (serverStock < needed) {
+                const prodName = pData.englishName || pData.tamilName || item.name || 'Selected item';
+                throw new Error(`STOCK_INSUFFICIENT:${prodName}`);
+              }
+
+              const newStock = parseFloat(Math.max(0, serverStock - needed).toFixed(3));
+              const isOutOfStock = newStock <= 0;
+              transaction.update(prodRef, {
+                stockKg: newStock,
+                isOutOfStock: isOutOfStock,
+                updatedAt: new Date().toISOString()
+              });
+            }
+
+            const orderRef = db.collection('ek_orders').doc(order.id);
+            debugLog("[Diagnostic Checkout] Path:", `ek_orders/${order.id}`, "| Operation: transaction set | UID:", user ? user.uid : 'offline', "| order.userId:", order.userId, "| order.customerId:", order.customerId);
+            transaction.set(orderRef, cleanFirestoreData(order));
+          });
+
+          debugLog(`[Cloud Sync] Success order placed and stock deducted via transaction: ${order.id}`);
+          removePendingSync('ek_orders', order.id);
+
+          try {
+            sendFcmPushNotification(order, 'none', 'pending');
+          } catch (fcmErr) {
+            console.warn("[FCM Order Placed Error]", fcmErr);
+          }
+
+          const localProducts = getData('ek_products', []);
+          for (const item of cartItems) {
+            const prod = localProducts.find(p => p.id === item.productId);
+            if (prod) {
+              const unit = prod.unit || 'kg';
+              const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+              const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+              prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
+              if (prod.stockKg <= 0) prod.isOutOfStock = true;
+              prod.updatedAt = new Date().toISOString();
+            }
+          }
+          saveData('ek_products', localProducts);
+
+          const orders = getData('ek_orders', []);
+          orders.push(order);
+          saveData('ek_orders', orders);
+
+        } catch (txnErr) {
+          const errCode = txnErr.code || 'N/A';
+          const errMsg = txnErr.message || txnErr.toString();
+          console.error(`[Firebase Checkout Error] Code: ${errCode}, Message: ${errMsg}`, txnErr);
+
+          if (txnErr.message && txnErr.message.startsWith("STOCK_INSUFFICIENT:")) {
+            const prodName = txnErr.message.split(":")[1];
+            showToast(`மன்னிக்கவும்! ${prodName} போதுமான அளவு இல்லை. (Sorry, ${prodName} does not have sufficient stock!)`, "error");
+            window.isPlacingOrder = false;
+            throw txnErr; // Abort on out of stock
+          }
+
+          const isPermissionDenied = txnErr.code === 'permission-denied' || errMsg.includes('permission_denied') || errMsg.includes('Permission denied') || errMsg.includes('Access denied');
+          if (isPermissionDenied) {
+            debugLog("[Graceful Fallback] Transaction failed due to permission denial (likely strict ek_products rules or App Check). Attempting direct write to ek_orders collection...");
+            try {
+              const orderRef = db.collection('ek_orders').doc(order.id);
+              await orderRef.set(cleanFirestoreData(order));
+              debugLog("[Graceful Fallback] Successfully placed order via direct online write to ek_orders!");
+
+              // Deduct stock locally
+              const localProducts = getData('ek_products', []);
+              for (const item of cartItems) {
+                const prod = localProducts.find(p => p.id === item.productId);
+                if (prod) {
+                  const unit = prod.unit || 'kg';
+                  const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+                  const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+                  prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
+                  if (prod.stockKg <= 0) prod.isOutOfStock = true;
+                  prod.updatedAt = new Date().toISOString();
+                }
+              }
+              saveData('ek_products', localProducts);
+
+              const orders = getData('ek_orders', []);
+              orders.push(order);
+              saveData('ek_orders', orders);
+
+              removePendingSync('ek_orders', order.id);
+            } catch (fallbackErr) {
+              console.warn("[Graceful Fallback] Direct write to ek_orders also failed. Falling back to local offline order queue:", fallbackErr);
+              queueFailedSync('ek_orders', order.id, 'set', order);
+              setTimeout(() => { if (typeof processPendingSyncQueue === 'function') processPendingSyncQueue(); }, 800);
+
+              try {
+                sendFcmPushNotification(order, 'none', 'pending');
+              } catch (fcmErr) {
+                console.warn("[FCM Order Placed Offline Error]", fcmErr);
+              }
+
+              const orders = getData('ek_orders', []);
+              orders.push(order);
+              saveData('ek_orders', orders);
+
+              const products = getData('ek_products', []);
+              for (const item of cartItems) {
+                const prod = products.find(p => p.id === item.productId);
+                if (prod) {
+                  const unit = prod.unit || 'kg';
+                  const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+                  const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+                  prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
+                  if (prod.stockKg <= 0) {
+                    prod.isOutOfStock = true;
+                  }
+                  prod.updatedAt = new Date().toISOString();
+                }
+              }
+              saveData('ek_products', products);
+            }
+          } else {
+            // Fallback entirely to local database (offline queue for atomic retry when back online)
+            queueFailedSync('ek_orders', order.id, 'set', order);
+            setTimeout(() => { if (typeof processPendingSyncQueue === 'function') processPendingSyncQueue(); }, 800);
+
+            try {
+              sendFcmPushNotification(order, 'none', 'pending');
+            } catch (fcmErr) {
+              console.warn("[FCM Order Placed Offline Error]", fcmErr);
+            }
+
+            const orders = getData('ek_orders', []);
+            orders.push(order);
+            saveData('ek_orders', orders);
+
+            const products = getData('ek_products', []);
+            for (const item of cartItems) {
+              const prod = products.find(p => p.id === item.productId);
+              if (prod) {
+                const unit = prod.unit || 'kg';
+                const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+                const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+                prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
+                if (prod.stockKg <= 0) {
+                  prod.isOutOfStock = true;
+                }
+                prod.updatedAt = new Date().toISOString();
+              }
+            }
+            saveData('ek_products', products);
+          }
+        }
+      } else {
+        queueFailedSync('ek_orders', order.id, 'set', order);
+        setTimeout(() => { if (typeof processPendingSyncQueue === 'function') processPendingSyncQueue(); }, 800);
+
+        const orders = getData('ek_orders', []);
+        orders.push(order);
+        saveData('ek_orders', orders);
+
+        const products = getData('ek_products', []);
+        for (const item of cartItems) {
+          const prod = products.find(p => p.id === item.productId);
+          if (prod) {
+            const unit = prod.unit || 'kg';
+            const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+            const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+            prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
+            if (prod.stockKg <= 0) {
+              prod.isOutOfStock = true;
+            }
+            prod.updatedAt = new Date().toISOString();
+          }
+        }
+        saveData('ek_products', products);
+      }
+
+      const users = getData('ek_users', []);
+      const uIdx = users.findIndex(u => u.id === customerProfile.id);
+
+      if (uIdx !== -1) {
+        const existingPoints = parseInt(customerProfile.loyaltyPoints) || 0;
+        customerProfile.loyaltyPoints = Math.max(0, existingPoints - (financials.loyaltyDiscount * 10)) + pointsEarned;
+        customerProfile.tier = computeLoyaltyTier(customerProfile.loyaltyPoints);
+
+        customerProfile.address = address;
+        customerProfile.latitude = finalLat;
+        customerProfile.longitude = finalLng;
+
+        users[uIdx] = customerProfile;
+        saveData('ek_users', users);
+        if (typeof db !== 'undefined' && db) {
+          debugLog("[Diagnostic Checkout] Path:", `ek_users/${customerProfile.id}`, "| Operation: set | UID:", user ? user.uid : 'offline', "| order.userId:", order.userId, "| order.customerId:", order.customerId);
+          db.collection('ek_users').doc(customerProfile.id).set(customerProfile)
+            .catch(err => {
+              console.error("Cloud user level status sync failed, queueing for retry:", err);
+              queueFailedSync('ek_users', customerProfile.id, 'set', customerProfile);
+            });
+        } else {
+          queueFailedSync('ek_users', customerProfile.id, 'set', customerProfile);
+        }
+      }
+
+      cart = [];
+      saveCart();
+      appliedCouponCode = null;
+      renderCartScreen();
+
+      window.isPlacingOrder = false;
+
+      if (typeof AndroidStorage !== 'undefined') {
+        try {
+          if (!AndroidStorage.hasNotificationPermission()) {
+            debugLog("[Contextual Alerts] Notification permission is missing. Requesting contextually for order status alerts...");
+            AndroidStorage.requestNotificationPermission();
+          }
+        } catch (e) {
+          console.error("Error with native notification permission request:", e);
+        }
+      }
+
+      addNotification(
+        "ஆர்டர் வெற்றிகரமாக செய்யப்பட்டது! 🎉",
+        "Order Placed Successfully! 🎉",
+        `உங்கள் ஆர்டர் ${order.id} வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது. மொபைல் மூலம் விநியோக நிலையை பின்தொடரலாம். மொத்த விலை: ₹${order.totalAmount}.`,
+        `Your order ${order.id} has been registered successfully! You can track its live delivery on map. Total amount paid is ₹${order.totalAmount}.`,
+        "📦"
+      );
+
+      document.getElementById('success-modal-id').innerText = order.id;
+      document.getElementById('success-modal-total').innerText = `₹${order.totalAmount}`;
+      document.getElementById('success-modal-points').innerText = `+${pointsEarned} pts`;
+      document.getElementById('order-success-modal').style.display = 'flex';
+      triggerSuccessCheckmarkReplay();
+
+      showToast(currentLang === 'ta' ? "உங்கள் ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது! 🎉" : "Your order has been placed successfully. 🎉", "success");
+    }
+
+    let quickOrderCart = [];
+    let quickOrderPaymentMethod = 'CASH';
+    let quickOrderCustomNotes = [];
+
+    function autoExpandTextarea(el) {
+      el.style.height = 'auto';
+      el.style.height = (el.scrollHeight) + 'px';
+    }
+
+    function openQuickOrderScreen() {
+      document.getElementById('quick-order-textarea').value = '';
+      document.getElementById('quick-order-textarea').style.height = '150px';
+      document.getElementById('quick-order-input-container').style.display = 'block';
+      document.getElementById('quick-order-review-container').style.display = 'none';
+
+      quickOrderCart = [];
+      quickOrderCustomNotes = [];
+      quickOrderPaymentMethod = 'CASH';
+
+      showScreen('screen-quick-order');
+    }
+
+    function goBackToHomeFromQuickOrder() {
+      showScreen('screen-home');
+    }
+
+    function selectQuickOrderPayment(method) {
+      quickOrderPaymentMethod = method;
+      const codBtn = document.getElementById('quick-pay-cod');
+      const upiBtn = document.getElementById('quick-pay-upi');
+
+      if (method === 'CASH') {
+        codBtn.style.background = 'var(--accent-green)';
+        codBtn.style.color = '#fff';
+        codBtn.style.borderColor = 'var(--accent-green)';
+        upiBtn.style.background = '#000';
+        upiBtn.style.color = '#fff';
+        upiBtn.style.borderColor = 'var(--border-color)';
+      } else {
+        upiBtn.style.background = 'var(--accent-green)';
+        upiBtn.style.color = '#fff';
+        upiBtn.style.borderColor = 'var(--accent-green)';
+        codBtn.style.background = '#000';
+        codBtn.style.color = '#fff';
+        codBtn.style.borderColor = 'var(--border-color)';
+      }
+    }
+
+    function editQuickOrderList() {
+      document.getElementById('quick-order-input-container').style.display = 'block';
+      document.getElementById('quick-order-review-container').style.display = 'none';
+    }
+
+    function findBestProductMatch(query, allProducts) {
+      const cleanQuery = query.toLowerCase().replace(/[^a-zA-Z0-9\u0b80-\u0bff\s]/g, '').trim();
+      if (!cleanQuery) return null;
+
+      let bestMatch = null;
+      let maxScore = 0;
+
+      for (const p of allProducts) {
+        const cleanEng = (p.englishName || "").toLowerCase().replace(/[^a-zA-Z0-9\s]/g, '');
+        const cleanTam = (p.tamilName || "").replace(/[^\u0b80-\u0bff\s]/g, '');
+
+        let score = 0;
+
+        if (cleanEng && (cleanEng === cleanQuery || cleanEng.includes(cleanQuery) || cleanQuery.includes(cleanEng))) {
+          score = cleanQuery.length / Math.max(cleanEng.length, cleanQuery.length) * 100;
+        }
+
+        const cleanQueryTam = cleanQuery.replace(/[^\u0b80-\u0bff\s]/g, '');
+        if (cleanTam && cleanQueryTam) {
+          if (cleanTam === cleanQueryTam || cleanTam.includes(cleanQueryTam) || cleanQueryTam.includes(cleanTam)) {
+            const subScore = cleanQueryTam.length / Math.max(cleanTam.length, cleanQueryTam.length) * 100;
+            if (subScore > score) score = subScore;
+          }
+        }
+
+        if (score > maxScore && score > 25) { // 25% threshold
+          maxScore = score;
+          bestMatch = p;
+        }
+      }
+      return bestMatch;
+    }
+
+    async function reviewQuickOrder() {
+      const textarea = document.getElementById('quick-order-textarea');
+      const text = textarea.value.trim();
+      if (!text) {
+        showToast(currentLang === 'ta' ? "தயவுசெய்து உங்கள் பட்டியலை உள்ளிடவும்!" : "Please enter your shopping list first!", "error");
+        return;
+      }
+
+      const allProducts = getDataCached('ek_products', []);
+      if (allProducts.length === 0) {
+        showToast(currentLang === 'ta' ? "தயாரிப்புகள் பட்டியலை ஏற்றுவதில் சிக்கல்! பிறகு முயலவும்." : "Failed to load products list! Please try again.", "error");
+        return;
+      }
+
+      quickOrderCart = [];
+      quickOrderCustomNotes = [];
+
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+      lines.forEach(line => {
+        const numRegex = /(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gm|gram|grams|l|litre|litres|ml|கிலோ|கிராம்|லிட்டர்)?\s*$/i;
+        const match = line.match(numRegex);
+
+        let query = line;
+        let val = 1;
+        let unitStr = "";
+
+        if (match) {
+          val = parseFloat(match[1]);
+          unitStr = match[2] || "";
+          query = line.replace(numRegex, '').trim();
+        }
+
+        const product = findBestProductMatch(query, allProducts);
+
+        if (!product) {
+          quickOrderCustomNotes.push(line);
+        } else {
+          const unit = product.unit || 'kg';
+          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+
+          let weightGrams = 1;
+          let isWorthBased = false;
+          let rupeeValue = 0;
+
+          if (unitStr) {
+            const cleanUnit = unitStr.toLowerCase();
+            if (['kg', 'kilo', 'kilogram', 'கிலோ'].includes(cleanUnit)) {
+              weightGrams = val * 1000;
+            } else if (['g', 'gm', 'gram', 'grams', 'கிராம்'].includes(cleanUnit)) {
+              weightGrams = val;
+            } else if (['l', 'litre', 'litres', 'லிட்டர்'].includes(cleanUnit)) {
+              weightGrams = val * 1000;
+            } else if (['ml'].includes(cleanUnit)) {
+              weightGrams = val;
+            } else {
+              weightGrams = val;
+            }
+          } else {
+            if (!isWeight) {
+              weightGrams = val; // pieces count
+            } else {
+              if (val <= 10) {
+                weightGrams = val * 1000; // KG
+              } else {
+                isWorthBased = true;
+                rupeeValue = val;
+                weightGrams = Math.round((val / product.pricePerKg) * 1000);
+              }
+            }
+          }
+
+          const existingIdx = quickOrderCart.findIndex(item => item.productId === product.id);
+          if (existingIdx !== -1) {
+            quickOrderCart[existingIdx].weightGrams += weightGrams;
+            const updatedItem = quickOrderCart[existingIdx];
+            updatedItem.totalPrice = isWeight ? (updatedItem.weightGrams / 1000) * product.pricePerKg : updatedItem.weightGrams * product.pricePerKg;
+            updatedItem.totalPrice = Math.round(updatedItem.totalPrice);
+          } else {
+            let totalPrice = isWeight ? (weightGrams / 1000) * product.pricePerKg : weightGrams * product.pricePerKg;
+            totalPrice = Math.round(totalPrice);
+
+            quickOrderCart.push({
+              productId: product.id,
+              name: product.englishName,
+              tamilName: product.tamilName,
+              pricePerKg: product.pricePerKg,
+              weightGrams: weightGrams,
+              unit: unit,
+              isWeight: isWeight,
+              totalPrice: totalPrice,
+              imageUrl: product.imageUrl,
+              category: product.category,
+              isWorthBased: isWorthBased,
+              rupeeValue: rupeeValue,
+              originalLine: line
+            });
+          }
+        }
+      });
+
+      if (quickOrderCart.length === 0 && quickOrderCustomNotes.length === 0) {
+        showToast(currentLang === 'ta' ? "பட்டியலில் உள்ள பொருட்களைக் கண்டறிய முடியவில்லை!" : "Could not resolve any items from the shopping list!", "error");
+        return;
+      }
+
+      renderQuickOrderReview();
+    }
+
+    function renderQuickOrderReview() {
+      const listContainer = document.getElementById('quick-order-items-review-list');
+      listContainer.innerHTML = '';
+
+      if (quickOrderCart.length === 0) {
+        listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 11.5px; padding: 12px;">No system resolved items.</div>`;
+      } else {
+        quickOrderCart.forEach((item, index) => {
+          const unitDisplay = getUnitDisplay(item.unit, currentLang === 'ta', item.weightGrams);
+          let quantityText = "";
+
+          if (item.isWeight) {
+            const kgVal = (item.weightGrams / 1000).toFixed(2);
+            quantityText = currentLang === 'ta' ? `${kgVal} கிலோ` : `${kgVal} Kg`;
+          } else {
+            quantityText = `${item.weightGrams} ${unitDisplay}`;
+          }
+
+          const rowHtml = `
+            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); padding: 10px 12px; border-radius: 12px; gap: 8px;">
+              <div style="min-width: 0; flex: 1;">
+                <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  ${currentLang === 'ta' ? item.tamilName : item.name}
+                </h5>
+                <p style="margin: 2px 0 0 0; font-size: 10.5px; color: var(--accent-orange); font-weight: 600;">
+                  ${quantityText} • ₹${item.totalPrice}
+                </p>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button class="btn btn-secondary" onclick="adjustQuickOrderItemQuantity(${index}, -1)" style="width: 28px !important; height: 28px !important; min-width: unset !important; min-height: unset !important; padding: 0 !important; border-radius: 8px !important; font-size: 14px; font-weight: bold; background: #1c1c1e; border: 1px solid #2c2c2e; color: #fff;">-</button>
+                <button class="btn btn-secondary" onclick="adjustQuickOrderItemQuantity(${index}, 1)" style="width: 28px !important; height: 28px !important; min-width: unset !important; min-height: unset !important; padding: 0 !important; border-radius: 8px !important; font-size: 14px; font-weight: bold; background: #1c1c1e; border: 1px solid #2c2c2e; color: #fff;">+</button>
+                <button class="btn btn-secondary" onclick="deleteQuickOrderItem(${index})" style="width: 28px !important; height: 28px !important; min-width: unset !important; min-height: unset !important; padding: 0 !important; border-radius: 8px !important; font-size: 11px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; margin-left: 4px;">✕</button>
+              </div>
+            </div>
+          `;
+          listContainer.innerHTML += rowHtml;
+        });
+      }
+
+      const notesSection = document.getElementById('quick-order-custom-notes-section');
+      const notesList = document.getElementById('quick-order-custom-notes-list');
+      if (quickOrderCustomNotes.length > 0) {
+        notesSection.style.display = 'block';
+        notesList.innerHTML = quickOrderCustomNotes.map(n => `• ${n}`).join('<br>');
+      } else {
+        notesSection.style.display = 'none';
+      }
+
+      recalculateQuickOrderBill();
+
+      const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+      let phone = "-";
+      let address = "-";
+      if (user) {
+        const customerProfile = getData('ek_users', []).find(u => u.id === user.uid);
+        if (customerProfile) {
+          phone = customerProfile.phone || user.phoneNumber || "-";
+          address = customerProfile.address || "-";
+        }
+      }
+      document.getElementById('quick-order-review-phone').innerText = phone;
+      document.getElementById('quick-order-review-address').innerText = address;
+
+      selectQuickOrderPayment('CASH');
+
+      document.getElementById('quick-order-input-container').style.display = 'none';
+      document.getElementById('quick-order-review-container').style.display = 'flex';
+    }
+
+    function adjustQuickOrderItemQuantity(index, direction) {
+      const item = quickOrderCart[index];
+      if (!item) return;
+
+      if (item.isWeight) {
+        const step = 250;
+        item.weightGrams = Math.max(100, item.weightGrams + (direction * step));
+        item.totalPrice = (item.weightGrams / 1000) * item.pricePerKg;
+      } else {
+        item.weightGrams = Math.max(1, item.weightGrams + direction);
+        item.totalPrice = item.weightGrams * item.pricePerKg;
+      }
+      item.totalPrice = Math.round(item.totalPrice);
+
+      renderQuickOrderReview();
+    }
+
+    function deleteQuickOrderItem(index) {
+      quickOrderCart.splice(index, 1);
+      renderQuickOrderReview();
+    }
+
+    function recalculateQuickOrderBill() {
+      const subtotal = quickOrderCart.reduce((acc, curr) => acc + curr.totalPrice, 0);
+
+      const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+      let customerProfile = null;
+      if (user) {
+        customerProfile = getData('ek_users', []).find(u => u.id === user.uid);
+      }
+
+      const financials = calculateOrderFinancials(subtotal, customerProfile, "", false);
+
+      document.getElementById('quick-order-review-subtotal').innerText = `₹${financials.subtotal}`;
+      document.getElementById('quick-order-review-delivery').innerText = `₹${financials.deliveryFee}`;
+      document.getElementById('quick-order-review-total').innerText = `₹${financials.grandTotal}`;
+    }
+
+    async function placeQuickOrder() {
+      if (quickOrderCart.length === 0) {
+        showToast(currentLang === 'ta' ? "உங்களது ஆர்டர் பட்டியல் காலியாக உள்ளது!" : "Your order items list is empty!", "error");
+        return;
+      }
+
+      const settings = getSettings();
+      if (settings.leaveMode) {
+        showCustomAlert(
+          currentLang === 'ta' ? "🌴 விடுமுறை அறிவிப்பு" : "🌴 Holiday / Leave Notice",
+          settings.leaveNotice || (currentLang === 'ta' ? "மன்னிக்கவும்! கடை தற்காலிகமாக விடுமுறையில் உள்ளது. ஆர்டர் செய்ய இயலாது." : "Sorry, the shop is currently closed on holiday. Ordering is temporarily paused.")
+        );
+        return;
+      }
+
+      if (window.isPlacingOrder) {
+        showToast(currentLang === 'ta' ? "மன்னிக்கவும்! ஒரு ஆர்டர் ஏற்கனவே செயலாக்கத்தில் உள்ளது." : "Please wait! Your order is already being processed.", "warning");
+        return;
+      }
+
+      const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+      if (!user) {
+        showToast(currentLang === 'ta' ? "ஆர்டர் செய்ய முதலில் லாகின் செய்யவும்!" : "Login Required. Please login before placing an order.", "error");
+        showScreen('screen-login');
+        return;
+      }
+
+      const customerProfile = getData('ek_users', []).find(u => u.id === user.uid);
+      if (!customerProfile) {
+        showToast("பயனர் விவரங்களைக் கண்டறிய முடியவில்லை! (User details not found!)", "error");
+        return;
+      }
+
+      const address = customerProfile.address || "";
+      if (!address) {
+        showToast(currentLang === 'ta' ? "தயவுசெய்து உங்கள் சுயவிவரத்தில் விநியோக முகவரியைச் சேர்க்கவும்!" : "Please add a delivery address in your profile first!", "error");
+        return;
+      }
+
+      const finalLat = customerProfile.latitude ? parseFloat(customerProfile.latitude) : null;
+      const finalLng = customerProfile.longitude ? parseFloat(customerProfile.longitude) : null;
+
+      if (finalLat === null || isNaN(finalLat) || finalLng === null || isNaN(finalLng)) {
+        showToast(currentLang === 'ta' ? "முகவரி வரைபடத்தில் சரியாக அமைக்கப்படவில்லை. வரைபடத்தில் முகவரியை அமைக்கவும்!" : "Delivery address location is not pinned on map. Please update it in profile page first!", "error");
+        return;
+      }
+
+      const subtotal = quickOrderCart.reduce((acc, curr) => acc + curr.totalPrice, 0);
+      const minWeightGrams = parseFloat(settings.minOrderWeight || 50);
+      const minOrderAmount = parseFloat(settings.minOrderAmount || 0);
+      const basketTotalWeight = quickOrderCart.reduce((acc, item) => acc + item.weightGrams, 0);
+
+      if (basketTotalWeight < minWeightGrams) {
+        showToast(`குறைந்தபட்ச ஆர்டர் எடை (${minWeightGrams}g) இல்லை! (Minimum order weight requirement is not met!)`, "error");
+        return;
+      }
+      if (subtotal < minOrderAmount) {
+        showToast(`குறைந்தபட்ச ஆர்டர் தொகை (₹${minOrderAmount}) இல்லை! (Minimum order amount requirement is not met!)`, "error");
+        return;
+      }
+
+      const financials = calculateOrderFinancials(subtotal, customerProfile, "", false);
+      const randomID = generateUniqueOrderId();
+
+      let loyaltyMultiplier = 1.0;
+      if (customerProfile.tier === 'silver') {
+        loyaltyMultiplier = 1.5;
+      } else if (customerProfile.tier === 'gold') {
+        loyaltyMultiplier = 2.0;
+      }
+      const pointsEarned = Math.floor((financials.grandTotal / 100) * 10 * loyaltyMultiplier);
+
+      let notesText = "";
+      if (quickOrderCustomNotes.length > 0) {
+        notesText = "📝 [SHOPPING LIST MANUAL SOURCING ITEMS]:\n" + quickOrderCustomNotes.map(n => `- ${n}`).join('\n');
+      }
+
+      const order = {
+        id: randomID,
+        userId: user.uid,
+        customerId: user.uid,
+        customerName: customerProfile.name || "Customer / வாடிக்கையாளர்",
+        customerPhone: customerProfile.phone || user.phoneNumber || "",
+        customerFcmToken: customerProfile.fcmToken || (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : ''),
+        deliveryAddress: address,
+        deliveryLatitude: finalLat,
+        deliveryLongitude: finalLng,
+        deliveryTimeSlot: "Instant Delivery / விரைவான விநியோகம்",
+        paymentMethod: quickOrderPaymentMethod,
+        items: quickOrderCart.map(item => ({
+          productId: item.productId,
+          name: item.name,
+          tamilName: item.tamilName,
+          pricePerKg: item.pricePerKg,
+          weightGrams: item.weightGrams,
+          totalPrice: item.totalPrice,
+          imageUrl: item.imageUrl,
+          category: item.category
+        })),
+        subtotalAmount: financials.subtotal,
+        deliveryFee: financials.deliveryFee,
+        expressDelivery: true,
+        loyaltyPointsUsed: 0,
+        loyaltyDiscount: 0,
+        accruedPoints: pointsEarned,
+        appliedCouponCode: "",
+        couponDiscount: 0,
+        totalAmount: financials.grandTotal,
+        status: 'pending',
+        orderSource: 'MANUAL',
+        notes: notesText, // Sourced manual items
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      if (quickOrderPaymentMethod === 'UPI') {
+        window.isPlacingOrder = true;
+        showToast(currentLang === 'ta' ? "யுபிஐ செலுத்துதல் துவங்குகிறது... ⏳" : "UPI Payment Initializing... ⏳", "info");
+
+        const pendingOrderData = {
+          order: order,
+          customerProfile: customerProfile,
+          address: address,
+          finalLat: finalLat,
+          finalLng: finalLng,
+          pointsEarned: pointsEarned,
+          financials: financials,
+          user: user,
+          cartSnapshot: order.items,
+          appliedCouponSnapshot: ""
+        };
+        window.pendingUpiOrderData = pendingOrderData;
+        window.currentUpiAttemptAccount = 'primary';
+        saveData('ek_pending_upi_order_data', pendingOrderData);
+
+        const upiSettings = settings.upiSettings || { upiEnabled: true, currency: 'INR' };
+        let upiMerchantId = settings.merchantUpiId || 'einsteinananth24@okaxis';
+        let upiMerchantName = "Edappadi Kadai";
+        let upiTxnNote = `Order ${order.id} - Edappadi Kadai`;
+        let upiCurrency = upiSettings.currency || 'INR';
+
+        const activeAcc = typeof getActiveUpiAccount === 'function' ? getActiveUpiAccount(settings) : null;
+        if (activeAcc) {
+          upiMerchantId = activeAcc.upiId;
+          upiMerchantName = activeAcc.merchantName || activeAcc.displayName || "Edappadi Kadai";
+          if (activeAcc.note) {
+            upiTxnNote = activeAcc.note.replace(/{id}/g, order.id).replace(/{orderId}/g, order.id);
+          }
+        }
+
+        const upiAmount = order.totalAmount.toFixed(2);
+        const upiTxnRef = order.id;
+        const upiUri = `upi://pay?pa=${encodeURIComponent(upiMerchantId)}&pn=${encodeURIComponent(upiMerchantName)}&tr=${encodeURIComponent(upiTxnRef)}&tn=${encodeURIComponent(upiTxnNote)}&am=${upiAmount}&cu=${encodeURIComponent(upiCurrency)}`;
+
+        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.startUpiPayment === 'function') {
+          debugLog("[UPI Payment] Launching native UPI chooser:", upiUri);
+          const successLaunch = AndroidStorage.startUpiPayment(upiUri);
+          if (!successLaunch) {
+            showToast("யுபிஐ செயலியை திறப்பதில் சிக்கல்! (Failed to launch UPI apps!)", "error");
+            window.isPlacingOrder = false;
+          }
+        } else {
+          console.warn("[UPI Payment] AndroidStorage is undefined. Simulating UPI payment in browser preview.");
+          showCustomConfirm(
+            currentLang === 'ta' ? "📱 யுபிஐ சோதனை" : "📱 UPI Simulation",
+            currentLang === 'ta'
+              ? `[Web Preview] யுபிஐ பணம் செலுத்துதல் வெற்றிகரமாக முடிந்ததா என சோதிக்க விரும்புகிறீர்களா?\n\nமொத்தம்: ₹${upiAmount}\nபெறுநர்: ${upiMerchantId}`
+              : `[Web Preview] Would you like to simulate a successful UPI payment response?\n\nTotal: ₹${upiAmount}\nMerchant: ${upiMerchantId}`,
+            () => {
+              setTimeout(() => {
+                if (typeof window.onAndroidUpiPaymentResult === 'function') {
+                  window.onAndroidUpiPaymentResult('SUCCESS_NO_RESPONSE_DATA');
+                }
+              }, 800);
+            },
+            () => {
+              setTimeout(() => {
+                if (typeof window.onAndroidUpiPaymentResult === 'function') {
+                  window.onAndroidUpiPaymentResult('CANCELLED');
+                }
+              }, 800);
+            }
+          );
+        }
+      } else {
+        window.isPlacingOrder = true;
+        showToast("Processing Order / ஆர்டர் செய்யப்படுகிறது... ⏳", "info");
+        showLyoTransitLoader(currentLang === 'ta' ? "உங்களுக்காக ஸ்பெஷலாக ஆர்டர் செய்யப்படுகிறது... 🥩🥦" : "Processing your secure order... 🥩🥦", 1200);
+
+        try {
+          await completeOrderPlacement(order, customerProfile, address, finalLat, finalLng, pointsEarned, financials, user, order.items, "");
+          goBackToHomeFromQuickOrder();
+        } catch (placeErr) {
+          console.error("placeQuickOrder completeOrderPlacement failed:", placeErr);
+          showToast("Quick order error: " + (placeErr.message || placeErr), "error");
+        } finally {
+          window.isPlacingOrder = false;
+          try { hideLoadingModal(); } catch(e) {}
+          try { hideLyoTransitLoader(); } catch(e) {}
+        }
+      }
+    }
+
+    async function applyQuickOrderResolutions() {
+      try {
+        const modal = document.getElementById('ai-shopping-assistant-modal');
+        if (modal) {
+          modal.style.display = 'none';
+        }
+
+        const targetOrderId = window.activeResolutionOrderId || (modal && modal.dataset && modal.dataset.orderId) || window.currentResolutionOrderId;
+
+        let appliedCount = 0;
+
+        if (targetOrderId) {
+          if (typeof db !== 'undefined' && db) {
+            const orderRef = db.collection('ek_orders').doc(targetOrderId);
+            const docSnap = await orderRef.get();
+            if (docSnap.exists) {
+              const orderData = docSnap.data();
+              const updatedNotes = (orderData.notes || '').replace(/📝 \[SHOPPING LIST MANUAL SOURCING ITEMS\]:/g, '✅ [AI RESOLVED SOURCING ITEMS]:');
+              await orderRef.update({
+                notes: updatedNotes,
+                aiResolved: true,
+                aiResolutionTimestamp: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              });
+
+              const cachedOrders = getData('ek_orders', []);
+              const idx = cachedOrders.findIndex(o => o.id === targetOrderId);
+              if (idx !== -1) {
+                cachedOrders[idx].notes = updatedNotes;
+                cachedOrders[idx].aiResolved = true;
+                saveData('ek_orders', cachedOrders);
+              }
+              appliedCount++;
+            }
+          }
+        }
+
+        const orders = getData('ek_orders', []);
+        const pendingAiOrders = orders.filter(o => o && o.notes && o.notes.includes('[SHOPPING LIST MANUAL SOURCING ITEMS]') && !o.aiResolved);
+
+        for (const pOrder of pendingAiOrders) {
+          if (typeof db !== 'undefined' && db) {
+            try {
+              const orderRef = db.collection('ek_orders').doc(pOrder.id);
+              const updatedNotes = pOrder.notes.replace(/📝 \[SHOPPING LIST MANUAL SOURCING ITEMS\]:/g, '✅ [AI RESOLVED SOURCING ITEMS]:');
+              await orderRef.update({
+                notes: updatedNotes,
+                aiResolved: true,
+                aiResolutionTimestamp: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              });
+              pOrder.notes = updatedNotes;
+              pOrder.aiResolved = true;
+              appliedCount++;
+            } catch (err) {
+              console.warn("Failed to update Firestore for order " + pOrder.id, err);
+            }
+          }
+        }
+
+        if (pendingAiOrders.length > 0) {
+          saveData('ek_orders', orders);
+        }
+
+        if (typeof quickOrderCustomNotes !== 'undefined' && quickOrderCustomNotes.length > 0) {
+          quickOrderCustomNotes = [];
+          if (typeof renderQuickOrderReview === 'function') {
+            renderQuickOrderReview();
+          }
+          appliedCount++;
+        }
+
+        showToast(
+          currentLang === 'ta' 
+            ? "AI ஆர்டர் தீர்வுகள் வெற்றிகரமாக பயன்படுத்தப்பட்டன! ✨" 
+            : "AI order resolutions applied successfully! ✨", 
+          "success"
+        );
+
+        if (typeof renderAdminOrders === 'function') {
+          try { renderAdminOrders(); } catch(e) { console.error(e); }
+        }
+        if (typeof renderAdminDashboard === 'function') {
+          try { renderAdminDashboard(); } catch(e) { console.error(e); }
+        }
+      } catch (err) {
+        console.error("applyQuickOrderResolutions error:", err);
+        showToast("Error applying AI resolutions: " + (err.message || err), "error");
+      }
+    }
+
+    function bootstrapApplication() {
+      // 0. PRESERVE & SYNC LOCAL / NATIVE CACHED DATA IMMEDIATELY
+      try {
+        if (typeof AndroidStorage !== "undefined") {
+          const syncKeys = [
+            "ek_products", "ek_settings", "ek_orders", "ek_users",
+            "ek_delivery_persons", "ek_admin_accounts", "ek_admin_session",
+            "ek_customer_session", "ek_delivery_session", "ek_lyo_ai_config", "ek_last_update", "ek_lang",
+            "ek_remembered_credentials", "ek_categories", "ek_coupons"
+          ];
+          syncKeys.forEach(k => {
+            try {
+              const val = AndroidStorage.getData(k, "");
+              if (val && val.trim() !== "" && val !== "null" && val !== "[]" && val !== "{}") {
+                localStorage.setItem(k, val);
+              }
+            } catch(e){}
+          });
+        }
+      } catch(e){}
+      // 1. INSTANT SYNCHRONOUS LOCAL SESSION ROUTING (Zero Network Wait)
+      try {
+        if (typeof enforceRememberMeValidationOnStartup === 'function') enforceRememberMeValidationOnStartup();
+        if (typeof validateAndSanitizeSessions === 'function') validateAndSanitizeSessions();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const trackOrderIdParam = urlParams.get("trackOrderId");
+        
+        if (trackOrderIdParam) {
+          selectedTrackOrderId = trackOrderIdParam.trim();
+          showScreen("screen-track");
+          renderTrackerScreen();
+        } else {
+          const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+          const custSession = typeof getActiveSession === 'function' ? getActiveSession() : null;
+          const deliverySession = typeof getData === 'function' ? getData('ek_delivery_session', null) : null;
+
+          if (adminSession && adminSession.loggedIn) {
+            showScreen('screen-admin');
+          } else if (deliverySession && deliverySession.loggedIn) {
+            showScreen('screen-delivery');
+          } else if (custSession && custSession.loggedIn) {
+            showScreen('screen-home');
+          } else {
+            showScreen('screen-home');
+          }
+        }
+        hideLoadingModal();
+        hideLyoTransitLoader();
+        try {
+          if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.notifyAppLoaded === 'function') {
+            AndroidStorage.notifyAppLoaded();
+          }
+        } catch (ae) {}
+      } catch (e) {
+        console.error('[Instant Session Route] Synchronous local routing failed:', e);
+      }
+
+      try {
+        const LATEST_VERSION = "2.1.8";
+        const lastVersion = localStorage.getItem('ek_app_version');
+        if (lastVersion !== LATEST_VERSION) {
+          debugLog("[Cache Buster] Version mismatch. Upgrading from " + lastVersion + " to " + LATEST_VERSION);
+
+          const keysToClear = ['ek_last_update'];
+
+          keysToClear.forEach(k => {
+            localStorage.removeItem(k);
+            if (typeof AndroidStorage !== 'undefined') {
+              try {
+                AndroidStorage.saveData(k, "");
+              } catch(ae) {}
+            }
+          });
+
+          localStorage.setItem('ek_app_version', LATEST_VERSION);
+          debugLog("[Cache Buster] Cached background data purged successfully for version " + LATEST_VERSION);
+        }
+      } catch (verErr) {
+        console.error("Cache buster execution failed:", verErr);
+      }
+
+      try {
+        initApp();
+      } catch (e) {
+        console.error("initApp failed:", e);
+      }
+
+      try {
+        runAbsoluteCleanupForThreeProducts();
+      } catch (e) {
+        console.error("runAbsoluteCleanupForThreeProducts failed:", e);
+      }
+
+      try {
+        attachInfiniteScrollListener();
+      } catch (e) {
+        console.error("attachInfiniteScrollListener failed:", e);
+      }
+
+      try {
+        migratePasswordsToHash();
+      } catch (err) {
+        console.error("Failed to migrate passwords during bootstrap:", err);
+      }
+
+      try {
+        if (typeof AndroidStorage !== 'undefined') {
+          const syncKeys = [
+            'ek_products', 'ek_settings', 'ek_orders', 'ek_users',
+            'ek_delivery_persons', 'ek_admin_accounts', 'ek_admin_session',
+            'ek_customer_session', 'ek_delivery_session', 'ek_lyo_ai_config', 'ek_last_update', 'ek_lang',
+            'ek_remembered_credentials',
+            'ek_deleted_order_ids', 'ek_deleted_product_ids', 'ek_deleted_user_ids', 'ek_deleted_rider_ids',
+            'ek_categories'
+          ];
+          syncKeys.forEach(k => {
+            try {
+              const val = AndroidStorage.getData(k, "");
+              if (val) {
+                localStorage.setItem(k, val);
+              }
+            } catch (e) {
+              console.error("Sync error", e);
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Android storage sync failed:", e);
+      }
+
+      try {
+        localStorage.setItem('ek_lang', 'en');
+        currentLang = 'en';
+        if (typeof AndroidStorage !== 'undefined') {
+          try { AndroidStorage.saveData('ek_lang', 'en'); } catch(e) {}
+        }
+      } catch (e) {
+        console.error("Language reset failed:", e);
+      }
+
+      debugLog("[Slate Purge] Bypassed legacy demo products purge block to preserve active user products and deletion safeguards.");
+
+      try {
+        if (typeof db !== 'undefined' && db) {
+          db.collection('ek_tombstones').get().then(snapshot => {
+            if (snapshot && !snapshot.empty) {
+              snapshot.forEach(doc => {
+                const docId = doc.id;
+                const cloudIds = doc.data()?.ids || [];
+                if (Array.isArray(cloudIds) && cloudIds.length > 0) {
+                  let localList = [];
+                  if (docId === 'ek_deleted_product_ids') localList = getDeletedProductIds();
+                  else if (docId === 'ek_deleted_order_ids') localList = getDeletedOrderIds();
+                  else if (docId === 'ek_deleted_user_ids') localList = getDeletedUserIds();
+                  else if (docId === 'ek_deleted_rider_ids') localList = getDeletedRiderIds();
+
+                  if (!Array.isArray(localList)) localList = [];
+                  const mergedMap = new Set([...localList, ...cloudIds]);
+                  const mergedList = Array.from(mergedMap);
+                  saveData(docId, mergedList);
+                  if (docId === 'ek_deleted_order_ids') {
+                    pruneLocalDeletedOrders();
+                  } else if (docId === 'ek_deleted_product_ids') {
+                    pruneLocalDeletedProducts();
+                  } else if (docId === 'ek_deleted_user_ids') {
+                    pruneLocalDeletedUsers();
+                  } else if (docId === 'ek_deleted_rider_ids') {
+                    pruneLocalDeletedRiders();
+                  }
+                  debugLog(`[Tombstone Bootstrap] Merged and saved ${mergedList.length} tombstone IDs for ${docId}`);
+                }
+              });
+
+              if (typeof renderHomeScreenProducts === 'function') {
+                _lastProductsHash = '';
+                _lastSpecialsHash = '';
+                renderHomeScreenProducts(true);
+              }
+              if (typeof renderCategoryPills === 'function') renderCategoryPills();
+            }
+          }).catch(err => console.error("[Tombstone Bootstrap] Fetch failed:", err));
+        }
+      } catch (e) {
+        console.error("Tombstone bootstrap outer failed:", e);
+      }
+
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        let refParam = urlParams.get('ref');
+        if (refParam) {
+          refParam = refParam.trim().toUpperCase();
+          sessionStorage.setItem('ek_referred_by_code', refParam);
+          debugLog("[Referral System] URL referral parameter detected and saved:", refParam);
+        }
+      } catch (err) {
+        console.error("Failed to parse URL referral code:", err);
+      }
+
+      try {
+        debugLog('[Cleanup] Delivery partner auto-cleanup bypassed for safety.');
+      } catch (e) {
+        console.error('Dummy rider cleanup failed:', e);
+      }
+
+      try {
+        seedDatabase();
+      } catch (e) {
+        console.error("seedDatabase failed:", e);
+      }
+
+      try {
+        migrateBase64ImagesToStorage();
+      } catch (e) {
+        console.error("migrateBase64ImagesToStorage failed:", e);
+      }
+
+      try {
+        archiveOldOrders();
+      } catch (e) {
+        console.error("archiveOldOrders failed:", e);
+      }
+
+      function startRealtimeSync() {
+        if (typeof setupCloudRealtimeListeners2 === 'function') {
+          setupCloudRealtimeListeners2();
+        }
+      }
+
+     if (typeof prefillLoginCredentials === "function") prefillLoginCredentials(); if (typeof populateAdminSelector === "function") populateAdminSelector(); if (typeof updateNotificationUnreadCount === "function") updateNotificationUnreadCount(); if (typeof updateCartBadge === "function") updateCartBadge(); if (typeof applyTranslations === "function") applyTranslations(); if (typeof startRealtimeSync === "function") startRealtimeSync(); if (typeof registerRealFcmToken === "function") registerRealFcmToken();
+
+      // Parallel Concurrent Data Fetching (Settings, Products, Selector Accounts, Meta Sync)
+      Promise.all([
+        fetchSettingsOnce().catch(e => console.warn("fetchSettingsOnce async error:", e)),
+        fetchProductsOnce().catch(e => console.warn("fetchProductsOnce async error:", e)),
+        fetchSelectorAccounts().catch(e => console.warn("fetchSelectorAccounts async error:", e)),
+        syncWithCloud().catch(e => console.warn("syncWithCloud async error:", e))
+      ]).then(() => {
+        try {
+          window._isSettingsFetched = true;
+              window._hasFreshSettings = true;
+              checkAndUpdateFreshCloudData();
+          window._hasFreshSettings = true;
+          _lastBannersHash = '';
+          hideLoadingModal();
+          hideLyoTransitLoader();
+          if (typeof AndroidStorage !== 'undefined') {
+            try {
+              if (typeof AndroidStorage.notifyAppLoaded === 'function') AndroidStorage.notifyAppLoaded();
+              if (typeof AndroidStorage.onJsAppLoaded === 'function') AndroidStorage.onJsAppLoaded();
+            } catch (ae) {}
+          }
+          if (currentScreen === 'screen-admin' && typeof renderAdminDashboard === 'function') {
+            renderAdminDashboard();
+          } else if (currentScreen === 'screen-home' && typeof renderHomeScreenProducts === 'function') {
+            renderHomeScreenProducts();
+          }
+        } catch (e) {
+          console.error("Background data refresh completion error:", e);
+        }
+      });
+
+      try {
+        if (typeof runTimeScheduler === "function") { runTimeScheduler(); setInterval(runTimeScheduler, 60000); }
+      } catch (e) {
+        console.error("Time scheduler initialization failed:", e);
+      }
+    }
+
+    let isBootstrapCalled = false;
+    function safeBootstrap() {
+      if (isBootstrapCalled) return;
+      isBootstrapCalled = true;
+      debugLog("[Bootstrap] safeBootstrap triggered successfully!");
+      try {
+        localStorage.setItem('hide_hero_banner', 'false');
+        localStorage.setItem('hide_specials_section', 'false');
+        localStorage.setItem('hide_loyalty_wallet', 'false');
+      } catch(e) {}
+      bootstrapApplication();
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      safeBootstrap();
+    } else {
+      window.addEventListener('DOMContentLoaded', safeBootstrap);
+      window.addEventListener('load', safeBootstrap);
+      // deferred until all scripts loaded
+    }
+
+    const DEFAULT_COUPONS = [
+      { id: 'c1', code: 'WELCOME10', type: 'percentage', rate: 10, minAmount: 199, descEn: 'Get 10% OFF on all gourmet meat and veggies!', descTa: 'அனைத்து இறைச்சி மற்றும் காயறிகளுக்கு 10% தள்ளுபடி!' },
+      { id: 'c2', code: 'FREEFRESH', type: 'freeship', rate: 0, minAmount: 299, descEn: 'Get FREE doorstep delivery on your delicious order!', descTa: 'குறைந்தபட்ச ஆர்டர் ₹299-க்கு இலவச டெலிவரி!' },
+      { id: 'c3', code: 'SAVEMORE', type: 'fixed', rate: 50, minAmount: 499, descEn: 'Flat ₹50 cash discount on your grand feast order!', descTa: 'உங்கள் மொத்த ஆர்டருக்கும் ₹50 நேரடி தள்ளுபடி!' }
+    ];
+
+    function getCoupons() {
+      return getDataCached('ek_coupons', DEFAULT_COUPONS);
+    }
+
+    function saveCoupons(list) {
+      saveData('ek_coupons', list);
+      if (db) {
+        list.forEach(c => {
+          db.collection('ek_coupons').doc(c.id).set(c).catch(err => {});
+        });
+      }
+    }
+
+    function applyCartCouponCode() {
+      const inp = document.getElementById('cart-coupon-input');
+      if (!inp) return;
+      const code = inp.value.trim().toUpperCase();
+      if (!code) {
+        showToast(currentLang === 'ta' ? "மன்னிக்கவும்! கூப்பன் குறியீடு காலியாக உள்ளது." : "Please enter a coupon code!", "warning");
+        return;
+      }
+
+      const coupons = getCoupons();
+      const match = coupons.find(c => c.code === code);
+      if (!match) {
+        showToast(currentLang === 'ta' ? "தவறான கூப்பன் குறியீடு! WELCOME10, FREEFRESH அல்லது SAVEMORE முயற்சிக்கவும்." : "Invalid Coupon Code! Try WELCOME10, FREEFRESH or SAVEMORE.", "error");
+        return;
+      }
+
+      const subtotal = cart.reduce((acc, curr) => acc + curr.totalPrice, 0);
+      if (subtotal < match.minAmount) {
+        showToast(currentLang === 'ta' ? `மன்னிக்கவும்! இந்த கூப்பனைப் பயன்படுத்த குறைந்தபட்ச ஆர்டர் ₹${match.minAmount} தேவை.` : `This coupon requires a minimum subtotal of ₹${match.minAmount}!`, "warning");
+        return;
+      }
+
+      appliedCouponCode = code;
+      recalculateBill();
+      showToast(currentLang === 'ta' ? `கூப்பன் '${code}' வெற்றிகரமாக சேர்க்கப்பட்டது! 🎉` : `Coupon ${code} applied successfully! 🎉`, "success");
+      inp.value = '';
+
+      triggerConfettiExplosion();
+      playCelebrationSound();
+    }
+
+    function playCelebrationSound() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+
+        const playNote = (freq, delay, duration, gainVal) => {
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+
+          osc.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+
+          gainNode.gain.setValueAtTime(0, ctx.currentTime + delay);
+          gainNode.gain.linearRampToValueAtTime(gainVal, ctx.currentTime + delay + 0.04);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration - 0.02);
+
+          osc.type = 'sine';
+          osc.start(ctx.currentTime + delay);
+          osc.stop(ctx.currentTime + delay + duration);
+        };
+
+        playNote(523.25, 0.0, 0.35, 0.20);  // C5
+        playNote(659.25, 0.1, 0.35, 0.20);  // E5
+        playNote(783.99, 0.2, 0.35, 0.20);  // G5
+        playNote(1046.50, 0.3, 0.5, 0.25);  // C6
+      } catch (e) {
+        console.warn("Coupon applied celebration chime error:", e);
+      }
+    }
+
+    function triggerConfettiExplosion() {
+      let canvas = document.getElementById('coupon-confetti-canvas');
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.id = 'coupon-confetti-canvas';
+        canvas.style.position = 'fixed';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100vw';
+        canvas.style.height = '100vh';
+        canvas.style.pointerEvents = 'none';
+        canvas.style.zIndex = '10050';
+        document.body.appendChild(canvas);
+      }
+
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      window.addEventListener('resize', function() {
+        if (canvas && canvas.parentNode) {
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+        }
+      }, { once: true });
+
+      const colors = [
+        '#f59e0b', // Bright orange
+        '#10b981', // Clean green
+        '#3b82f6', // Electric blue
+        '#ec4899', // Cotton candy pink
+        '#8b5cf6', // Violet purple
+        '#f43f5e', // Vibrant red
+        '#06b6d4'  // Electric cyan
+      ];
+
+      const particles = [];
+      const particleCount = 140;
+
+      class ConfettiParticle {
+        constructor(x, y, vx, vy) {
+          this.x = x;
+          this.y = y;
+          this.size = Math.random() * 8 + 6;
+          this.vx = vx;
+          this.vy = vy;
+          this.color = colors[Math.floor(Math.random() * colors.length)];
+          this.rotation = Math.random() * 360;
+          this.rotationSpeed = (Math.random() - 0.5) * 8;
+          this.opacity = 1;
+          this.scaleY = Math.random();
+          this.shape = Math.random() > 0.45 ? 'rect' : (Math.random() > 0.4 ? 'circle' : 'triangle');
+        }
+
+        update() {
+          this.x += this.vx;
+          this.y += this.vy;
+          this.vy += 0.16; // safe gravity
+          this.vx *= 0.985; // air friction
+          this.vy *= 0.985;
+          this.rotation += this.rotationSpeed;
+          this.scaleY = Math.sin(Date.now() / 200 + this.rotation) * 0.5 + 0.5;
+          this.opacity -= 0.009; // smooth fade Out
+        }
+
+        draw() {
+          if (this.opacity <= 0) return;
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.rotation * Math.PI / 180);
+          ctx.scale(1, this.scaleY);
+          ctx.globalAlpha = this.opacity;
+          ctx.fillStyle = this.color;
+
+          ctx.beginPath();
+          if (this.shape === 'rect') {
+            ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+          } else if (this.shape === 'circle') {
+            ctx.arc(0, 0, this.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.moveTo(0, -this.size / 2);
+            ctx.lineTo(this.size / 2, this.size / 2);
+            ctx.lineTo(-this.size / 2, this.size / 2);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      const leftX = 0;
+      const rightX = canvas.width;
+      const bottomY = canvas.height;
+
+      for (let i = 0; i < particleCount / 2; i++) {
+        const vx = Math.random() * 8 + 4;
+        const vy = -(Math.random() * 12 + 10);
+        particles.push(new ConfettiParticle(leftX, bottomY, vx, vy));
+      }
+
+      for (let i = 0; i < particleCount / 2; i++) {
+        const vx = -(Math.random() * 8 + 4);
+        const vy = -(Math.random() * 12 + 10);
+        particles.push(new ConfettiParticle(rightX, bottomY, vx, vy));
+      }
+
+      function renderFrame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        let stillActive = false;
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          p.update();
+          p.draw();
+          if (p.opacity > 0 && p.y < canvas.height + 30) {
+            stillActive = true;
+          }
+        }
+
+        if (stillActive) {
+          requestAnimationFrame(renderFrame);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          if (canvas.parentNode) {
+            canvas.parentNode.removeChild(canvas);
+          }
+        }
+      }
+
+      requestAnimationFrame(renderFrame);
+    }
+
+    function removeCartCouponCode() {
+      appliedCouponCode = null;
+      recalculateBill();
+      showToast(currentLang === 'ta' ? "கூப்பன் நீக்கப்பட்டது." : "Coupon code retracted.", "info");
+    }
+
+    function renderAdminCoupons() {
+      const list = getCoupons();
+      const container = document.getElementById('admin-coupons-list');
+      const countLabel = document.getElementById('admin-coupons-count');
+      if (!container) return;
+
+      container.innerHTML = '';
+      if (countLabel) countLabel.innerText = `${list.length} active`;
+
+      if (list.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:12px;">${currentLang === 'ta' ? 'கூப்பன்கள் எதுவும் இல்லை.' : 'No active promo coupons defined yet.'}</div>`;
+        return;
+      }
+
+      list.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.style.borderColor = 'rgba(245,158,11,0.2)';
+        div.style.background = '#121214';
+        div.style.marginBottom = '8px';
+        div.style.display = 'flex';
+        div.style.justify = 'space-between';
+        div.style.alignItems = 'center';
+
+        const typeLabel = c.type === 'percentage' ? `${c.rate}% Off` : c.type === 'fixed' ? `₹${c.rate} Off` : 'Free Shipping 🚚';
+        div.innerHTML = `
+          <div>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span class="badge" style="background:rgba(245,158,11,0.1); color:var(--accent-orange); font-weight:800; font-size:12px;">${c.code}</span>
+              <span style="font-size:11.5px; font-weight:700; color:var(--accent-green);">${typeLabel}</span>
+            </div>
+            <p style="font-size:11.5px; color:#fff; font-weight:600; margin:2px 0;">🇬🇧 ${c.descEn}</p>
+            <p style="font-size:11px; color:var(--text-secondary); margin:2px 0;">🇮🇳 ${c.descTa}</p>
+            <span style="font-size:10px; color:var(--text-muted);">Min Order: ₹${c.minAmount}</span>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn" style="padding:6px 10px; font-size:11px; font-weight:700; width:auto; border-color:rgba(255,255,255,0.05); color:#fff;" onclick="editCoupon('${c.id}')">✏️</button>
+            <button class="btn btn-secondary" style="padding:6px 10px; font-size:11px; font-weight:700; width:auto; border-color:#ef4444; color:#ef4444;" onclick="deleteCoupon('${c.id}')">🗑️</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function onCouponTypeChange() {
+      const type = document.getElementById('add-coupon-type').value;
+      const rateLabel = document.getElementById('coupon-rate-label');
+      const rateInput = document.getElementById('add-coupon-rate');
+
+      if (type === 'freeship') {
+        rateInput.value = '0';
+        rateInput.disabled = true;
+        rateLabel.innerText = "Discount Value (Disabled)";
+      } else {
+        rateInput.disabled = false;
+        rateLabel.innerText = type === 'percentage'
+          ? (currentLang === 'ta' ? "தள்ளுபடி சதவிகிதம் (%)" : "Discount Percentage (%)")
+          : (currentLang === 'ta' ? "தள்ளுபடி தொகை (₹)" : "Discount Value (₹)");
+      }
+    }
+
+    function handleCouponSave(event) {
+      if (event) event.preventDefault();
+
+      const id = document.getElementById('edit-coupon-id').value;
+      const code = document.getElementById('add-coupon-code').value.trim().toUpperCase();
+      const type = document.getElementById('add-coupon-type').value;
+      const rate = parseInt(document.getElementById('add-coupon-rate').value) || 0;
+      const minAmount = parseInt(document.getElementById('add-coupon-min').value) || 0;
+      const descEn = document.getElementById('add-coupon-desc-en').value.trim();
+      const descTa = document.getElementById('add-coupon-desc-ta').value.trim();
+
+      if (!code || !descEn || !descTa) {
+        showToast("Please enter all required fields", "warning");
+        return;
+      }
+
+      let coupons = getCoupons();
+
+      if (id) {
+        const idx = coupons.findIndex(c => c.id === id);
+        if (idx !== -1) {
+          coupons[idx] = { id, code, type, rate, minAmount, descEn, descTa };
+          showToast(currentLang === 'ta' ? "கூப்பன் வெற்றிகரமாக புதுப்பிக்கப்பட்டது!" : "Coupon updated successfully!", "success");
+        }
+      } else {
+        const existing = coupons.find(c => c.code === code);
+        if (existing) {
+          showToast(currentLang === 'ta' ? "மன்னிக்கவும்! இந்த கூப்பன் குறியீடு ஏற்கனவே உள்ளது." : "This Coupon code already exists!", "error");
+          return;
+        }
+        const newC = {
+          id: 'CP' + Math.floor(100000 + Math.random() * 900000),
+          code,
+          type,
+          rate,
+          minAmount,
+          descEn,
+          descTa
+        };
+        coupons.push(newC);
+        showToast(currentLang === 'ta' ? "கூப்பன் வெற்றிகரமாக சேர்க்கப்பட்டது!" : "Coupon added successfully!", "success");
+      }
+
+      saveCoupons(coupons);
+      renderAdminCoupons();
+      resetCouponForm();
+    }
+
+    function resetCouponForm() {
+      document.getElementById('edit-coupon-id').value = '';
+      document.getElementById('admin-coupon-form').reset();
+      document.getElementById('coupon-submit-btn').innerText = (currentLang === 'ta' ? "கூப்பன் உருவாக்கு ✓" : "Create Coupon ✓");
+      document.getElementById('coupon-cancel-btn').style.display = 'none';
+      onCouponTypeChange();
+    }
+
+    function editCoupon(id) {
+      const coupons = getCoupons();
+      const c = coupons.find(x => x.id === id);
+      if (!c) return;
+
+      document.getElementById('edit-coupon-id').value = c.id;
+      document.getElementById('add-coupon-code').value = c.code;
+      document.getElementById('add-coupon-type').value = c.type;
+      document.getElementById('add-coupon-rate').value = c.rate;
+      document.getElementById('add-coupon-min').value = c.minAmount;
+      document.getElementById('add-coupon-desc-en').value = c.descEn;
+      document.getElementById('add-coupon-desc-ta').value = c.descTa;
+
+      onCouponTypeChange();
+      document.getElementById('coupon-submit-btn').innerText = (currentLang === 'ta' ? "கூப்பனை புதுப்பி ✓" : "Update Coupon ✓");
+      document.getElementById('coupon-cancel-btn').style.display = 'inline-block';
+
+      const formCard = document.getElementById('admin-coupon-form');
+      if (formCard) formCard.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function deleteCoupon(id) {
+      const title = currentLang === 'ta' ? "கூப்பனை நீக்குவதா?" : "Delete Coupon?";
+      const msg = currentLang === 'ta' ? "இந்த கூப்பனை நீக்க வேண்டுமா?" : "Are you sure you want to delete this coupon?";
+      showCustomConfirm(
+        title,
+        msg,
+        () => {
+          let coupons = getCoupons();
+          coupons = coupons.filter(c => c.id !== id);
+          saveCoupons(coupons);
+          renderAdminCoupons();
+          showToast(currentLang === 'ta' ? "கூப்பன் வெற்றிகரமாக நீக்கப்பட்டது." : "Coupon was deleted successfully.", "success");
+        },
+        () => {
+        }
+      );
+    }
+
+    function updateProfileGamification() {
+      const u = getActiveUser();
+      if (!u) return;
+
+      const allOrders = getData('ek_orders', []);
+      const orders = allOrders.filter(o => o.customerId === u.id);
+      const totalAmountSpent = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
+      const greetBanner = document.getElementById('prof-greet-banner');
+      let messageEn = "";
+      let messageTa = "";
+
+      if (orders.length === 0) {
+        messageEn = "Welcome! Order high-quality fresh cut meats or daily farm veggies to level up! 🚀";
+        messageTa = "வரவேற்கிறோம்! உயர்தர இறைச்சி அல்லது காய்கறிகளை ஆர்டர் செய்து உங்கள் கணக்கை மேம்படுத்துங்கள்! 🚀";
+      } else if (orders.length < 4) {
+        const remaining = 4 - orders.length;
+        messageEn = `Great job! Just ${remaining} more order${remaining > 1 ? 's' : ''} to become a Silver VIP Member! 🌟`;
+        messageTa = `அற்புதம்! நீங்கள் சில்வர் விஐபி ஆக இன்னும் ${remaining} ஆர்டர்கள் மட்டுமே தேவை! 🌟`;
+      } else {
+        messageEn = `Spectacular! Thank you for ordering ${orders.length} times. Keep checking details for hidden gourmet deals! 🔥`;
+        messageTa = `அற்புதம்! எங்களின் எலைட் வாடிக்கையாளராக விளங்குவதற்கு மிக்க நன்றி! 🔥`;
+      }
+
+      if (greetBanner) {
+        greetBanner.innerHTML = `🌟 ${messageEn}<br><span style="font-size:11.5px; opacity:0.85;">✨ ${messageTa}</span>`;
+      }
+
+      let freshKgs = 0;
+      orders.forEach(o => {
+        if (o.items && Array.isArray(o.items)) {
+          o.items.forEach(it => {
+            if (it.category === 'veg' || it.category === 'fruits') {
+              freshKgs += (it.weightGrams || 500) / 1000;
+            }
+          });
+        }
+      });
+
+      const scoreEl = document.getElementById('prof-farm-score');
+      const kgEl = document.getElementById('prof-farm-kg');
+      if (scoreEl && kgEl) {
+        if (freshKgs === 0) {
+          scoreEl.innerText = "Level 0 (Seed Sower)";
+          kgEl.innerText = "0 Kg Fresh Produce";
+        } else if (freshKgs <= 5) {
+          scoreEl.innerText = "Level 1 (Direct Contributor)";
+          kgEl.innerText = `${freshKgs.toFixed(1)} Kg fresh produce sourced`;
+        } else if (freshKgs <= 15) {
+          scoreEl.innerText = "Level 2 (Direct Farm Patron)";
+          scoreEl.style.color = "#34d399";
+          kgEl.innerText = `${freshKgs.toFixed(1)} Kg fresh produce sourced`;
+        } else {
+          scoreEl.innerText = "Level 3 (Gourmet Agri Hero 🚜)";
+          scoreEl.style.color = "#6ee7b7";
+          kgEl.innerText = `${freshKgs.toFixed(1)} Kg sourced direct!`;
+        }
+      }
+
+      const streakBox = document.getElementById('badge-streak-box');
+      const streakIco = document.getElementById('badge-streak-ico');
+      const streakLbl = document.getElementById('badge-streak-lbl');
+
+      const carbonBox = document.getElementById('badge-carbon-box');
+      const carbonIco = document.getElementById('badge-carbon-ico');
+      const carbonLbl = document.getElementById('badge-carbon-lbl');
+
+      const vipBox = document.getElementById('badge-vip-box');
+      const vipIco = document.getElementById('badge-vip-ico');
+      const vipLbl = document.getElementById('badge-vip-lbl');
+
+      if (orders.length >= 1) {
+        if (streakBox) {
+          streakBox.style.borderColor = 'rgba(239,68,68,0.4)';
+          streakBox.style.background = 'rgba(239,68,68,0.06)';
+        }
+        if (streakIco) streakIco.style.filter = 'none';
+        if (streakLbl) {
+          streakLbl.innerText = "Master ✦";
+          streakLbl.style.color = '#ef4444';
+        }
+      }
+
+      if (totalAmountSpent >= 500) {
+        if (carbonBox) {
+          carbonBox.style.borderColor = 'rgba(16,185,129,0.4)';
+          carbonBox.style.background = 'rgba(16,185,129,0.06)';
+        }
+        if (carbonIco) carbonIco.style.filter = 'none';
+        if (carbonLbl) {
+          carbonLbl.innerText = "Eco Hero";
+          carbonLbl.style.color = '#10b981';
+        }
+      }
+
+      if (orders.length >= 4 || u.tier === 'gold') {
+        if (vipBox) {
+          vipBox.style.borderColor = 'rgba(245,158,11,0.4)';
+          vipBox.style.background = 'rgba(245,158,11,0.06)';
+        }
+        if (vipIco) vipIco.style.filter = 'none';
+        if (vipLbl) {
+          vipLbl.innerText = "Royal Member";
+          vipLbl.style.color = '#f59e0b';
+        }
+      }
+    }
+
+    function generateReferralCodeProfile() {
+      const u = getActiveUser();
+      if (!u) return;
+      const refId = u.id ? u.id.replace('cust_', '').toUpperCase() : 'EDP50';
+      const refLink = window.location.origin + window.location.pathname + `?ref=${refId}`;
+
+      const linkText = document.getElementById('referral-link-text');
+      const areaDiv = document.getElementById('referral-result-area');
+      if (linkText && areaDiv) {
+        linkText.innerHTML = `<strong>Your Companion Link:</strong><br><span style="color:var(--accent-orange); font-family:monospace; font-size:11px;">${refLink}</span><br><span style="font-size:10px; color:#adbac7; margin-top:4px; display:block;">Your friend gets 50 free loyalty points on first order! You receive 50 loyalty pts automatically on their 1st completed order.</span>`;
+        areaDiv.style.display = 'block';
+        showToast("🎁 Companion referral link loaded! Copy and share it via WhatsApp!", "success");
+      }
+    }
+
+    function copyReferralLinktoClip() {
+      const u = getActiveUser();
+      const refId = u ? (u.id ? u.id.replace('cust_', '').toUpperCase() : 'EDP50') : 'EDP50';
+      const refLink = window.location.origin + window.location.pathname + `?ref=${refId}`;
+      copyTextToClipboardGeneral(refLink, "Link copied to clipboard! Share direct on WhatsApp/SMS! 🌐");
+    }
+
+    function checkAndProcessReferralRewards(order) {
+      if (!order || order.status !== 'delivered') return;
+      const customerId = order.customerId;
+      if (!customerId) return;
+
+      const users = getData('ek_users', []);
+      const userIdx = users.findIndex(u => u.id === customerId);
+      if (userIdx === -1) return;
+
+      const user = users[userIdx];
+      if (user.referredBy && !user.referralRewardClaimed) {
+        const allOrders = getData('ek_orders', []);
+        const deliveredOrders = allOrders.filter(o => o.customerId === customerId && o.status === 'delivered');
+
+        if (deliveredOrders.length <= 1) {
+          const awardAmount = 50; // 50 loyalty points
+
+          user.referralRewardClaimed = true;
+          user.loyaltyPoints = (user.loyaltyPoints || 0) + awardAmount;
+          user.tier = computeLoyaltyTier(user.loyaltyPoints);
+          users[userIdx] = user;
+
+          addNotification(
+            "பரிந்துரை போனஸ்! 🎁",
+            "Referral Bonus Awarded! 🎁",
+            `உங்களை பரிந்துரைத்ததற்காக மற்றும் உங்கள் முதல் ஆர்டர் வெற்றிகரமாக முடிந்ததற்காக உங்களுக்கு ${awardAmount} லாயல்டி புள்ளிகள் உங்கள் கணக்கில் சேர்க்கப்பட்டுள்ளது!`,
+            `You have been awarded ${awardAmount} referral loyalty points because you joined via an invite link and completed your first order!`,
+            "🎁"
+          );
+
+          const referrerId = user.referredBy;
+          const referrerIdx = users.findIndex(u => u.id === referrerId || u.id.replace('cust_', '').toUpperCase() === referrerId.replace('cust_', '').toUpperCase());
+          if (referrerIdx !== -1) {
+            const referrer = users[referrerIdx];
+            referrer.loyaltyPoints = (referrer.loyaltyPoints || 0) + awardAmount;
+            referrer.tier = computeLoyaltyTier(referrer.loyaltyPoints);
+            users[referrerIdx] = referrer;
+
+            debugLog(`[Referral System] Awarded ${awardAmount} points to referrer: ${referrer.name} (${referrer.id})`);
+
+            addNotification(
+              "பரிந்துரையாளர் போனஸ்! 👥",
+              "Companion Referral Bonus! 👥",
+              `உங்கள் நண்பர் ${user.name} முதல் ஆர்டரை முடித்துள்ளார்! உங்களுக்கு ${awardAmount} லாயல்டி புள்ளிகள் சேர்க்கப்பட்டுள்ளது.`,
+              `Your companion friend ${user.name} has completed their first order! You have been awarded ${awardAmount} referral points.`,
+              "👥"
+            );
+          } else {
+            console.warn(`[Referral System] Referrer user not found in local users list for: ${referrerId}`);
+          }
+
+          saveData('ek_users', users);
+
+          if (db) {
+            db.collection('ek_users').doc(user.id).set(user)
+              .then(() => debugLog(`[Cloud Referral Sync] Referee updated`))
+              .catch(err => console.error(err));
+
+            if (referrerIdx !== -1) {
+              db.collection('ek_users').doc(users[referrerIdx].id).set(users[referrerIdx])
+                .then(() => debugLog(`[Cloud Referral Sync] Referrer updated`))
+                .catch(err => console.error(err));
+            }
+          }
+
+          showToast(currentLang === 'ta' ? "பரிந்துரை போனஸ் புள்ளிகள் வழங்கப்பட்டது!" : "Referral reward loyalty points awarded success! 🎁🎉", "success");
+        }
+      }
+    }
+
+    function scratchSecretProfileReward() {
+      const resDiv = document.getElementById('secret-scratched-result');
+      if (!resDiv) return;
+
+      const secretsList = [
+        {
+          title: "🍗 Elite Chef Secret: Butter Mutton Stew",
+          desc: "Before gourmet cooking, massage the fresh cuts with lemon zest and yogurt. Apply promo secret code: WELCOME10 for ₹50 off on orders above ₹199!"
+        },
+        {
+          title: "🔥 Spicy Country Chicken Fry",
+          desc: "Roast and handground dry coriander seeds with cinnamon and red chillies. Use secret code: SAVEMORE to get flat ₹50 instant discount!"
+        },
+        {
+          title: "🐟 Traditional Fish Tamarind Sauce",
+          desc: "Sauté seasoned small shallots with curry leaves on fresh cold pressed sesame oil. Use secret promo code: FREEFRESH to unlock free shipping!"
+        }
+      ];
+
+      const chosen = secretsList[Math.floor(Math.random() * secretsList.length)];
+
+      resDiv.innerHTML = `
+        <strong style="color:var(--accent-orange); font-size:13px; display:block; margin-bottom:4px;">${chosen.title}</strong>
+        <p style="font-size:11.5px; color:#fff; line-height:1.4; margin-bottom:8px;">${chosen.desc}</p>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:10px; border-color:var(--accent-green); color:var(--accent-green);" onclick="copyCouponCodeValue('${chosen.title.replace(/\\s/g, '')}')">📋 Copy Promo Code</button>
+          <span style="font-size:10.5px; color:var(--text-muted);">Custom recipe unlocked! 🌟</span>
+        </div>
+      `;
+      resDiv.style.display = 'block';
+      showToast("🔮 Magic box unleashed! Your cooking custom reward is printed below!", "success");
+    }
+
+    function copyCouponCodeValue(prefix) {
+      const code = prefix.includes("Mutton") ? 'WELCOME10' : prefix.includes("Chicken") ? 'SAVEMORE' : 'FREEFRESH';
+      copyTextToClipboardGeneral(code, `Discount promo coupon '${code}' copied straight to clipboard!`);
+    }
+
+    function copyCouponCodeToClipboard(code) {
+      copyTextToClipboardGeneral(code, `Coupon promo code '${code}' copied! 🎟️`, () => {
+        const btn = document.getElementById(`coupon-btn-${code}`);
+        if (btn) {
+          const oldText = btn.innerText;
+          btn.innerText = "COPIED ✓";
+          btn.style.background = "#10b981";
+          setTimeout(() => {
+            btn.innerText = oldText;
+            btn.style.background = "linear-gradient(135deg, #f59e0b 0%, #b45309 100%)";
+          }, 2000);
+        }
+      });
+    }
+
+    function shareReferralOnWhatsApp() {
+      const activeSession = getActiveSession();
+      const referralCode = (activeSession && activeSession.phone) ? activeSession.phone.substring(0, 6) : "EK50";
+      const message = currentLang === 'ta'
+        ? `ஹாய்! எடப்பாடி கடை ஆப் மூலமா வீட்டிற்கே ஸ்பெஷல் மட்டன் & நாட்டுக்கோழியை 100% சுத்தமா ஆர்டர் பண்ணலாம்! என்னோட ரெஃப்ரல் கோடு '${referralCode}' பயன்படுத்தி ₹50 தள்ளுபடி பெறுங்கள். இங்கே டவுன்லோடு செய்யுங்கள்: https://ek-town-meats.web.app`
+        : `Hey! Order premium fresh meats, mutton, & country chicken online via Edappadi Kadai! Use my referral code '${referralCode}' to get ₹50 discount on your first order. Live tracking in Idappadi town. Download now: https://ek-town-meats.web.app`;
+
+      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+    }
+
+    function updateClaimBoxState() {
+      const activeSession = getActiveSession();
+      const box = document.getElementById('daily-claim-box');
+      if (!box) return;
+
+      if (!activeSession) {
+        box.innerHTML = `
+          <button onclick="showScreen('screen-login')" class="btn btn-primary" style="height: 42px; min-height: 42px; width: 100%; border-radius: 12px; background: linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.1) 100%) !important; color:#ffffff !important; text-shadow:0 1px 1px rgba(0,0,0,0.5) !important; border:1px solid rgba(245,158,11,0.4) !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important; font-weight:800; font-size:12px;">
+            🔒 LOGIN TO CLAIM DAILY BONUS • உள்நுழைக
+          </button>
+        `;
+        return;
+      }
+
+      const lastClaimTime = localStorage.getItem(`ek_last_daily_claim_time_${activeSession.id}`);
+      const now = Date.now();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+
+      if (lastClaimTime && (now - parseInt(lastClaimTime) < twentyFourHours)) {
+        const remainingMs = twentyFourHours - (now - parseInt(lastClaimTime));
+        const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+
+        box.innerHTML = `
+          <button class="btn btn-secondary" style="height: 42px; min-height: 42px; width: 100%; border-radius: 12px !important; background: rgba(255,255,255,0.02) !important; border: 1.5px solid rgba(255,255,255,0.08) !important; color: #777 !important; font-weight:800; font-size:11.5px; cursor: not-allowed; width: 100%;" disabled>
+            ⌛ CLAIMED TODAY • ${remainingHours}h REMAINING (₹0.00)
+          </button>
+        `;
+      } else {
+        box.innerHTML = `
+          <button onclick="claimDailyBonusReward()" class="btn btn-success" style="height: 42px; min-height: 42px; width: 100%; border-radius: 12px; background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; border:1px solid rgba(255,255,255,0.2) !important; box-shadow:0 6px 14px rgba(16,185,129,0.2) !important; color:#ffffff !important; text-shadow:0 1px 1px rgba(0,0,0,0.2) !important; font-weight:800; font-size:12px;">
+            🪙 CLAIM FREE DAILY POINTS • இப்போதே பெறுங்கள்!
+          </button>
+        `;
+      }
+    }
+
+    function claimDailyBonusReward() {
+      const activeSession = getActiveSession();
+      if (!activeSession) {
+        showToast(currentLang === 'ta' ? "போனஸ் பெற முதலில் உள்நுழையவும்! 🔐" : "Please login first to claim daily bonuses! 🔐", "warning");
+        showScreen('screen-login');
+        return;
+      }
+
+      const lastClaimTime = localStorage.getItem(`ek_last_daily_claim_time_${activeSession.id}`);
+      const now = Date.now();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+
+      if (lastClaimTime && (now - parseInt(lastClaimTime) < twentyFourHours)) {
+        showToast(currentLang === 'ta' ? "மன்னிக்கவும்! நீங்கள் ஏற்கனவே இன்று போனஸை பெற்றுள்ளீர்கள்." : "Already claimed today! Try again tomorrow.", "warning");
+        return;
+      }
+
+      const bonusPct = Math.floor(Math.random() * 21) + 10;
+
+      const db = firebase.firestore();
+      db.collection('users').doc(activeSession.id).update({
+        walletPoints: firebase.firestore.FieldValue.increment(bonusPct)
+      }).then(() => {
+        activeSession.walletPoints = (activeSession.walletPoints || 0) + bonusPct;
+        localStorage.setItem('ek_active_session', JSON.stringify(activeSession));
+        localStorage.setItem(`ek_last_daily_claim_time_${activeSession.id}`, now.toString());
+        updateClaimBoxState();
+        if (document.getElementById('prof-wallet-pts')) {
+          document.getElementById('prof-wallet-pts').innerText = activeSession.walletPoints;
+        }
+        showToast(currentLang === 'ta' ? `வாழ்த்துகள்! ${bonusPct} வாலட் புள்ளிகள் வெற்றிகரமாக சேர்க்கப்பட்டது! 🎉🪙` : `Success! ${bonusPct} bonus points added to your loyalty wallet! 🎉🪙`, "success");
+      }).catch(err => {
+        console.error("claimDailyBonusReward error:", err);
+        activeSession.walletPoints = (activeSession.walletPoints || 0) + bonusPct;
+        localStorage.setItem('ek_active_session', JSON.stringify(activeSession));
+        localStorage.setItem(`ek_last_daily_claim_time_${activeSession.id}`, now.toString());
+        updateClaimBoxState();
+        if (document.getElementById('prof-wallet-pts')) {
+          document.getElementById('prof-wallet-pts').innerText = activeSession.walletPoints;
+        }
+        showToast(currentLang === 'ta' ? `தற்காலிகமாக ${bonusPct} வாலட் பாயிண்ட்ஸ் மெமரியில் சேர்க்கப்பட்டது! 🪙` : `Added ${bonusPct} loyalty points locally! 🪙`, "success");
+      });
+    }
+
+    let lyoAiChatHistory = [];
+    let lyoIsReplying = false;
+
+    // --- LYO AI COMMERCE ENGINE (10 MODULAR ARCHITECTURAL UNITS) ---
+    const LyoAiEngine = {
+      // 1. Shopping List Parser Engine
+      ShoppingListParser: {
+        parseInput(inputText) {
+          if (!inputText) return [];
+          const lines = inputText
+            .replace(/மற்றும்/g, '\n')
+            .replace(/,\s*/g, '\n')
+            .split('\n')
+            .map(l => l.trim())
+            .filter(l => l.length > 0);
+
+          const items = [];
+          for (const line of lines) {
+            let cleanLine = line.trim();
+            if (!cleanLine) continue;
+
+            let quantityVal = 1;
+            let amountType = "WEIGHT_KG";
+
+            const rupeeMatch = cleanLine.match(/(?:₹|rs\.?|rupees?|ரூபாய்)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupees?|ரூபாய்)/i);
+            if (rupeeMatch) {
+              const val = parseFloat(rupeeMatch[1] || rupeeMatch[2]);
+              if (!isNaN(val)) {
+                quantityVal = val;
+                amountType = "RUPEES";
+                cleanLine = cleanLine.replace(/(?:₹|rs\.?|rupees?|ரூபாய்)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:₹|rs\.?|rupees?|ரூபாய்)/gi, '').trim();
+              }
+            } else {
+              if (cleanLine.includes("அரை") || cleanLine.toLowerCase().includes("arai") || cleanLine.toLowerCase().includes("half") || cleanLine.includes("1/2")) {
+                quantityVal = 0.5;
+                amountType = "WEIGHT_KG";
+                cleanLine = cleanLine.replace(/அரை|arai|half|1\/2/gi, '').trim();
+              } else if (cleanLine.includes("கால்") || cleanLine.toLowerCase().includes("kal") || cleanLine.toLowerCase().includes("call") || cleanLine.toLowerCase().includes("quarter") || cleanLine.includes("1/4")) {
+                quantityVal = 0.25;
+                amountType = "WEIGHT_KG";
+                cleanLine = cleanLine.replace(/கால்|kal|call|quarter|1\/4/gi, '').trim();
+              } else if (cleanLine.includes("முக்கால்") || cleanLine.toLowerCase().includes("mukkai") || cleanLine.includes("3/4")) {
+                quantityVal = 0.75;
+                amountType = "WEIGHT_KG";
+                cleanLine = cleanLine.replace(/முக்கால்|mukkai|3\/4/gi, '').trim();
+              } else {
+                const qtyMatch = cleanLine.match(/^(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gm|gram|grams|l|litre|litres|ml|pkt|packet|packets|pcs|piece|pieces|box|bunch|கிலோ|கிராம்|லிட்டர்|பாக்கெட்|முட்டை)?\s*(.*)$/i) ||
+                                 cleanLine.match(/(.*)\s+(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gm|gram|grams|l|litre|litres|ml|pkt|packet|packets|pcs|piece|pieces|box|bunch|கிலோ|கிராம்|லிட்டர்|பாக்கெட்|முட்டை)?$/i);
+                if (qtyMatch) {
+                  let numStr = "";
+                  let uStr = "";
+                  let nameStr = "";
+
+                  if (qtyMatch[1] && !isNaN(parseFloat(qtyMatch[1]))) {
+                    numStr = qtyMatch[1];
+                    uStr = (qtyMatch[2] || "").toLowerCase();
+                    nameStr = qtyMatch[3] || "";
+                  } else if (qtyMatch[2] && !isNaN(parseFloat(qtyMatch[2]))) {
+                    nameStr = qtyMatch[1] || "";
+                    numStr = qtyMatch[2];
+                    uStr = (qtyMatch[3] || "").toLowerCase();
+                  }
+
+                  if (numStr) {
+                    const val = parseFloat(numStr);
+                    if (['g', 'gm', 'gram', 'grams', 'கிராம்', 'ml'].includes(uStr)) {
+                      quantityVal = val;
+                      amountType = "WEIGHT_GRAMS";
+                    } else if (['kg', 'kilo', 'kilogram', 'கிலோ', 'l', 'litre', 'litres', 'லிட்டர்'].includes(uStr)) {
+                      quantityVal = val;
+                      amountType = "WEIGHT_KG";
+                    } else if (['pcs', 'piece', 'pieces', 'pkt', 'packet', 'packets', 'box', 'bunch', 'பாக்கெட்', 'முட்டை'].includes(uStr)) {
+                      quantityVal = val;
+                      amountType = "COUNT_PIECES";
+                    } else {
+                      quantityVal = val;
+                      amountType = val > 15 ? "WEIGHT_GRAMS" : "WEIGHT_KG";
+                    }
+                    if (nameStr) cleanLine = nameStr.trim();
+                  }
+                }
+              }
+            }
+
+            cleanLine = cleanLine.replace(/kilo|kg|grams?|gm?|litres?|liter|packet|pcs|pieces/gi, '').trim();
+
+            if (cleanLine.length > 0) {
+              items.push({
+                product_name: cleanLine,
+                raw_quantity_val: quantityVal,
+                amount_type: amountType,
+                originalLine: line
+              });
+            }
+          }
+          return items;
+        }
+      },
+
+      // 2. Product Intelligence Engine
+      ProductIntelligenceEngine: {
+        synonymDictionary: {
+          "mutton": ["mutton", "lamb", "goat", "aattu", "ஆட்டு", "மட்டன்", "ஈரல்", "suvarotti"],
+          "muttan": ["mutton"],
+          "muttan erachi": ["mutton"],
+          "aattu erachi": ["mutton"],
+          "aattu keri": ["mutton"],
+          "goat": ["mutton"],
+          "eeral": ["mutton liver"],
+          "liver": ["mutton liver"],
+          "chicken": ["chicken", "kozhi", "கோழி", "சிக்கன்", "broiler", "nattu kozhi"],
+          "chikkan": ["chicken"],
+          "chiken": ["chicken"],
+          "chickin": ["chicken"],
+          "chikn": ["chicken"],
+          "kozhi": ["chicken"],
+          "nattu kozhi": ["country chicken", "nattu kozhi"],
+          "country chicken": ["nattu kozhi", "country chicken"],
+          "broiler": ["broiler chicken"],
+          "kadai": ["kadai", "quail"],
+          "quail": ["quail", "kadai"],
+          "fish": ["fish", "meen", "மீன்", "vanjaram", "nethili", "katla", "rohu", "viral"],
+          "meen": ["fish"],
+          "vanjaram": ["vanjaram", "seer fish"],
+          "nethili": ["anchovy", "nethili"],
+          "prawn": ["prawns", "eyera", "இறால்"],
+          "prawns": ["prawns", "eyera", "இறால்"],
+          "eyera": ["prawns"],
+          "iral": ["prawns"],
+          "crab": ["crab", "nandu", "நண்டு"],
+          "nandu": ["crab"],
+          "egg": ["egg", "eggs", "muttai", "முட்டை"],
+          "eggs": ["egg", "eggs", "muttai", "முட்டை"],
+          "muttai": ["egg", "eggs"],
+          "muttay": ["egg", "eggs"],
+          "milk": ["milk", "paal", "பால்"],
+          "paal": ["milk"],
+          "pal": ["milk"],
+          "curd": ["curd", "thayir", "தயிர்"],
+          "thayir": ["curd"],
+          "paneer": ["paneer", "பனீர்"],
+          "ghee": ["ghee", "ney", "நெய்"],
+          "butter": ["butter", "vennai", "வெண்ணெய்"],
+          "tomato": ["tomato", "thakkali", "தக்காளி"],
+          "thakkali": ["tomato"],
+          "takali": ["tomato"],
+          "tomoto": ["tomato"],
+          "tamato": ["tomato"],
+          "onion": ["onion", "vengayam", "வெங்காயம்"],
+          "vengayam": ["onion"],
+          "vengaayam": ["onion"],
+          "chinna vengayam": ["small onion", "shallots"],
+          "shallots": ["small onion"],
+          "potato": ["potato", "urulai", "உருளை"],
+          "urulai": ["potato"],
+          "chilli": ["chilli", "milagai", "மிளகாய்"],
+          "milagai": ["chilli"],
+          "ginger": ["ginger", "inji", "இஞ்சி"],
+          "inji": ["ginger"],
+          "poondu": ["garlic"],
+          "garlic": ["garlic", "poondu", "பூண்டு"],
+          "coriander": ["coriander", "kothamalli", "கொத்தமல்லி"],
+          "kothamalli": ["coriander"],
+          "pudina": ["mint", "pudina"],
+          "mint": ["mint"],
+          "rice": ["rice", "arisi", "அரிசி"],
+          "arisi": ["rice"],
+          "oil": ["oil", "ennai", "எண்ணெய்"],
+          "ennai": ["oil"]
+        },
+
+        getTargetTerms(cleanQuery) {
+          let targetTerms = [cleanQuery];
+          for (const [key, terms] of Object.entries(this.synonymDictionary)) {
+            if (cleanQuery.includes(key) || key.includes(cleanQuery)) {
+              terms.forEach(t => { if (!targetTerms.includes(t)) targetTerms.push(t); });
+            }
+          }
+          return targetTerms;
+        }
+      },
+
+      // 3. Product Matching Engine
+      ProductMatchingEngine: {
+        matchProduct(query, activeProducts) {
+          if (!query || !activeProducts || activeProducts.length === 0) {
+            return { bestMatch: null, confidenceScore: 0, candidates: [], needsDisambiguation: false };
+          }
+          const rawClean = query.toLowerCase().trim();
+          const cleanQueryAlpha = rawClean.replace(/[^a-zA-Z0-9஀-௿\s]/g, '').trim();
+          if (!cleanQueryAlpha) {
+            return { bestMatch: null, confidenceScore: 0, candidates: [], needsDisambiguation: false };
+          }
+
+          const queryTokens = new Set(cleanQueryAlpha.split(/\s+/));
+          const SPECIFIC_MODIFIERS = {
+            'broiler': ['broiler', 'பிராய்லர்'],
+            'country': ['country', 'nattu', 'நாட்டு', 'சுவையான'],
+            'nattu': ['country', 'nattu', 'நாட்டு'],
+            'goat': ['goat', 'aattu', 'ஆட்டு', 'mutton', 'மட்டன்'],
+            'mutton': ['mutton', 'goat', 'aattu', 'ஆட்டு', 'மட்டன்'],
+            'tender': ['tender', 'சுடச்சுட'],
+            'cow': ['cow', 'pasu', 'பசு'],
+            'coconut': ['coconut', 'தேங்காய்'],
+            'groundnut': ['groundnut', 'கடலை'],
+            'sunflower': ['sunflower', 'சூரியகாந்தி'],
+            'white': ['white', 'பண்ணை'],
+            'brown': ['brown']
+          };
+
+          const scoredCandidates = [];
+
+          for (const product of activeProducts) {
+            const eng = (product.englishName || "").toLowerCase();
+            const tam = (product.tamilName || "").toLowerCase();
+            const cat = (product.category || "").toLowerCase();
+
+            const engAlpha = eng.replace(/[^a-zA-Z0-9\s]/g, '');
+            const tamAlpha = tam.replace(/[^஀-௿\s]/g, '');
+            const prodTokens = new Set([...engAlpha.split(/\s+/), ...tamAlpha.split(/\s+/)]);
+
+            let score = 0;
+
+            // Exact match boosts
+            if (engAlpha === cleanQueryAlpha || tamAlpha === cleanQueryAlpha) {
+              score += 1000;
+            } else if (engAlpha.includes(cleanQueryAlpha) || cleanQueryAlpha.includes(engAlpha)) {
+              score += 500;
+            }
+
+            // Token overlap
+            let overlapCount = 0;
+            queryTokens.forEach(t => {
+              if (prodTokens.has(t)) overlapCount++;
+            });
+            score += overlapCount * 150;
+
+            // Specific modifier checks
+            for (const [mod, modSynonyms] of Object.entries(SPECIFIC_MODIFIERS)) {
+              const queryHasMod = queryTokens.has(mod) || modSynonyms.some(s => cleanQueryAlpha.includes(s));
+              if (queryHasMod) {
+                const prodHasMod = modSynonyms.some(s => eng.includes(s) || tam.includes(s));
+                if (prodHasMod) {
+                  score += 300;
+                } else {
+                  score -= 250;
+                }
+              }
+            }
+
+            if (cat && queryTokens.has(cat)) {
+              score += 50;
+            }
+
+            if (score > 0) {
+              scoredCandidates.push({ product, score });
+            }
+          }
+
+          scoredCandidates.sort((a, b) => b.score - a.score);
+
+          if (scoredCandidates.length === 0) {
+            let bestFallback = null;
+            if (typeof findBestProductMatch === 'function') {
+              bestFallback = findBestProductMatch(query, activeProducts);
+            }
+            return {
+              bestMatch: bestFallback,
+              confidenceScore: bestFallback ? 50 : 0,
+              candidates: bestFallback ? [bestFallback] : [],
+              needsDisambiguation: false
+            };
+          }
+
+          const topMatch = scoredCandidates[0];
+          const secondMatch = scoredCandidates[1] || null;
+          const isLowConfidence = topMatch.score < 80;
+          const isCloseContender = secondMatch && (topMatch.score - secondMatch.score <= 30);
+          const needsDisambiguation = (isLowConfidence || isCloseContender) && scoredCandidates.length > 1;
+
+          return {
+            bestMatch: topMatch.product,
+            confidenceScore: topMatch.score,
+            candidates: scoredCandidates.slice(0, 4).map(c => c.product),
+            needsDisambiguation: needsDisambiguation
+          };
+        }
+      },
+      // 4. UnitQuantityConversionEngine
+      UnitQuantityConversionEngine: {
+        convertQuantity(rawVal, amountType, product) {
+          const unit = product.sellingUnit || product.unit || 'kg';
+          const isWeight = isUnitWeight ? isUnitWeight(unit) : !(unit === 'piece' || unit === 'packet' || unit === 'unit' || unit === 'box' || unit === 'bunch');
+
+          let weightGrams = 1000;
+          let quantity = 1;
+          let calculatedPrice = product.pricePerKg || 0;
+          let requestedDesc = "";
+
+          const val = parseFloat(rawVal) || 1;
+          const type = (amountType || "").toUpperCase();
+
+          if (type === "RUPEES" || (val > 15 && isWeight && !type.includes("WEIGHT") && !type.includes("COUNT"))) {
+            return LyoAiEngine.AmountBasedCalculationEngine.calculateByAmount(val, product);
+          } else if (type === "WEIGHT_GRAMS") {
+            weightGrams = val;
+            quantity = weightGrams / 1000;
+            calculatedPrice = Math.round((product.pricePerKg / 1000) * weightGrams);
+            requestedDesc = `${weightGrams}g`;
+          } else if (type === "WEIGHT_KG") {
+            weightGrams = Math.round(val * 1000);
+            quantity = val;
+            calculatedPrice = Math.round(product.pricePerKg * val);
+            requestedDesc = `${val} kg`;
+          } else if (type === "COUNT_PIECES" || !isWeight) {
+            quantity = val;
+            weightGrams = val;
+            calculatedPrice = Math.round(product.pricePerKg * val);
+            requestedDesc = `${val} ${product.unit || 'pcs'}`;
+          } else {
+            if (val <= 10) {
+              weightGrams = Math.round(val * 1000);
+              quantity = val;
+              calculatedPrice = Math.round(product.pricePerKg * val);
+              requestedDesc = `${val} kg`;
+            } else {
+              weightGrams = val;
+              calculatedPrice = Math.round((product.pricePerKg / 1000) * weightGrams);
+              requestedDesc = `${val}g`;
+            }
+          }
+
+          return { weightGrams, quantity, calculatedPrice, requestedDesc };
+        }
+      },
+
+      // 5. Amount-Based Calculation Engine
+      AmountBasedCalculationEngine: {
+        calculateByAmount(rupeeAmount, product) {
+          const unit = product.sellingUnit || product.unit || 'kg';
+          const isWeight = isUnitWeight ? isUnitWeight(unit) : !(unit === 'piece' || unit === 'packet' || unit === 'unit' || unit === 'box' || unit === 'bunch');
+
+          const calculatedPrice = Math.round(rupeeAmount);
+          let weightGrams = 1000;
+          let quantity = 1;
+
+          if (isWeight && product.pricePerKg > 0) {
+            weightGrams = Math.round((rupeeAmount / product.pricePerKg) * 1000);
+            quantity = weightGrams / 1000;
+          } else {
+            quantity = Math.max(1, Math.round(rupeeAmount / (product.pricePerKg || 1)));
+            weightGrams = quantity;
+          }
+
+          const requestedDesc = `₹${rupeeAmount} worth`;
+          return { weightGrams, quantity, calculatedPrice, requestedDesc };
+        }
+      },
+
+      // 6. Cart Builder Engine
+      CartBuilderEngine: {
+        buildCartItem(product, qtyData, meta = {}) {
+          const unit = product.sellingUnit || product.unit || 'kg';
+          return {
+            productId: product.id,
+            tamilName: product.tamilName || product.englishName,
+            englishName: product.englishName,
+            weightGrams: qtyData.weightGrams,
+            quantity: qtyData.quantity,
+            unit: product.unit || 'kg',
+            sellingUnit: unit,
+            cutStyle: 'Standard Fresh Cut',
+            category: product.category,
+            pricePerKg: product.pricePerKg,
+            imageUrl: product.imageUrl || '',
+            totalPrice: qtyData.calculatedPrice,
+            price: qtyData.calculatedPrice,
+            isSubstituted: meta.isSubstituted || false,
+            originalRequestedName: meta.originalRequestedName || '',
+            requestedDesc: qtyData.requestedDesc || ''
+          };
+        },
+
+        mergeIntoCart(currentCart, newItems) {
+          if (!Array.isArray(currentCart)) return newItems;
+          newItems.forEach(newItem => {
+            const idx = currentCart.findIndex(ci => ci.productId === newItem.productId);
+            if (idx !== -1) {
+              currentCart[idx].weightGrams = (currentCart[idx].weightGrams || 1000) + newItem.weightGrams;
+              currentCart[idx].quantity = (currentCart[idx].quantity || 1) + newItem.quantity;
+              const isW = isUnitWeight ? isUnitWeight(currentCart[idx].unit || 'kg') : true;
+              currentCart[idx].totalPrice = isW
+                ? Math.round((currentCart[idx].pricePerKg / 1000) * currentCart[idx].weightGrams)
+                : Math.round(currentCart[idx].pricePerKg * currentCart[idx].quantity);
+              currentCart[idx].price = currentCart[idx].totalPrice;
+            } else {
+              currentCart.push(newItem);
+            }
+          });
+          return currentCart;
+        }
+      },
+
+      // 7. Delivery Charge Calculator
+      DeliveryChargeCalculator: {
+        calculateDelivery(subtotal, settings = {}) {
+          let deliveryCharge = parseInt(settings.deliveryCharge) || 0;
+          if (settings.useDynamicDistancePricing) {
+            deliveryCharge = parseInt(settings.deliveryBasePrice) || 20;
+          }
+          const isFreeDelivery = subtotal >= 500;
+          if (isFreeDelivery) deliveryCharge = 0;
+          return { deliveryCharge, isFreeDelivery };
+        }
+      },
+
+      // 8. Pricing & Offer Engine
+      PricingOfferEngine: {
+        calculatePricing(subtotal, settings = {}) {
+          const { deliveryCharge, isFreeDelivery } = LyoAiEngine.DeliveryChargeCalculator.calculateDelivery(subtotal, settings);
+
+          let discount = 0;
+          if (subtotal >= 1000) {
+            discount = Math.round(subtotal * 0.05);
+          }
+
+          const finalPayable = Math.max(0, subtotal + deliveryCharge - discount);
+          const minOrderAmount = parseInt(settings.minOrderAmount) || 0;
+          const meetsMinOrder = subtotal >= minOrderAmount;
+
+          return { subtotal, deliveryCharge, isFreeDelivery, discount, finalPayable, minOrderAmount, meetsMinOrder };
+        }
+      },
+
+      // 9. Gemini AI Orchestrator
+      GeminiAiOrchestrator: {
+        async orchestrateParse(inputText, activeProducts) {
+          let parsed = [];
+          if (typeof parseOrderWithAI === 'function') {
+            try {
+              parsed = await parseOrderWithAI(inputText, activeProducts);
+            } catch (err) {
+              console.warn("GeminiAiOrchestrator AI parse fallback:", err);
+            }
+          }
+          if (!parsed || parsed.length === 0) {
+            parsed = LyoAiEngine.ShoppingListParser.parseInput(inputText);
+          }
+          return parsed;
+        }
+      },
+
+      // 10. Error Recovery & Validation Engine
+      ErrorRecoveryValidationEngine: {
+        validateAndRecover(parsedItems, activeProducts) {
+          const resolvedCartItems = [];
+          const unavailableNotes = [];
+          const disambiguationPrompts = [];
+
+          for (const item of parsedItems) {
+            const queryName = item.product_name || item.name || item.originalLine || "";
+            const matchResult = LyoAiEngine.ProductMatchingEngine.matchProduct(queryName, activeProducts);
+
+            if (matchResult.needsDisambiguation) {
+              disambiguationPrompts.push({
+                queryName,
+                rawVal: item.raw_quantity_val || 1,
+                amountType: item.amount_type || "WEIGHT_KG",
+                candidates: matchResult.candidates
+              });
+              continue;
+            }
+
+            let product = matchResult.bestMatch;
+            let isSubstituted = false;
+
+            if (!product) {
+              unavailableNotes.push(queryName);
+              continue;
+            }
+
+            const isOutOfStock = product.isOutOfStock || (product.stockKg !== undefined && product.stockKg <= 0) || product.isAvailable === false;
+            if (isOutOfStock) {
+              const altProduct = findClosestAlternativeProduct(product, activeProducts);
+              if (altProduct) {
+                isSubstituted = true;
+                product = altProduct;
+              } else {
+                unavailableNotes.push(`${product.englishName} (${currentLang === 'ta' ? 'ஸ்டாக்கில் இல்லை' : 'Out of Stock'})`);
+                continue;
+              }
+            }
+
+            const qtyData = LyoAiEngine.UnitQuantityConversionEngine.convertQuantity(
+              item.raw_quantity_val,
+              item.amount_type,
+              product
+            );
+
+            const cartItem = LyoAiEngine.CartBuilderEngine.buildCartItem(product, qtyData, {
+              isSubstituted,
+              originalRequestedName: queryName
+            });
+
+            resolvedCartItems.push(cartItem);
+          }
+
+          return { resolvedCartItems, unavailableNotes, disambiguationPrompts };
+        }
+      }
+    };
+    if (typeof window !== 'undefined') window.LyoAiEngine = LyoAiEngine;

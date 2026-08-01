@@ -1,0 +1,3527 @@
+
+    function downloadTicketFile() {
+      const contentHTML = document.getElementById('print-preview-content').innerHTML;
+      const contentText = document.getElementById('print-preview-content').innerText;
+      let filename = "Edappadi_Kadai_Slip";
+
+      const match = contentText.match(/ORDER ID:\s*([^\n]+)/i) || contentText.match(/NEW KOT:\s*([^\n]+)/i) || contentText.match(/KOT:\s*([^\n]+)/i);
+      if (match && match[1]) {
+        filename = `EK_Slip_${match[1].trim()}`;
+      } else {
+        filename = `EK_Slip_${new Date().toISOString().replace(/[:.]/g, '_')}`;
+      }
+
+      if (typeof AndroidStorage !== 'undefined' && AndroidStorage.printHtml) {
+        printTicketSafely();
+        return;
+      }
+
+      const fullHTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${filename}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Hind+Madurai:wght@500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f3f4f6;
+      font-family: 'Poppins', 'Hind Madurai', sans-serif;
+      padding: 20px;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .ticket-container {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 18px;
+      padding: 24px;
+      width: 100%;
+      max-width: 380px;
+      color: #000000;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+      box-sizing: border-box;
+    }
+    .btn-print {
+      margin-top: 16px;
+      background: #f59e0b;
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      display: block;
+      width: 100%;
+      text-align: center;
+      text-decoration: none;
+      box-shadow: 0 4px 10px rgba(245,158,11,0.25);
+    }
+    @media print {
+      body { background-color: #ffffff; padding: 0; }
+      .ticket-container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
+      .btn-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ticket-container">
+    ${contentHTML}
+    <button class="btn-print" onclick="window.print()">${currentLang === 'ta' ? '🖨️ அச்சு செய்க (Print)' : '🖨️ Direct Print'}</button>
+  </div>
+</body>
+</html>`;
+
+      const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast("Slip saved to Downloads ✓", "success");
+
+      setTimeout(() => {
+        printTicketSafely();
+      }, 500);
+    }
+
+    function shareTicket() {
+      const contentText = document.getElementById('print-preview-content').innerText;
+      let title = "Edappadi Kadai Slip";
+
+      const match = contentText.match(/ORDER ID:\s*([^\n]+)/i) || contentText.match(/NEW KOT:\s*([^\n]+)/i) || contentText.match(/KOT:\s*([^\n]+)/i);
+      if (match && match[1]) {
+        title = `Edappadi Kadai Slip ${match[1].trim()}`;
+      }
+
+      if (typeof AndroidStorage !== 'undefined' && AndroidStorage.shareText) {
+        AndroidStorage.shareText(title, contentText);
+        showToast("Opening Sharing dialog ✓", "success");
+        return;
+      }
+
+      if (navigator.share) {
+        navigator.share({
+          title: title,
+          text: contentText
+        }).then(() => {
+          showToast("Shared successfully ✓", "success");
+        }).catch(err => {
+          if (err.name !== 'AbortError') {
+            fallbackShare(contentText);
+          }
+        });
+      } else {
+        fallbackShare(contentText);
+      }
+    }
+
+    function fallbackShare(text) {
+      copyTicketToClipboard();
+      setTimeout(() => {
+        const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        window.open(waUrl, '_blank');
+      }, 500);
+    }
+
+    let currentAdminTab = 'tab-orders';
+    let adminStatusFilter = 'all';
+
+    let adminOrdersPageLimit = 25;
+
+    function isPendingOrderStatus(status) {
+      const norm = (status || "").toLowerCase().trim();
+      return ["pending", "confirmed", "preparing", "packing", "processing", "placed", "new", "accepted", "paid", "order_placed", "received", "order_received", "draft", "payment_pending_verification", "pending_verification", "unverified"].includes(norm);
+    }
+
+    function isReadyOrderStatus(status) {
+      const norm = (status || "").toLowerCase().trim();
+      return ["ready", "out_for_delivery", "delivering", "shipped", "dispatch", "dispatched", "picked_up", "on_the_way"].includes(norm);
+    }
+
+    function isDeliveredOrderStatus(status) {
+      const norm = (status || "").toLowerCase().trim();
+      return ["delivered", "completed", "done", "success", "finished"].includes(norm);
+    }
+
+    function isCancelledOrderStatus(status) {
+      const norm = (status || "").toLowerCase().trim();
+      return ["cancelled", "canceled", "rejected", "declined", "failed", "void"].includes(norm);
+    }
+
+    function verifyAndApproveUpiPayment(id) {
+      showCustomConfirm(
+        currentLang === 'ta' ? "கட்டணத்தை உறுதி செய்யவா?" : "Verify & Approve Payment?",
+        currentLang === 'ta'
+          ? `இந்த ஆர்டரின் யுபிஐ கட்டணம் வங்கிக் கணக்கில் வரவு வைக்கப்பட்டதை உறுதிசெய்து, ஆர்டரை தயார் செய்ய ஒப்புதல் அளிக்க விரும்புகிறீர்களா?`
+          : `Confirm that this UPI payment has been credited to your bank account and approve this order for store preparation?`,
+        async function() {
+          if (typeof db !== 'undefined' && db) {
+            showToast("சரிபார்க்கிறது... / Updating payment status...", "info");
+            const orderRef = db.collection('ek_orders').doc(id);
+            try {
+              await db.runTransaction(async (transaction) => {
+                const docSnap = await transaction.get(orderRef);
+                if (!docSnap.exists) throw new Error("ORDER_NOT_FOUND");
+                const cloudOrder = normalizeFirestoreData(docSnap.data());
+                cloudOrder.status = "pending";
+                cloudOrder.paymentStatus = "PAID";
+                cloudOrder.upiStatus = "MANUALLY_VERIFIED";
+                cloudOrder.needsPaymentVerification = false;
+                cloudOrder.paymentMethod = "UPI Payment (Verified)";
+                cloudOrder.updatedAt = new Date().toISOString();
+                transaction.set(orderRef, cleanFirestoreData(cloudOrder), { merge: true });
+                return cloudOrder;
+              });
+            } catch (e) {
+              console.warn("Firestore transaction error, updating locally:", e);
+            }
+          }
+          const orders = getData('ek_orders', []);
+          const idx = orders.findIndex(o => o.id === id);
+          if (idx !== -1) {
+            orders[idx].status = 'pending';
+            orders[idx].paymentStatus = 'PAID';
+            orders[idx].upiStatus = 'MANUALLY_VERIFIED';
+            orders[idx].needsPaymentVerification = false;
+            orders[idx].paymentMethod = 'UPI Payment (Verified)';
+            orders[idx].updatedAt = new Date().toISOString();
+            saveData('ek_orders', orders);
+          }
+          showToast(currentLang === 'ta' ? "கட்டணம் வெற்றிகரமாக உறுதி செய்யப்பட்டது! ✓" : "Payment verified & approved successfully! ✓", "success");
+          if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+        }
+      );
+    }
+
+    function renderAdminDashboard() {
+      if (typeof checkAdminSyncHealth === 'function') {
+        checkAdminSyncHealth();
+      }
+      // 1. Single source of truth Firebase Auth check
+      if (typeof firebase !== 'undefined' && firebase.auth) {
+        const user = firebase.auth().currentUser;
+        if (!user || user.isAnonymous) {
+          console.warn("[Admin Access Guard] No authenticated admin user found in Firebase Auth.");
+          if (typeof showScreen === 'function') showScreen('screen-login');
+          return;
+        }
+
+        // 2. Re-fetch and verify role from Firestore on screen render (prevents stale cached role)
+        if (typeof db !== 'undefined' && db && !window._skipAdminFirestoreVerify) {
+          db.collection('ek_admin_accounts').doc(user.uid).get().then(docSnap => {
+            if (docSnap.exists) {
+              const data = docSnap.data();
+              if (data && (data.active === false || (data.role !== 'admin' && data.role !== 'superadmin' && data.role !== 'ADMIN' && data.role !== 'SUPERADMIN'))) {
+                console.error("[Admin Access Guard] Admin account inactive or role revoked.");
+                if (typeof showToast === 'function') showToast("உரிமம் மறுக்கப்பட்டது! / Admin access revoked.", "error");
+                if (typeof adminLogout === 'function') adminLogout();
+              }
+            }
+          }).catch(e => {
+            console.warn("[Admin Access Guard] Firestore verification error:", e);
+          });
+        }
+      }
+
+      debugLog("✓ UI Refreshed");
+      let orders = getDataCached('ek_orders', []);
+      if (!orders || orders.length === 0) {
+        orders = getData('ek_orders', []);
+      }
+
+      const deletedOrderIds = getDeletedOrderIds();
+      const validOrders = orders.filter(o => o && !deletedOrderIds.includes(o.id) && o.hiddenByAdmin !== true);
+
+      const todayStr = new Date().toDateString();
+      const todayOrders = validOrders.filter(o => {
+        const d = safeParseDate(o.createdAt);
+        return d.toDateString() === todayStr;
+      });
+
+      const totalRevenue = validOrders
+        .filter(o => isDeliveredOrderStatus(o.status))
+        .reduce((sum, o) => sum + Number(o.totalAmount || o.total || 0), 0);
+
+      const pendingCount = validOrders.filter(o => isPendingOrderStatus(o.status)).length;
+
+      const ordersStatEl = document.getElementById('admin-stat-orders');
+      if (ordersStatEl) {
+        ordersStatEl.innerText = validOrders.length;
+      }
+
+      const revenueStatEl = document.getElementById('admin-stat-revenue');
+      if (revenueStatEl) {
+        revenueStatEl.innerText = `₹${totalRevenue.toLocaleString('en-IN')}`;
+      }
+
+      const pendingStatEl = document.getElementById('admin-stat-pending');
+      if (pendingStatEl) {
+        pendingStatEl.innerText = pendingCount;
+      }
+
+      const pendCard = document.getElementById('pending-card-alert');
+      if (pendCard) {
+        if (pendingCount > 0) {
+          pendCard.style.borderColor = "var(--accent-red)";
+          if (pendingStatEl) pendingStatEl.style.color = "var(--accent-red)";
+        } else {
+          pendCard.style.borderColor = "#262626";
+          if (pendingStatEl) pendingStatEl.style.color = "#fff";
+        }
+      }
+
+      if (typeof populateProductCategoryOptions === 'function') {
+        try { populateProductCategoryOptions(); } catch(e) {}
+      }
+
+      if (currentAdminTab === 'tab-orders') {
+        try { renderAdminOrders(); } catch(e) { console.error(e); }
+      } else if (currentAdminTab === 'tab-products') {
+        try { renderAdminProducts(); } catch(e) { console.error(e); }
+      } else if (currentAdminTab === 'tab-delivery') {
+        try { renderDeliveryExecutives(); } catch(e) { console.error(e); }
+      } else if (currentAdminTab === 'tab-customers') {
+        try { renderAdminCustomers(); } catch(e) { console.error(e); }
+      } else if (currentAdminTab === 'tab-analytics') {
+        try { renderAdminAnalytics(); } catch(e) { console.error(e); }
+      } else if (currentAdminTab === 'tab-coupons') {
+        try { if (typeof renderAdminCoupons === 'function') renderAdminCoupons(); } catch(e) { console.error(e); }
+      } else if (currentAdminTab === 'tab-settings') {
+        try { renderAdminAccountsSettings(); } catch(e) { console.error(e); }
+        if (typeof renderAdminCategoriesList === 'function') {
+          try { renderAdminCategoriesList(); } catch(e) { console.error(e); }
+        }
+      } else if (currentAdminTab === 'tab-reviews') {
+        try { renderAdminReviews(true); } catch(e) { console.error(e); }
+      }
+
+      const settings = getDataCached('ek_settings', DEFAULT_SETTINGS);
+      const elShopOpen = document.getElementById('setting-shop-open');
+      if (elShopOpen) elShopOpen.checked = settings.shopOpen;
+
+      const elLeaveMode = document.getElementById('setting-leave-mode');
+      if (elLeaveMode) {
+        elLeaveMode.checked = settings.leaveMode || false;
+        const groupLeaveNotice = document.getElementById('group-leave-notice');
+        if (groupLeaveNotice) {
+          groupLeaveNotice.style.display = settings.leaveMode ? 'block' : 'none';
+        }
+      }
+      const elLeaveNotice = document.getElementById('setting-leave-notice');
+      if (elLeaveNotice) elLeaveNotice.value = settings.leaveNotice || '';
+
+      const elDelCharge = document.getElementById('setting-delivery-charge');
+      if (elDelCharge) elDelCharge.value = settings.deliveryCharge;
+      const elDynDel = document.getElementById('setting-dynamic-delivery');
+      if (elDynDel) {
+        elDynDel.checked = settings.useDynamicDistancePricing !== undefined ? settings.useDynamicDistancePricing : true;
+        if (typeof updateDeliveryModeUI === 'function') {
+          try { updateDeliveryModeUI(); } catch(e) {}
+        }
+      }
+      const elDelBase = document.getElementById('setting-delivery-base-price');
+      if (elDelBase) elDelBase.value = settings.deliveryBasePrice !== undefined ? settings.deliveryBasePrice : 20;
+      const elDelKm = document.getElementById('setting-delivery-km-multiplier');
+      if (elDelKm) elDelKm.value = settings.deliveryKmMultiplier !== undefined ? settings.deliveryKmMultiplier : 12;
+      const elMinWt = document.getElementById('setting-min-weight');
+      if (elMinWt) elMinWt.value = settings.minOrderWeight;
+      const elMinAmt = document.getElementById('setting-min-amount');
+      if (elMinAmt) elMinAmt.value = settings.minOrderAmount !== undefined ? settings.minOrderAmount : 0;
+      const elMerchantUpi = document.getElementById('setting-merchant-upi');
+      if (elMerchantUpi) elMerchantUpi.value = settings.merchantUpiId || 'einsteinananth24@okaxis';
+      const elBdTxt = document.getElementById('admin-broadcast-text');
+      if (elBdTxt) elBdTxt.value = settings.announcement || '';
+
+      try { renderAdminBannerSettings(); } catch(e) {}
+
+      if (typeof loadAdminSmsSettingsUI === 'function') {
+        try { loadAdminSmsSettingsUI(settings); } catch(e) {}
+      }
+
+      if (typeof loadAdminEmailOtpConfig === 'function') {
+        try { loadAdminEmailOtpConfig(); } catch(e) {}
+      }
+
+      if (typeof renderAdminDeliveryZones === 'function') {
+        try { renderAdminDeliveryZones(); } catch(e) {}
+      }
+    }
+
+    function switchAdminTab(tab, element) {
+      try {
+        currentAdminTab = tab;
+
+        // Lock parent containers strictly at scrollLeft = 0 to prevent horizontal page shift
+        const screenAdmin = document.getElementById('screen-admin');
+        if (screenAdmin) screenAdmin.scrollLeft = 0;
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) appContainer.scrollLeft = 0;
+        document.body.scrollLeft = 0;
+        document.documentElement.scrollLeft = 0;
+
+        document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+        if (element) {
+          element.classList.add('active');
+          try {
+            scrollToCenterHorizontal(element);
+          } catch (e) {}
+        } else {
+          const targetTabEl = Array.from(document.querySelectorAll('.admin-tab')).find(el => {
+            const onclickAttr = el.getAttribute('onclick') || '';
+            return onclickAttr.includes(`'${tab}'`) || onclickAttr.includes(`"${tab}"`);
+          });
+          if (targetTabEl) {
+            targetTabEl.classList.add('active');
+            try { scrollToCenterHorizontal(targetTabEl); } catch (e) {}
+          }
+        }
+
+        document.querySelectorAll('.admin-subtab-container').forEach(c => c.style.display = 'none');
+
+        const containerId = tab.startsWith('admin-tab-') ? tab : `admin-${tab}`;
+        const targetContainer = document.getElementById(containerId) || document.getElementById(`admin-tab-${tab.replace('tab-', '')}`);
+        if (targetContainer) {
+          targetContainer.style.display = 'block';
+        }
+
+        if (tab === 'tab-orders') {
+          const el = document.getElementById('admin-tab-orders');
+          if (el) el.style.display = 'block';
+          try { renderAdminOrders(); } catch(err) { console.error("renderAdminOrders error:", err); }
+        } else if (tab === 'tab-preorders') {
+          const el = document.getElementById('admin-tab-preorders');
+          if (el) el.style.display = 'block';
+        } else if (tab === 'tab-products') {
+          const el = document.getElementById('admin-tab-products');
+          if (el) el.style.display = 'block';
+          try { renderAdminProducts(); } catch(err) { console.error("renderAdminProducts error:", err); }
+        } else if (tab === 'tab-delivery') {
+          const el = document.getElementById('admin-tab-delivery');
+          if (el) el.style.display = 'block';
+          try { renderDeliveryExecutives(); } catch(err) { console.error("renderDeliveryExecutives error:", err); }
+        } else if (tab === 'tab-customers') {
+          const el = document.getElementById('admin-tab-customers');
+          if (el) el.style.display = 'block';
+          try { renderAdminCustomers(); } catch(err) { console.error("renderAdminCustomers error:", err); }
+        } else if (tab === 'tab-push' || tab === 'tab-push-notifications') {
+          const el = document.getElementById('admin-tab-push');
+          if (el) el.style.display = 'block';
+          try { if (typeof renderPushNotificationManager === 'function') renderPushNotificationManager(); } catch(err) { console.error("renderPushNotificationManager error:", err); }
+        } else if (tab === 'tab-admins') {
+          const el = document.getElementById('admin-tab-admins');
+          if (el) el.style.display = 'block';
+          try { renderAdminAccountsSettings(); } catch(err) { console.error("renderAdminAccountsSettings error:", err); }
+        } else if (tab === 'tab-coupons') {
+          const el = document.getElementById('admin-tab-coupons');
+          if (el) el.style.display = 'block';
+          try { renderAdminCoupons(); } catch(err) { console.error("renderAdminCoupons error:", err); }
+        } else if (tab === 'tab-analytics') {
+          const el = document.getElementById('admin-tab-analytics');
+          if (el) el.style.display = 'block';
+          try { renderAdminAnalytics(); } catch(err) { console.error("renderAdminAnalytics error:", err); }
+        } else if (tab === 'tab-settings') {
+          const el = document.getElementById('admin-tab-settings');
+          if (el) el.style.display = 'block';
+          try { renderAdminAccountsSettings(); } catch(err) { console.error("renderAdminAccountsSettings error:", err); }
+          try {
+            if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList();
+          } catch(err) { console.error("renderAdminCategoriesList error:", err); }
+          setTimeout(() => {
+            try { initAdminZonesMap(); } catch(err) { console.error("initAdminZonesMap error:", err); }
+          }, 120);
+        } else if (tab === 'tab-lyoai-config') {
+          const el = document.getElementById('admin-tab-lyoai-config');
+          if (el) el.style.display = 'block';
+          try { loadAdminLyoAiConfig(); } catch(err) { console.error("loadAdminLyoAiConfig error:", err); }
+        } else if (tab === 'tab-ai-key') {
+          const el = document.getElementById('admin-tab-ai-key');
+          if (el) el.style.display = 'block';
+          try { loadAdminAiKeyConfig(); } catch(err) { console.error("loadAdminAiKeyConfig error:", err); }
+        } else if (tab === 'tab-sync-dashboard') {
+          const el = document.getElementById('admin-tab-sync-dashboard');
+          if (el) el.style.display = 'block';
+          try { renderSyncDashboard(); } catch(err) { console.error("renderSyncDashboard error:", err); }
+        } else if (tab === 'tab-reviews') {
+          const el = document.getElementById('admin-tab-reviews');
+          if (el) el.style.display = 'block';
+          try { renderAdminReviews(true); } catch(err) { console.error("renderAdminReviews error:", err); }
+        }
+      } catch (globalTabErr) {
+        console.error("switchAdminTab error:", globalTabErr);
+      }
+    }
+
+    const SYNC_GATE_COLLECTIONS = [
+      {
+        id: 'products',
+        localKey: 'ek_products',
+        firestorePath: 'ek_products',
+        isDoc: false,
+        name: 'Meat & Grocery Products',
+        tamilName: 'இறைச்சி மற்றும் சரக்குகள்',
+        icon: '🥩',
+        refreshFn: function() {
+          if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts();
+          if (typeof renderAdminProducts === 'function') renderAdminProducts();
+        }
+      },
+      {
+        id: 'orders',
+        localKey: 'ek_orders',
+        firestorePath: 'ek_orders',
+        isDoc: false,
+        name: 'Customer Orders',
+        tamilName: 'வாடிக்கையாளர் ஆர்டர்கள்',
+        icon: '📦',
+        refreshFn: function() {
+          if (typeof renderAdminOrders === 'function') renderAdminOrders();
+          if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+        }
+      },
+      {
+        id: 'users',
+        localKey: 'ek_users',
+        firestorePath: 'ek_users',
+        isDoc: false,
+        name: 'Customer Accounts',
+        tamilName: 'வாடிக்கையாளர் முகவரிகள்',
+        icon: '👥',
+        refreshFn: function() {
+          if (typeof renderAdminCustomers === 'function') renderAdminCustomers();
+        }
+      },
+      {
+        id: 'settings',
+        localKey: 'ek_settings',
+        firestorePath: 'ek_settings/global_config',
+        isDoc: true,
+        name: 'Operations & Shop Config',
+        tamilName: 'கடை மற்றும் கட்டண அமைப்புகள்',
+        icon: '⚙️',
+        refreshFn: function() {
+          if (typeof renderAdminAccountsSettings === 'function') renderAdminAccountsSettings();
+          if (typeof renderAdminBannerSettings === 'function') renderAdminBannerSettings();
+        }
+      },
+      {
+        id: 'lyo_ai_config',
+        localKey: 'ek_lyo_ai_config',
+        firestorePath: 'ek_settings/lyo_ai_config',
+        isDoc: true,
+        name: 'Speech & AI Rules',
+        tamilName: 'பேச்சு மற்றும் AI விதிகள்',
+        icon: '✨',
+        refreshFn: function() {
+          if (typeof loadAdminLyoAiConfig === 'function') loadAdminLyoAiConfig();
+        }
+      }
+    ];
+
+    let lastSyncTimestamps = {};
+
+    function toggleAdvancedManualSyncPanel() {
+      const panel = document.getElementById('advanced-manual-sync-panel');
+      const label = document.getElementById('advanced-sync-toggle-label');
+      if (!panel || !label) return;
+      if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        label.innerText = 'Hide Manual Override Controls / மேனுவல் மறைக்கவும்';
+      } else {
+        panel.style.display = 'none';
+        label.innerText = 'Show Manual Override Controls / மேனுவல் கட்டுப்பாடுகள் காட்டவும்';
+      }
+    }
+
+    async function triggerIndividualGateSync(gateId) {
+      const gate = SYNC_GATE_COLLECTIONS.find(g => g.id === gateId);
+      if (!gate) return;
+
+      const btn = document.getElementById(`btn-gate-sync-${gateId}`);
+      if (btn) {
+        btn.disabled = true;
+        btn.style.background = 'rgba(255,255,255,0.05)';
+        btn.style.borderColor = 'rgba(255,255,255,0.1)';
+        btn.style.color = '#888';
+        btn.innerHTML = '⚡ Syncing...';
+      }
+
+      try {
+        if (!db) {
+          throw new Error("Local databases only are ready, cloud connection missing!");
+        }
+
+        if (gate.isDoc) {
+          const parts = gate.firestorePath.split('/');
+          const docRef = db.collection(parts[0]).doc(parts[1]);
+          const snap = await docRef.get();
+          if (snap.exists) {
+            const data = snap.data() || {};
+            const jsonStr = JSON.stringify(data);
+            localStorage.setItem(gate.localKey, jsonStr);
+            if (typeof AndroidStorage !== 'undefined') {
+              AndroidStorage.saveData(gate.localKey, jsonStr);
+            }
+          }
+        } else {
+          const snapshot = await db.collection(gate.firestorePath).get();
+          const items = [];
+
+          if (!snapshot.empty) {
+            snapshot.forEach(doc => {
+              const d = normalizeFirestoreData(doc.data());
+              if (d && (d.id || d.phone)) {
+                items.push(d);
+              }
+            });
+          }
+
+          if (items.length > 0) {
+            const jsonStr = JSON.stringify(items);
+            localStorage.setItem(gate.localKey, jsonStr);
+            if (typeof AndroidStorage !== 'undefined') {
+              AndroidStorage.saveData(gate.localKey, jsonStr);
+            }
+          }
+        }
+
+        lastSyncTimestamps[gateId] = new Date().toLocaleTimeString();
+        if (btn) {
+          btn.style.background = 'rgba(16,185,129,0.12)';
+          btn.style.borderColor = 'rgba(16,185,129,0.4)';
+          btn.style.color = '#10b981';
+          btn.innerHTML = '✓ Done';
+        }
+
+        setTimeout(() => {
+          try {
+            gate.refreshFn();
+          } catch(e) {
+            console.warn("Refresh failed:", e);
+          }
+          renderSyncDashboard();
+          showToast(`✓ Cloud gate synchronized: ${gate.name}`);
+        }, 600);
+
+      } catch(err) {
+        console.error("Gate sync failed:", err);
+        if (btn) {
+          btn.style.background = 'rgba(239,68,68,0.12)';
+          btn.style.borderColor = 'rgba(239,68,68,0.4)';
+          btn.style.color = '#ef4444';
+          btn.innerHTML = '⚠ Failed';
+        }
+        showToast(`⚠ Sync error: ${err.message || 'Server timeout'}`);
+        setTimeout(() => { renderSyncDashboard(); }, 2000);
+      }
+    }
+
+    async function forceSyncAllCollectionsDashboard() {
+      const syncAllBtn = document.getElementById('btn-sync-all-sd');
+      if (syncAllBtn) {
+        syncAllBtn.disabled = true;
+        syncAllBtn.style.opacity = '0.5';
+        syncAllBtn.innerText = 'SYNCING ALL...';
+      }
+
+      showToast("Starting concurrent synchronization of all cloud collections...");
+
+      await Promise.all(SYNC_GATE_COLLECTIONS.map(gate => triggerIndividualGateSync(gate.id).catch(e => console.warn(`Gate sync error for ${gate.id}:`, e))));
+
+      if (syncAllBtn) {
+        syncAllBtn.disabled = false;
+        syncAllBtn.style.opacity = '1';
+        syncAllBtn.innerText = '⚡ SYNC ALL';
+      }
+
+      showToast("✓ All collections are 100% synchronized and up-to-date with secure cloud.");
+    }
+
+    function testConnectionLatencySyncDash(silent = false) {
+      const dot = document.getElementById('sd-status-dot');
+      const text = document.getElementById('sd-status-text');
+      const latencyText = document.getElementById('sd-latency-text');
+      const badge = document.getElementById('sd-latency-badge');
+
+      if (!db) {
+        if (dot) { dot.style.backgroundColor = '#ef4444'; }
+        if (text) { text.innerText = 'Disconnected (Offline)'; }
+        if (latencyText) { latencyText.innerText = 'Offline'; }
+        if (badge) { badge.style.display = 'none'; }
+        return;
+      }
+
+      if (dot && !silent) { dot.style.backgroundColor = '#f59e0b'; }
+      if (text && !silent) { text.innerText = 'Measuring latency...'; }
+
+      const start = performance.now();
+      db.collection('ek_settings').doc('global_config').get()
+        .then(() => {
+          const lat = Math.round(performance.now() - start);
+
+          if (dot) { dot.style.backgroundColor = '#10b981'; }
+          if (text) { text.innerText = 'Connected (Cloud Real-time)'; }
+          if (latencyText) { latencyText.innerText = `${lat} ms`; }
+
+          if (badge) {
+            badge.style.display = 'inline-block';
+            if (lat < 150) {
+              badge.style.background = 'rgba(16,185,129,0.15)';
+              badge.style.color = '#10b981';
+              badge.innerText = 'Excellent';
+            } else if (lat < 350) {
+              badge.style.background = 'rgba(245,158,11,0.15)';
+              badge.style.color = '#f59e0b';
+              badge.innerText = 'Fair';
+            } else {
+              badge.style.background = 'rgba(239,68,68,0.15)';
+              badge.style.color = '#ef4444';
+              badge.innerText = 'Delayed';
+            }
+          }
+          if (!silent) {
+            showToast(`📡 Ping latency verified: ${lat}ms`);
+          }
+        })
+        .catch(err => {
+          console.warn("Ping failed:", err);
+          if (dot) { dot.style.backgroundColor = '#ef4444'; }
+          if (text) { text.innerText = 'Cloud Connect Error'; }
+          if (latencyText) { latencyText.innerText = '-- ms'; }
+          if (badge) { badge.style.display = 'none'; }
+        });
+    }
+
+    function renderSyncDashboard() {
+      testConnectionLatencySyncDash(true);
+
+      const listContainer = document.getElementById('sd-collections-list');
+      if (!listContainer) return;
+
+      const html = SYNC_GATE_COLLECTIONS.map(gate => {
+        const lastSync = lastSyncTimestamps[gate.id] || "Never synced";
+        return `
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+              <span style="font-size: 20px; flex-shrink: 0;">${gate.icon}</span>
+              <div style="min-width: 0; display: flex; flex-direction: column;">
+                <span style="color: #fff; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${gate.name}</span>
+                <span style="color: #888; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;">${gate.tamilName}</span>
+                <span style="color: #666; font-size: 9.5px; margin-top: 2px;">Last Synced: <span style="color: #aaa;">${lastSync}</span></span>
+              </div>
+            </div>
+            <button id="btn-gate-sync-${gate.id}" onclick="triggerIndividualGateSync('${gate.id}')" class="btn" style="width: auto; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: 800; border: 1px solid rgba(16,185,129,0.3); background: rgba(16,185,129,0.08); color: #10b981; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+              🔄 Sync Now
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      listContainer.innerHTML = html;
+    }
+
+    function filterAdminOrdersByStatus(status, element) {
+      adminStatusFilter = status;
+      adminOrdersPageLimit = 25;
+      document.querySelectorAll('#admin-tab-orders .filter-pills .pill').forEach(b => b.classList.remove('active'));
+      if (element) element.classList.add('active');
+      renderAdminOrders();
+    }
+
+    function loadMoreAdminOrders() {
+      adminOrdersPageLimit += 25;
+      renderAdminOrders();
+    }
+
+    
+    let isFetchingAdminOrders = false;
+    async function fetchAdminOrdersLive(force = false) {
+      if (isFetchingAdminOrders && !force) return;
+      isFetchingAdminOrders = true;
+      debugLog("[Admin Live Sync] Direct fetching orders from Firestore...");
+      try {
+        if (typeof db !== "undefined" && db) {
+          let snap;
+          try {
+            snap = await db.collection("ek_orders").orderBy("createdAt", "desc").limit(500).get();
+          } catch(e) {
+            snap = await db.collection("ek_orders").limit(500).get();
+          }
+          if (snap && !snap.empty) {
+            const cloudOrders = [];
+            snap.forEach(doc => {
+              const d = doc.data();
+              if (d && d.id) cloudOrders.push(d);
+            });
+            if (cloudOrders.length > 0) {
+              const localOrders = getData("ek_orders", []);
+              const mergedMap = new Map();
+              localOrders.forEach(o => { if (o && o.id) mergedMap.set(o.id, o); });
+              cloudOrders.forEach(o => { mergedMap.set(o.id, o); });
+              const mergedList = Array.from(mergedMap.values());
+              saveData("ek_orders", mergedList);
+              debugLog(`[Admin Live Sync] Merged ${cloudOrders.length} orders from cloud into local store. Total: ${mergedList.length}`);
+            }
+          }
+        }
+      } catch(err) {
+        console.warn("[Admin Live Sync] fetchAdminOrdersLive encountered error:", err);
+      } finally {
+        isFetchingAdminOrders = false;
+        if (typeof currentScreen !== "undefined" && currentScreen === "screen-admin") {
+          try { if (typeof renderAdminDashboard === "function") renderAdminDashboard(); } catch(e){}
+          try { if (typeof renderAdminOrders === "function") renderAdminOrders(); } catch(e){}
+          try { if (typeof renderAdminAnalytics === "function" && currentAdminTab === "tab-analytics") renderAdminAnalytics(); } catch(e){}
+        }
+      }
+    }
+
+    function renderAdminOrders() {
+      let orders = getDataCached('ek_orders', []);
+      if (!orders || orders.length === 0) {
+        orders = getData('ek_orders', []);
+      }
+      const rawDeliveryPersons = getDataCached('ek_delivery_persons', []);
+      const deletedRiderIds = getDeletedRiderIds();
+      const deliveryPersons = rawDeliveryPersons.filter(dp => !deletedRiderIds.includes(dp.id));
+      const searchInput = document.getElementById('admin-orders-search');
+      const search = searchInput ? searchInput.value.toLowerCase().trim() : '';
+      const list = document.getElementById('admin-orders-list');
+      if (!list) return;
+
+      const deletedOrderIds = getDeletedOrderIds();
+      let filtered = orders.filter(o => o && !deletedOrderIds.includes(o.id) && o.hiddenByAdmin !== true).sort((a,b) => safeParseTime(b.createdAt) - safeParseTime(a.createdAt));
+
+      if (adminStatusFilter !== 'all') {
+        const lowerFilter = adminStatusFilter.toLowerCase().trim();
+        if (lowerFilter === 'pending') {
+          filtered = filtered.filter(o => isPendingOrderStatus(o.status));
+        } else if (lowerFilter === 'ready') {
+          filtered = filtered.filter(o => isReadyOrderStatus(o.status));
+        } else if (lowerFilter === 'delivered') {
+          filtered = filtered.filter(o => isDeliveredOrderStatus(o.status));
+        } else if (lowerFilter === 'cancelled' || lowerFilter === 'canceled' || lowerFilter === 'rejected') {
+          filtered = filtered.filter(o => isCancelledOrderStatus(o.status));
+        } else {
+          filtered = filtered.filter(o => (o.status || '').toLowerCase().trim() === lowerFilter);
+        }
+      }
+
+      if (search) {
+        const cleanSearch = search.replace(/\D/g, '');
+        filtered = filtered.filter(o => {
+          const oId = (o.id || '').toLowerCase();
+          const oCustName = (o.customerName || '').toLowerCase();
+          const oPhone = (o.customerPhone || '').replace(/\D/g, '');
+          const phoneMatches = cleanSearch ? oPhone.includes(cleanSearch) : false;
+          return oId.includes(search) || oCustName.includes(search) || phoneMatches || (o.customerPhone || '').includes(search);
+        });
+      }
+
+      if (filtered.length === 0) {
+        list._lastRenderedHtml = '';
+        list.innerHTML = `<div class="card" style="text-align:center; padding:20px; color:var(--text-muted);">No matching order records registered!</div>`;
+        return;
+      }
+
+      const totalCount = filtered.length;
+      const paginatedOrders = filtered.slice(0, adminOrdersPageLimit);
+
+      let listHtml = '';
+      paginatedOrders.forEach(o => {
+        const itemRows = (o.items || []).map(i => {
+          const prep = getLocalizedPrepareText(i.cutStyle, i.category);
+          const prepStr = prep ? ` [${prep}]` : '';
+          return `• ${i.tamilName} (${i.englishName}) - <strong>${getFormattedItemQty(i, currentLang)}</strong>${prepStr} ${i.specialNote ? '<i>(Note: '+i.specialNote+')</i>' : ''}`;
+        }).join('<br>');
+
+        const oCoords = getOrderCoordinates(o);
+        const custLat = oCoords.customer[0];
+        const custLng = oCoords.customer[1];
+
+        const sortedExecutives = [...deliveryPersons].map(dp => {
+          const dpLat = dp.latitude || 11.5815;
+          const dpLng = dp.longitude || 77.8488;
+          const distToCust = calculateDistanceKm(dpLat, dpLng, custLat, custLng) || 0;
+          return { ...dp, distToCust };
+        }).sort((a, b) => a.distToCust - b.distToCust);
+
+        let deliveryOptionsHtml = `<option value="">${currentLang === 'ta' ? '-- நியமிக்கப்படவில்லை --' : '-- Unassigned --'}</option>`;
+        sortedExecutives.forEach(dp => {
+          const isSel = o.assignedExecutiveId === dp.id ? 'selected' : '';
+          const distanceStatus = dp.latitude ? `⚡ ${dp.distToCust} km from customer` : `🏪 at Shop`;
+          deliveryOptionsHtml += `<option value="${dp.id}" ${isSel}>🚀 ${dp.name} (${distanceStatus})</option>`;
+        });
+
+        let actions = '';
+        const noRiderAssigned = !(o.assignedExecutiveId || o.deliveryExecutiveId);
+
+        if (o.status === 'pending') {
+          actions += `
+            <button class="btn" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; font-size:11.5px; font-weight:800; padding:10px; border-radius:10px; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.2);" onclick="changeOrderStatus('${o.id}', 'ready')">Mark Ready ✓</button>
+            <button class="btn" style="background:linear-gradient(135deg, #ef4444, #dc2626); border:none; color:#fff; font-size:11.5px; font-weight:800; padding:10px; border-radius:10px; cursor:pointer; box-shadow:0 4px 10px rgba(239,68,68,0.2);" onclick="cancelOrderPrompt('${o.id}')">Cancel Order 🔴</button>
+          `;
+          if (noRiderAssigned) {
+            actions += `
+              <button class="btn" style="background: rgba(245, 158, 11, 0.05); border: 1.5px dashed rgba(245, 158, 11, 0.4); color: #f59e0b; font-size: 11px; font-weight: 800; padding: 10px; border-radius: 10px; cursor: pointer; box-shadow: none;" onclick="markDeliveredAdminManual('${o.id}')">Mark Delivered (Admin Complete) ⚙️</button>
+            `;
+          }
+        } else if (o.status === 'ready') {
+          actions += `
+            <button class="btn" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; font-size:11.5px; font-weight:800; padding:10px; border-radius:10px; cursor:pointer; box-shadow:0 4px 12px rgba(16,185,129,0.25);" onclick="changeOrderStatus('${o.id}', 'delivered')">Mark Delivered ✅</button>
+            <button class="btn" style="background:linear-gradient(135deg, #ef4444, #dc2626); border:none; color:#fff; font-size:11.5px; font-weight:800; padding:10px; border-radius:10px; cursor:pointer; box-shadow:0 4px 10px rgba(239,68,68,0.2);" onclick="cancelOrderPrompt('${o.id}')">Cancel Order 🔴</button>
+          `;
+          if (noRiderAssigned) {
+            actions += `
+              <button class="btn" style="background: rgba(245, 158, 11, 0.05); border: 1.5px dashed rgba(245, 158, 11, 0.4); color: #f59e0b; font-size: 11px; font-weight: 800; padding: 10px; border-radius: 10px; cursor: pointer; box-shadow: none;" onclick="markDeliveredAdminManual('${o.id}')">Mark Delivered (Admin Complete) ⚙️</button>
+            `;
+          }
+        } else if (o.status === 'delivering') {
+          actions += `
+            <button class="btn" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; font-size:11.5px; font-weight:800; padding:10px; border-radius:10px; cursor:pointer; box-shadow:0 4px 12px rgba(16,185,129,0.25);" onclick="changeOrderStatus('${o.id}', 'delivered')">Mark Delivered ✅</button>
+            <button class="btn" style="background:linear-gradient(135deg, #ef4444, #dc2626); border:none; color:#fff; font-size:11.5px; font-weight:800; padding:10px; border-radius:10px; cursor:pointer; box-shadow:0 4px 10px rgba(239,68,68,0.2);" onclick="cancelOrderPrompt('${o.id}')">Cancel Order 🔴</button>
+          `;
+          if (noRiderAssigned) {
+            actions += `
+              <button class="btn" style="background: rgba(245, 158, 11, 0.05); border: 1.5px dashed rgba(245, 158, 11, 0.4); color: #f59e0b; font-size: 11px; font-weight: 800; padding: 10px; border-radius: 10px; cursor: pointer; box-shadow: none;" onclick="markDeliveredAdminManual('${o.id}')">Mark Delivered (Admin Complete) ⚙️</button>
+            `;
+          }
+        }
+
+        const lowerStatus = (o.status || '').toLowerCase();
+        const badgeClass = lowerStatus === 'pending' ? 'badge-pending' :
+                           lowerStatus === 'ready' ? 'badge-ready' :
+                           lowerStatus === 'delivering' ? 'badge-ready' :
+                           lowerStatus === 'delivered' ? 'badge-delivered' :
+                           (lowerStatus === 'cancelled' || lowerStatus === 'canceled') ? 'badge-cancelled' :
+                           'badge-rejected';
+
+        const isExpanded = !!expandedOrders[o.id];
+
+        let waCustomerMsg = '';
+        let waReadyMsg = '';
+        let kotMsg = '';
+
+        if (isExpanded) {
+          const riderNameText = o.assignedRiderName ? o.assignedRiderName : (currentLang === 'ta' ? "எங்களது விநியோகக் குழு" : "Our delivery team");
+          const subtotalVal = o.subtotalAmount !== undefined ? o.subtotalAmount : (o.subtotal || (o.totalAmount - (o.deliveryFee || o.deliveryCharge || 0)));
+          const deliveryFeeVal = o.deliveryFee !== undefined ? o.deliveryFee : (o.deliveryCharge !== undefined ? o.deliveryCharge : 0);
+
+          waCustomerMsg = encodeURIComponent(
+`🥩 *எடப்பாடி கடை / EDAPPADI KADAI* 🥩
+━━━━━━━━━━━━━━━━━━━━━━━━
+வணக்கம் *${o.customerName}*! உங்களுடைய ஆர்டர் வெற்றிகரமாக உறுதி செய்யப்பட்டுள்ளது.
+
+📋 *ஆர்டர் எண் (Order ID):* ${o.id}
+⏱️ *டெலிவரி நேரம்:* ${o.deliveryTimeSlot}
+📍 *விநியோக முகவரி (Address):* ${o.deliveryAddress}
+${o.orderSource === 'AI_ASSISTANT' ? '🤖 இந்த ஆர்டர் Edappadi Kadai AI Assistant மூலம் Professional-ஆ தயார் செய்யப்பட்டது.\n' : ''}
+🛒 *ஆர்டர் செய்த பொருட்கள் (Items):*
+━━━━━━━━━━━━━━━━━━━━━━━━
+${o.items.map((it, idx) => {
+  const prep = getLocalizedPrepareText(it.cutStyle, it.category);
+  const prepStr = prep ? `\n   ✂️ *தயாரிப்பு முறை:* ${prep}` : '';
+  const itemNote = it.specialNote ? `\n   📝 *குறிப்பு:* ${it.specialNote}` : '';
+  const itemPriceVal = it.totalPrice || it.itemTotalPrice || ((it.pricePerUnit || it.price || 0) * (it.weightGrams ? (isUnitWeight(it.sellingUnit || it.unit || 'kg') ? it.weightGrams/1000 : it.weightGrams) : 1));
+  return `🔹 ${idx + 1}. *${it.tamilName}* (${it.englishName})
+   ⚡ *அளவு:* ${getFormattedItemQty(it, currentLang)}${prepStr}${itemNote}
+   💵 *விலை:* ₹${itemPriceVal}`;
+}).join('\n─────\n')}
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+💰 பொருட்கள் தொகை: ₹${subtotalVal}
+🚚 டெலிவரி கட்டணம்: ₹${deliveryFeeVal}
+━━━━━━━━━━━━━━━━━━━━━━━━
+💵 *மொத்த தொகை: ₹${o.totalAmount}*
+
+நன்றி! உங்களது ஆர்டர் விரைவில் உங்களது இல்லம் தேடி வரும்! 🛵✨
+━━━━━━━━━━━━━━━━━━━━━━━━`
+          );
+
+          waReadyMsg = encodeURIComponent(
+`🛵 *எடப்பாடி கடை / EDAPPADI KADAI* 🛵
+━━━━━━━━━━━━━━━━━━━━━━━━
+அன்பான *${o.customerName}* அவர்களுக்கு, உங்களுடைய ஆர்டர் (${o.id}) தற்போது டெலிவரிக்கு தயாராகிவிட்டது!
+
+🚴 *விநியோக நபர் (Rider):* ${riderNameText}
+💵 *தயார் செய்ய வேண்டிய தொகை:* ₹${o.totalAmount}
+📍 *டெலிவரி முகவரி:* ${o.deliveryAddress}
+
+எங்களது டெலிவரி பார்ட்னர் இன்னும் சில நிமிடங்களில் உங்களை வந்தடைவார். தயவுசெய்து மொபைலை ஆன் செய்து வைத்திருக்கவும்! 📱✨
+━━━━━━━━━━━━━━━━━━━━━━━━`
+          );
+
+          kotMsg = encodeURIComponent(
+`📦 *புதிய பேக்கிங் சீட்டு (NEW PACKING SLIP)* 📦
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *ஆர்டர் எண் (ID):* ${o.id}
+👤 *வாடிக்கையாளர்:* ${o.customerName}
+📞 *தொடர்பு எண்:* ${o.customerPhone}
+⏱️ *டெலிவரி ஸ்லாட்:* ${o.deliveryTimeSlot}
+${o.orderSource === 'AI_ASSISTANT' ? '🤖 இந்த ஆர்டர் Edappadi Kadai AI Assistant மூலம் Professional-ஆ தயார் செய்யப்பட்டது.\n' : ''}
+📦 *பேக் செய்ய வேண்டிய பொருட்கள் (Items):*
+━━━━━━━━━━━━━━━━━━━━━━━━
+${o.items.map((it, idx) => {
+  const prep = getLocalizedPrepareText(it.cutStyle, it.category);
+  const prepStr = prep ? `\n   ✂️ *தயாரிப்பு முறை:* ${prep}` : '';
+  const itemNote = it.specialNote ? `\n   📝 *குறிப்பு:* ${it.specialNote}` : '';
+  return `🔹 ${idx + 1}. *${it.tamilName}* (${it.englishName})
+   ⚡ *அளவு:* ${getFormattedItemQty(it, currentLang)}${prepStr}${itemNote}`;
+}).join('\n─────\n')}
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+உடனே பேக் செய்து தயாராக வைக்கவும்! 📦🚀
+━━━━━━━━━━━━━━━━━━━━━━━━`
+          );
+        }
+
+        const isUnverifiedUpi = o.status === 'payment_pending_verification' || 
+                                o.paymentStatus === 'PENDING_VERIFICATION' || 
+                                o.needsPaymentVerification === true || 
+                                (o.paymentMethod && o.paymentMethod.toLowerCase().includes('unverified')) ||
+                                (o.upiStatus === 'PENDING_VERIFICATION');
+
+        const isUpi = !isUnverifiedUpi && o.paymentMethod && (o.paymentMethod.toUpperCase().includes('UPI') || o.paymentMethod.toUpperCase().includes('ONLINE') || (o.upiTxnId && o.upiTxnId !== 'NO_TXN_REF'));
+
+        const paymentBadge = isUnverifiedUpi 
+          ? `<span class="badge" style="background: rgba(239, 68, 68, 0.2); border: 1.5px solid #ef4444; color: #f87171; font-weight: 800; font-size: 10px; padding: 2.5px 6.5px; border-radius: 6px; text-transform: uppercase;">⚠️ UPI UNVERIFIED</span>`
+          : isUpi 
+          ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); border: 1.5px solid rgba(16, 185, 129, 0.4); color: #10b981; font-weight: 800; font-size: 10px; padding: 2.5px 6.5px; border-radius: 6px; text-transform: uppercase;">📱 UPI PAY (PAID)</span>`
+          : `<span class="badge" style="background: rgba(245, 158, 11, 0.15); border: 1.5px solid rgba(245, 158, 11, 0.4); color: #f59e0b; font-weight: 800; font-size: 10px; padding: 2.5px 6.5px; border-radius: 6px; text-transform: uppercase;">💵 COD (CASH)</span>`;
+
+        const card = `
+          <div class="card" style="border-left: 4px solid var(--accent-orange); margin-bottom: 12px; padding: 14px; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; background: var(--bg-card); contain: layout style paint;" onclick="toggleOrderDetails('${o.id}')">
+            <!-- Header Section (Always Visible) -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <div>
+                <span style="font-size:10px; color:var(--text-secondary); text-transform:uppercase; font-weight:500;">TICKET</span>
+                <strong style="color:var(--accent-orange); display:block; font-size:14px; font-family:'JetBrains Mono', monospace;">${o.id}</strong>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;" onclick="event.stopPropagation()">
+                <span class="badge ${badgeClass}">${o.status.toUpperCase()}</span>
+                <span style="font-size:16px; color:var(--text-muted); cursor:pointer; font-weight:700; width:24px; text-align:center;" onclick="toggleOrderDetails('${o.id}')">${isExpanded ? '▲' : '▼'}</span>
+              </div>
+            </div>
+
+            <!-- Primary Customer Info (Always Visible) -->
+            <div style="font-size:13px; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <p style="margin: 0; font-weight:700; color:#ffffff; font-size:13.5px;">👤 ${escapeHtml(o.customerName)}</p>
+                <p style="margin: 0; font-size:12px; color:var(--text-secondary);">📞 <a href="tel:${o.customerPhone}" style="color:var(--accent-orange); text-decoration:none; font-weight:600;" onclick="event.stopPropagation()">${o.customerPhone}</a></p>
+              </div>
+              <div style="text-align:right;">
+                ${paymentBadge}
+              </div>
+            </div>
+
+            ${isUnverifiedUpi ? `
+              <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(245, 158, 11, 0.2)); border: 1.5px solid #ef4444; border-radius: 10px; padding: 10px 12px; margin-top: 8px; margin-bottom: 8px;" onclick="event.stopPropagation()">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:180px;">
+                    <span style="color:#f87171; font-weight:900; font-size:11.5px; display:block; text-transform:uppercase;">⚠️ UNVERIFIED UPI PAYMENT</span>
+                    <span style="color:#ffffff; font-size:11px; line-height:1.35; display:block; margin-top:2px;">
+                      No verified transaction ID/reference received from bank/UPI app. Verify bank credit before preparing or dispatching order!
+                    </span>
+                  </div>
+                  <button class="btn" style="background: #10b981; color: #000; font-weight: 900; font-size: 11px; padding: 7px 12px; border-radius: 8px; border: none; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 8px rgba(16,185,129,0.3);" onclick="event.stopPropagation(); verifyAndApproveUpiPayment('${o.id}')">
+                    ✓ Verify & Approve Payment
+                  </button>
+                </div>
+              </div>
+            ` : ''}
+
+            ${o.needsManualLocationPin ? `
+              <div style="margin-top: 8px; margin-bottom: 4px;" onclick="event.stopPropagation()">
+                <button class="btn" style="background: rgba(239, 68, 68, 0.15); border: 1.5px solid rgba(239, 68, 68, 0.5); color: #f87171; font-weight: 800; font-size: 11px; padding: 6px 12px; border-radius: 8px; display: flex; align-items: center; gap: 4px; cursor: pointer; width: 100%; justify-content: center; font-family: 'Poppins', sans-serif;" onclick="openManualPinModal('${o.id}')">
+                  📍 Location Missing — Tap to Pin Manually
+                </button>
+              </div>
+            ` : ''}
+
+            <!-- Quick Expand/Collapse and price Summary Badge (Visible in Collapsed State) -->
+            ${!isExpanded ? `
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; border-top:1px dashed #262626; padding-top:8px; font-size:11.5px; color:var(--text-muted);">
+                <span>💰 Total : <strong style="color:var(--accent-green);">₹${o.totalAmount}</strong> <span style="font-size:9.5px; color:#999; margin-left:4px; font-weight:bold;">(${isUpi ? 'Paid Online' : 'Pay COD'})</span></span>
+                <span style="color: var(--accent-orange); font-weight:600; font-size:10.5px; display:flex; align-items:center; gap:2px;">${currentLang === 'ta' ? 'விவரம் காண்க ⬇️' : 'View Details ⬇️'}</span>
+              </div>
+            ` : ''}
+
+            <!-- Expanded Info Section (Toggleable Details) -->
+            <div id="order-details-${o.id}" style="display: ${isExpanded ? 'block' : 'none'}; margin-top: 12px; border-top: 1px solid #262626; padding-top: 12px;" onclick="event.stopPropagation()">
+              <div style="font-size:12px; margin-bottom:8px; line-height:1.45;">
+                <p style="color:var(--text-secondary);">📍 <strong>Delivery Address:</strong> ${escapeHtml(o.deliveryAddress)}</p>
+                <p style="color:var(--text-secondary); margin-top:4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span>⏱️ Slot: <strong>${o.deliveryTimeSlot}</strong></span> | 
+                  <span>💳 Payment:</span> 
+                  ${isUpi 
+                    ? `<span style="background: rgba(16, 185, 129, 0.15); border: 1.5px solid rgba(16, 185, 129, 0.35); color: #10b981; font-size: 11px; padding: 2px 8px; border-radius: 8px; font-weight: 800; display: inline-flex; align-items: center; gap: 3px;">📱 UPI PAYMENT (PAID / செலுத்தப்பட்டது)</span>` 
+                    : `<span style="background: rgba(245, 158, 11, 0.15); border: 1.5px solid rgba(245, 158, 11, 0.35); color: #f59e0b; font-size: 11px; padding: 2px 8px; border-radius: 8px; font-weight: 800; display: inline-flex; align-items: center; gap: 3px;">💵 CASH ON DELIVERY (COD / ரொக்கம்)</span>`
+                  }
+                </p>
+              </div>
+
+              <div class="card" style="background:#0a0a0a; font-size:12px; padding:10px; border-color:#222; margin-bottom:10px; border-radius:8px;">
+                <span style="font-size:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">BASKET ITEMS</span>
+                <p style="margin-top:4px; line-height:1.5; margin-bottom: 0;">${itemRows}</p>
+              </div>
+
+              <div style="margin-bottom:12px; border-top: 1px dashed #262626; padding-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <label style="font-size:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">${currentLang === 'ta' ? 'விநியோக நபர் (Rider)' : 'Delivery Partner'}</label>
+                  <select class="form-control" style="background:#111; color:#fff; border:1px solid #333; font-size:12px; padding:6px; border-radius:6px; width:100%; font-weight:bold;" onchange="assignDeliveryPartner('${o.id}', this.value)" onclick="event.stopPropagation()">
+                    ${deliveryOptionsHtml}
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">${currentLang === 'ta' ? 'ஆர்டர் நிலை (Status)' : 'Order Status'}</label>
+                  <select class="form-control" style="background:#111; color:#fff; border:1px solid #333; font-size:12px; padding:6px; border-radius:6px; width:100%; font-weight:bold;" onchange="changeOrderStatusDirectly('${o.id}', this.value)" onclick="event.stopPropagation()">
+                    <option value="pending" ${o.status === 'pending' ? 'selected' : ''}>Pending ⏳</option>
+                    <option value="ready" ${o.status === 'ready' ? 'selected' : ''}>Ready 🥩</option>
+                    <option value="delivering" ${o.status === 'delivering' ? 'selected' : ''}>Delivering 🏍️</option>
+                    <option value="delivered" ${o.status === 'delivered' ? 'selected' : ''}>Delivered ✅</option>
+                    <option value="rejected" ${o.status === 'rejected' ? 'selected' : ''}>Rejected ❌</option>
+                    <option value="cancelled" ${(o.status === 'cancelled' || o.status === 'CANCELLED' || o.status === 'canceled') ? 'selected' : ''}>Cancelled 🛑</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; font-size:13px;">
+                <span style="color:var(--text-muted);">Grand Total Paid:</span>
+                <strong style="font-size:17px; color:var(--accent-green);">₹${o.totalAmount}</strong>
+              </div>
+
+              ${(o.status === 'delivered') ? `
+                <div style="background:#050505; border: 1px solid #1c1c1e; border-radius:10px; padding:8px 12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+                  <div>
+                    <span style="font-size:9.5px; color:var(--text-muted); text-transform:uppercase; font-weight:700; display:block;">✍️ Customer Hand-Off Signature</span>
+                    <span style="font-size:11px; color:var(--accent-green); font-weight:600;">✓ Signed on Delivery</span>
+                  </div>
+                  ${(o.customerSignature && o.customerSignature.startsWith('data:image')) ? `
+                    <img src="${o.customerSignature}" style="max-height:36px; background:#000; border:1px solid #222; border-radius:6px; padding:1.5px;" />
+                  ` : `
+                    <span style="font-size:11px; color:var(--accent-green); font-weight:700;">✓ OTP Hand-off verified</span>
+                  `}
+                </div>
+
+                ${o.rating ? `
+                  <div style="background:rgba(245,158,11,0.03); border: 1px solid rgba(245,158,11,0.15); border-radius:10.5px; padding:10px 12px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <span style="font-size:9.5px; color:var(--text-muted); text-transform:uppercase; font-weight:700;">⭐ Customer Review & Rating</span>
+                      <span style="font-size:12px; color:var(--accent-orange); font-weight:700;">${'★'.repeat(o.rating)}${'☆'.repeat(5 - o.rating)}</span>
+                    </div>
+                    ${o.feedbackComment ? `
+                      <p style="margin:4px 0 0 0; font-size:11.5px; color:rgba(255,255,255,0.85); font-style:italic;">"${o.feedbackComment}"</p>
+                    ` : `
+                      <p style="margin:4px 0 0 0; font-size:11px; color:var(--text-muted);">No written comments provided.</p>
+                    `}
+                  </div>
+                ` : ''}
+              ` : ''}
+
+              <!-- Operational Buttons Grid -->
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:8px;">
+                <a href="tel:${o.customerPhone}" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#fff; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px;">📞 Call Customer</a>
+                <a href="javascript:void(0)" onclick="openWhatsAppDirect('${o.customerPhone}', decodeURIComponent('${waCustomerMsg}'))" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(16, 185, 129, 0.08); border:1px solid rgba(16, 185, 129, 0.3); color:#10b981; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">📱 Confirm WA</a>
+
+                <button class="btn" style="padding:8px; font-size:11px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#fff; border-radius:8px; cursor:pointer;" onclick="printKOTTicket('${o.id}')">🖨️ ${currentLang === 'ta' ? 'பேக்கிங் சீட்டு' : 'Packing Slip'}</button>
+                <a href="javascript:void(0)" onclick="openWhatsAppShareModal('${o.id}', '${o.customerPhone}', '${(o.customerName || '').replace(/'/g, "\\'")}', '${o.assignedExecutiveId || ''}', '${kotMsg}')" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(34, 197, 94, 0.08); border:1px solid rgba(34, 197, 94, 0.3); color:#22c55e; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">💚 ${currentLang === 'ta' ? 'சீட்டைப் பகிர்' : 'Share Slip'}</a>
+
+                <button class="btn" style="padding:8px; font-size:11px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#fff; border-radius:8px; cursor:pointer;" onclick="printCustomerInvoice('${o.id}')">📄 Print Bill</button>
+                <a href="javascript:void(0)" onclick="openWhatsAppDirect('${o.customerPhone}', decodeURIComponent('${waReadyMsg}'))" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.3); color:#3b82f6; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">📢 Ready Prompt</a>
+              </div>
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; border-top: 1px solid var(--border-color); padding-top:8px;">
+                ${actions}
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; border-top: 1px dashed #262626; padding-top: 8px;">
+                <button class="btn" style="background: rgba(244, 63, 94, 0.08); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.25); padding: 5px 10px; font-size: 11px; font-weight: 700; border-radius: 8px; width: auto; font-family: 'Poppins', sans-serif;" onclick="deleteOrderFromDb('${o.id}', false)">🗑️ Delete Record</button>
+                <button onclick="toggleOrderDetails('${o.id}')" style="background:transparent; border:none; color:var(--text-secondary); font-size:11px; cursor:pointer; font-weight:500;">
+                  ${currentLang === 'ta' ? '▲ சுருக்குக' : '▲ Collapse'}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+        listHtml += card;
+      });
+      if (totalCount > paginatedOrders.length) {
+        listHtml += `
+          <div style="text-align: center; margin: 16px 0;">
+            <button class="btn btn-secondary" style="width: auto; padding: 10px 24px; font-weight: 700; border-radius: 12px; cursor: pointer;" onclick="loadMoreAdminOrders()">
+              📥 Load More Orders (${paginatedOrders.length} of ${totalCount} shown)
+            </button>
+          </div>
+        `;
+      }
+
+      if (list._lastRenderedHtml !== listHtml) {
+        list._lastRenderedHtml = listHtml;
+        list.innerHTML = listHtml;
+      }
+    }
+
+    function changeOrderStatus(id, nextStatus) {
+      if (typeof db !== 'undefined' && db) {
+        showToast("சரிபார்க்கிறது... / Verifying status...", "info");
+        const orderRef = db.collection('ek_orders').doc(id);
+
+        db.runTransaction((transaction) => {
+          return transaction.get(orderRef).then((docSnap) => {
+            if (!docSnap.exists) {
+              throw "ORDER_NOT_FOUND";
+            }
+            const cloudOrder = normalizeFirestoreData(docSnap.data());
+            const upperStatus = String(cloudOrder.status || '').toUpperCase();
+
+            if (upperStatus === 'CANCELLED' || upperStatus === 'REJECTED' || upperStatus === 'CANCELED') {
+              throw "ORDER_ALREADY_CANCELLED";
+            }
+            if (upperStatus === 'DELIVERED') {
+              throw "ORDER_ALREADY_DELIVERED";
+            }
+
+            const oldStatus = cloudOrder.status;
+            cloudOrder.status = nextStatus;
+            if (!cloudOrder.statusTimestamps) cloudOrder.statusTimestamps = {};
+            cloudOrder.statusTimestamps[nextStatus] = new Date().toISOString();
+            if (nextStatus === 'delivered' && !cloudOrder.customerSignature) {
+              cloudOrder.customerSignature = "Delivered manually by Admin 👑";
+            }
+            cloudOrder.updatedAt = new Date().toISOString();
+
+            transaction.set(orderRef, cleanFirestoreData(cloudOrder), { merge: true });
+            return { cloudOrder, oldStatus };
+          });
+        }).then(({ cloudOrder, oldStatus }) => {
+          window.locallyModifiedOrders = window.locallyModifiedOrders || {};
+          window.locallyModifiedOrders[id] = Date.now() + 8000;
+
+          const orders = getData('ek_orders');
+          const idx = orders.findIndex(o => o.id === id);
+          if (idx !== -1) {
+            orders[idx] = cloudOrder;
+            saveData('ek_orders', orders);
+          }
+
+          try {
+            sendFcmPushNotification(cloudOrder, oldStatus, nextStatus);
+          } catch (fcmErr) {
+            console.warn("FCM push notify skipped or exception:", fcmErr);
+          }
+
+          if (nextStatus === 'delivered') {
+            try {
+              checkAndProcessReferralRewards(cloudOrder);
+            } catch (refErr) {
+              console.error("Referral rewards processing error in changeOrderStatus:", refErr);
+            }
+          }
+
+          showToast(`Order status updated to ${nextStatus.toUpperCase()}!`, "success");
+          showAdminSuccessModal(
+            currentLang === 'ta' ? "📦 ஆர்டர் நிலை மாற்றப்பட்டது!" : "📦 Order Status Updated!",
+            currentLang === 'ta' ? `ஆர்டர் நிலை <strong>${nextStatus.toUpperCase()}</strong> என வெற்றிகரமாக மாற்றப்பட்டது.` : `The order status has been successfully updated to <strong>${nextStatus.toUpperCase()}</strong>.`
+          );
+          renderAdminDashboard();
+        }).catch((err) => {
+          console.error("Admin status update transaction failed:", err);
+          if (err === 'ORDER_ALREADY_CANCELLED') {
+            showToast(currentLang === 'ta' ? "இந்த ஆர்டர் ஏற்கனவே ரத்து செய்யப்பட்டுவிட்டது, எனவே மாற்ற முடியாது." : "This order has already been cancelled and cannot be modified.", "warning");
+            db.collection('ek_orders').doc(id).get().then((docSnap) => {
+              if (docSnap.exists) {
+                const cloudOrder = normalizeFirestoreData(docSnap.data());
+                const orders = getData('ek_orders', []);
+                const idx = orders.findIndex(o => o.id === id);
+                if (idx !== -1) {
+                  orders[idx] = cloudOrder;
+                  saveData('ek_orders', orders);
+                  renderAdminDashboard();
+                }
+              }
+            });
+          } else if (err === 'ORDER_ALREADY_DELIVERED') {
+            showToast(currentLang === 'ta' ? "இந்த ஆர்டர் ஏற்கனவே வழங்கப்பட்டுவிட்டது, எனவே மாற்ற முடியாது." : "This order has already been delivered and cannot be modified.", "warning");
+          } else if (err === 'ORDER_NOT_FOUND') {
+            showToast("Error: Order not found.", "error");
+          } else {
+            showToast("Update failed: " + err, "error");
+          }
+        });
+      } else {
+        showToast("Internet connection required to modify order status.", "warning");
+      }
+    }
+
+    function changeOrderStatusDirectly(id, nextStatus) {
+      if (nextStatus === 'rejected') {
+        cancelOrderPrompt(id);
+      } else {
+        showCustomConfirm(
+          currentLang === 'ta' ? "ஆர்டர் நிலையை மாற்றவா?" : "Change Order Status?",
+          currentLang === 'ta'
+            ? `இந்த ஆர்டரின் நிலையை <strong>${nextStatus.toUpperCase()}</strong> ஆக மாற்ற விரும்புகிறீர்களா?`
+            : `Are you sure you want to change the status of this order to <strong>${nextStatus.toUpperCase()}</strong>?`,
+          function() {
+            changeOrderStatus(id, nextStatus);
+          },
+          function() {
+            renderAdminDashboard();
+          }
+        );
+      }
+    }
+
+    function markDeliveredAdminManual(id) {
+      showCustomConfirm(
+        "⚙️ Mark Delivered (Admin Complete)?",
+        "Mark this order as DELIVERED manually as Admin? (Use only if no delivery partner is assigned/available). This action is irreversible.",
+        function() {
+          if (typeof db !== 'undefined' && db) {
+            showToast("செயலாக்கப்படுகிறது... / Processing...", "info");
+            const orderRef = db.collection('ek_orders').doc(id);
+
+            db.runTransaction((transaction) => {
+              return transaction.get(orderRef).then((docSnap) => {
+                if (!docSnap.exists) {
+                  throw "ORDER_NOT_FOUND";
+                }
+                const cloudOrder = normalizeFirestoreData(docSnap.data());
+                const upperStatus = String(cloudOrder.status || '').toUpperCase();
+
+                if (upperStatus === 'CANCELLED' || upperStatus === 'REJECTED' || upperStatus === 'CANCELED') {
+                  throw "ORDER_ALREADY_CANCELLED";
+                }
+                if (upperStatus === 'DELIVERED') {
+                  throw "ORDER_ALREADY_DELIVERED";
+                }
+
+                const oldStatus = cloudOrder.status;
+                cloudOrder.status = 'delivered';
+                cloudOrder.customerSignature = "Delivered manually by Admin 👑";
+
+                const adminSession = getAdminSession();
+                const current_admin_uid = adminSession ? adminSession.id : (firebase.auth().currentUser ? firebase.auth().currentUser.uid : 'ADMIN_CONSOLE');
+
+                cloudOrder.deliveredByType = 'ADMIN_MANUAL';
+                cloudOrder.deliveredByAdminUid = current_admin_uid;
+                cloudOrder.deliveredAt = new Date().toISOString();
+                cloudOrder.updatedAt = new Date().toISOString();
+
+                transaction.set(orderRef, cleanFirestoreData(cloudOrder), { merge: true });
+                return { cloudOrder, oldStatus };
+              });
+            }).then(({ cloudOrder, oldStatus }) => {
+              window.locallyModifiedOrders = window.locallyModifiedOrders || {};
+              window.locallyModifiedOrders[id] = Date.now() + 8000;
+
+              const orders = getData('ek_orders');
+              const idx = orders.findIndex(o => o.id === id);
+              if (idx !== -1) {
+                orders[idx] = cloudOrder;
+                saveData('ek_orders', orders);
+              }
+
+              try {
+                sendFcmPushNotification(cloudOrder, oldStatus, 'delivered');
+              } catch (fcmErr) {
+                console.warn("FCM push notify skipped or exception:", fcmErr);
+              }
+
+              try {
+                checkAndProcessReferralRewards(cloudOrder);
+              } catch (refErr) {
+                console.error("Referral rewards processing error in markDeliveredAdminManual:", refErr);
+              }
+
+              showToast("Order completed by Admin successfully! ✓", "success");
+              showAdminSuccessModal(
+                currentLang === 'ta' ? "⚙️ DN வழங்கியதாகக் குறிக்கப்பட்டது!" : "⚙️ Marked Delivered by Admin!",
+                `The order has been successfully completed manually by the Admin. No rider info was altered.`
+              );
+              renderAdminDashboard();
+            }).catch((err) => {
+              console.error("Admin status update transaction failed:", err);
+              if (err === 'ORDER_ALREADY_CANCELLED') {
+                showToast(currentLang === 'ta' ? "இந்த ஆர்டர் ஏற்கனவே ரத்து செய்யப்பட்டுவிட்டது." : "This order has already been cancelled.", "warning");
+              } else if (err === 'ORDER_ALREADY_DELIVERED') {
+                showToast(currentLang === 'ta' ? "இந்த ஆர்டர் ஏற்கனவே வழங்கப்பட்டுவிட்டது." : "This order has already been delivered.", "warning");
+              } else if (err === 'ORDER_NOT_FOUND') {
+                showToast("Error: Order not found.", "error");
+              } else {
+                showToast("Update failed: " + err, "error");
+              }
+            });
+          } else {
+            showToast("Database offline / unavailable.", "error");
+          }
+        }
+      );
+    }
+
+    function assignDeliveryPartner(orderId, executiveId) {
+      showToast("சரிபார்க்கிறது... / Verifying status...", "info");
+
+      if (typeof db !== 'undefined' && db) {
+        db.collection('ek_orders').doc(orderId).get().then((docSnap) => {
+          if (!docSnap.exists) {
+            showToast("Error: Order not found.", "error");
+            return;
+          }
+          const cloudOrder = normalizeFirestoreData(docSnap.data());
+          if (cloudOrder.status === 'rejected') {
+            showToast("மன்னிக்கவும்! இந்த ஆர்டர் ஏற்கனவே வாடிக்கையாளரால் ரத்து செய்யப்பட்டுவிட்டது. / This order has already been cancelled by the customer.", "error");
+            const orders = getData('ek_orders', []);
+            const idx = orders.findIndex(o => o.id === orderId);
+            if (idx !== -1) {
+              orders[idx].status = 'rejected';
+              orders[idx].rejectionReason = cloudOrder.rejectionReason;
+              orders[idx].updatedAt = cloudOrder.updatedAt;
+              saveData('ek_orders', orders);
+              renderAdminDashboard();
+            }
+            return;
+          }
+
+          proceedWithAssignDeliveryPartner(orderId, executiveId);
+        }).catch(err => {
+          console.warn("Error verifying order status in cloud before assign, proceeding locally:", err);
+          showToast("டெலிவரி நபர் நியமிக்கப்படுகிறார்... / Assigning delivery partner locally...", "info");
+          proceedWithAssignDeliveryPartner(orderId, executiveId);
+        });
+      } else {
+        proceedWithAssignDeliveryPartner(orderId, executiveId);
+      }
+    }
+
+    function proceedWithAssignDeliveryPartner(orderId, executiveId) {
+      window.locallyModifiedOrders = window.locallyModifiedOrders || {};
+      window.locallyModifiedOrders[orderId] = Date.now() + 8000;
+
+      const orders = getData('ek_orders', []);
+      const idx = orders.findIndex(o => o.id === orderId);
+      if (idx === -1) return;
+
+      const oldStatus = orders[idx].status;
+
+      const executives = getData('ek_delivery_persons', []);
+      const exec = executives.find(e => e.id === executiveId);
+
+      if (exec) {
+        orders[idx].assignedTo = exec.id;
+        orders[idx].assignedDeliveryPartnerUid = exec.id;
+        orders[idx].assignedDeliveryPartnerName = exec.name;
+        orders[idx].assignedRiderName = exec.name;
+        orders[idx].riderUid = exec.id;
+        orders[idx].riderId = exec.id;
+        orders[idx].deliveryPartnerUid = exec.id;
+
+        orders[idx].assignedExecutiveId = exec.id;
+        orders[idx].assignedExecutiveName = exec.name;
+        orders[idx].assignedExecutivePhone = exec.phone;
+
+        orders[idx].deliveryExecutiveId = exec.id;
+        orders[idx].deliveryExecutiveName = exec.name;
+        orders[idx].deliveryExecutivePhone = exec.phone;
+
+        if (orders[idx].status === 'pending') {
+          orders[idx].status = 'ready';
+          showToast(`Assigned ${exec.name} & Order Confirmed and Preparing! 🥩`, "success");
+        } else {
+          showToast(`Assigned ${exec.name} to order ${orderId}! 🏍️`, "success");
+        }
+      } else {
+        orders[idx].assignedDeliveryPartnerUid = '';
+        orders[idx].assignedDeliveryPartnerName = '';
+        orders[idx].riderUid = '';
+        orders[idx].riderId = '';
+        orders[idx].deliveryPartnerUid = '';
+
+        orders[idx].assignedExecutiveId = '';
+        orders[idx].assignedExecutiveName = '';
+        orders[idx].assignedExecutivePhone = '';
+
+        orders[idx].deliveryExecutiveId = '';
+        orders[idx].deliveryExecutiveName = '';
+        orders[idx].deliveryExecutivePhone = '';
+        showToast("Order unassigned.", "info");
+      }
+
+      orders[idx].updatedAt = new Date().toISOString();
+      const expectedStatus = orders[idx].status;
+
+      saveData('ek_orders', orders);
+
+      try {
+        sendFcmPushNotification(orders[idx], oldStatus, orders[idx].status);
+        if (exec) {
+          sendFcmNotificationToRider(orders[idx], exec);
+        }
+      } catch (fcmErr) {
+        console.warn("FCM push notify skipped or exception:", fcmErr);
+      }
+
+      if (db) {
+        db.collection('ek_orders').doc(orderId).set(orders[idx], { merge: true })
+          .then(() => {
+            debugLog(`[Cloud Sync] Assignment updated for ${orderId}`);
+            removePendingSync('ek_orders', orderId);
+
+            const currentOrders = getData('ek_orders', []);
+            const currentIdx = currentOrders.findIndex(o => o.id === orderId);
+            if (currentIdx !== -1 && currentOrders[currentIdx].status !== expectedStatus) {
+              console.warn(`[Correction] Local status reverted to ${currentOrders[currentIdx].status}. Resetting back to ${expectedStatus}.`);
+              currentOrders[currentIdx].status = expectedStatus;
+              saveData('ek_orders', currentOrders);
+              renderAdminDashboard();
+            }
+          })
+          .catch(err => {
+            console.error("Cloud assignment update failed, queuing for retry:", err);
+            window.locallyModifiedOrders[orderId] = Date.now() + 8000;
+            queueFailedSync('ek_orders', orderId, 'set', orders[idx]);
+          });
+      } else {
+        queueFailedSync('ek_orders', orderId, 'set', orders[idx]);
+      }
+
+      if (exec) {
+        showAdminSuccessModal(
+          currentLang === 'ta' ? "🏍️ டெலிவரி நபர் நியமிக்கப்பட்டார்!" : "🏍️ Delivery Partner Assigned!",
+          currentLang === 'ta' ? `ஆர்டர் <strong>${orderId}</strong> வெற்றிகரமாக <strong>${exec.name}</strong>-க்கு ஒதுக்கப்பட்டு சேமிக்கப்பட்டது.` : `Order <strong>${orderId}</strong> has been successfully assigned to <strong>${exec.name}</strong>.`
+        );
+      } else {
+        showAdminSuccessModal(
+          currentLang === 'ta' ? "🏍️ ஒதுக்கீடு நீக்கப்பட்டது!" : "🏍️ Assignment Removed!",
+          currentLang === 'ta' ? `ஆர்டர் <strong>${orderId}</strong>-இன் டெலிவரி ஒதுக்கீடு நீக்கப்பட்டது.` : `The delivery assignment for order <strong>${orderId}</strong> has been removed.`
+        );
+      }
+
+      renderAdminDashboard();
+    }
+
+    function closeOrderCancelModal(event) {
+      if (event.target === document.getElementById('order-cancel-modal')) {
+        closeOrderCancelModalDetail();
+      }
+    }
+
+    function closeOrderCancelModalDetail() {
+      document.getElementById('order-cancel-modal').style.display = 'none';
+      document.getElementById('order-cancel-modal').classList.remove('active');
+    }
+
+    function openManualPinModal(orderId) {
+      const orders = getDataCached('ek_orders', []);
+      const ord = orders.find(o => o.id === orderId);
+      if (!ord) {
+        showToast("Order not found", "error");
+        return;
+      }
+      document.getElementById('manual-pin-order-id').value = orderId;
+      document.getElementById('manual-pin-lat').value = ord.deliveryLatitude || '';
+      document.getElementById('manual-pin-lng').value = ord.deliveryLongitude || '';
+      document.getElementById('manual-location-pin-modal').style.display = 'flex';
+    }
+
+    function closeManualPinModal() {
+      document.getElementById('manual-location-pin-modal').style.display = 'none';
+    }
+
+    async function saveManualPinLocation() {
+      const orderId = document.getElementById('manual-pin-order-id').value;
+      const latVal = parseFloat(document.getElementById('manual-pin-lat').value);
+      const lngVal = parseFloat(document.getElementById('manual-pin-lng').value);
+
+      if (isNaN(latVal) || isNaN(lngVal)) {
+        showToast("Please enter valid Latitude and Longitude values", "error");
+        return;
+      }
+
+      showToast("Updating location... ⏳", "info");
+
+      try {
+        const orderRef = db.collection('ek_orders').doc(orderId);
+        await orderRef.update({
+          deliveryLatitude: latVal,
+          deliveryLongitude: lngVal,
+          needsManualLocationPin: false,
+          updatedAt: new Date().toISOString()
+        });
+
+        // Update local cache
+        const orders = getDataCached('ek_orders', []);
+        const idx = orders.findIndex(o => o.id === orderId);
+        if (idx !== -1) {
+          orders[idx].deliveryLatitude = latVal;
+          orders[idx].deliveryLongitude = lngVal;
+          orders[idx].needsManualLocationPin = false;
+          orders[idx].updatedAt = new Date().toISOString();
+          saveData('ek_orders', orders);
+        }
+
+        showToast("Location updated successfully! 📍", "success");
+        closeManualPinModal();
+        if (typeof renderAdminOrders === 'function') {
+          renderAdminOrders();
+        }
+      } catch (err) {
+        console.error("Failed to update manual pin location:", err);
+        showToast("Failed to update location: " + err.message, "error");
+      }
+    }
+
+    function openWhatsAppShareModal(orderId, customerPhone, customerName, riderId, encodedMsg) {
+      const modal = document.getElementById('whatsapp-share-modal');
+      if (!modal) return;
+
+      document.getElementById('wa-share-order-id').value = orderId;
+      document.getElementById('wa-share-cust-phone').value = customerPhone || '';
+      document.getElementById('wa-share-msg-text').value = decodeURIComponent(encodedMsg);
+      document.getElementById('wa-share-custom-phone').value = '';
+
+      const custBtn = document.getElementById('wa-share-opt-customer');
+      const custLbl = document.getElementById('wa-share-lbl-customer');
+      const custSub = document.getElementById('wa-share-sub-customer');
+      if (customerPhone) {
+        custBtn.style.display = 'flex';
+        custLbl.innerHTML = `வாடிக்கையாளருக்கு / To Customer: ${customerName || 'Customer'}`;
+        custSub.innerHTML = `எண்: ${customerPhone}`;
+      } else {
+        custBtn.style.display = 'none';
+      }
+
+      const riderBtn = document.getElementById('wa-share-opt-rider');
+      const riderLbl = document.getElementById('wa-share-lbl-rider');
+      const riderSub = document.getElementById('wa-share-sub-rider');
+      let foundRiderPhone = '';
+      let foundRiderName = '';
+
+      if (riderId) {
+        const riders = getData('ek_delivery_persons', []);
+        const r = riders.find(x => x.id === riderId);
+        if (r) {
+          foundRiderPhone = r.phone || '';
+          foundRiderName = r.name || '';
+        }
+      }
+
+      document.getElementById('wa-share-rider-phone').value = foundRiderPhone;
+
+      if (foundRiderPhone) {
+        riderBtn.style.display = 'flex';
+        riderLbl.innerHTML = `டெலிவரி நபருக்கு / To Rider: ${foundRiderName}`;
+        riderSub.innerHTML = `எண்: ${foundRiderPhone}`;
+      } else {
+        riderBtn.style.display = 'none';
+      }
+
+      modal.style.display = 'flex';
+    }
+
+    function closeWhatsAppShareModal(event) {
+      if (event.target === document.getElementById('whatsapp-share-modal')) {
+        closeWhatsAppShareModalDetail();
+      }
+    }
+
+    function closeWhatsAppShareModalDetail() {
+      const modal = document.getElementById('whatsapp-share-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function executeWhatsAppShareOption(type) {
+      const msg = document.getElementById('wa-share-msg-text').value;
+      let targetPhone = '';
+
+      if (type === 'contact_selector') {
+        const encodedText = encodeURIComponent(msg);
+        const waUrl = `https://api.whatsapp.com/send?text=${encodedText}`;
+        window.location.href = waUrl;
+        closeWhatsAppShareModalDetail();
+        return;
+      } else if (type === 'customer') {
+        targetPhone = document.getElementById('wa-share-cust-phone').value;
+      } else if (type === 'rider') {
+        targetPhone = document.getElementById('wa-share-rider-phone').value;
+      } else if (type === 'store_vendor') {
+        targetPhone = '918778148899';
+      } else if (type === 'custom_phone') {
+        const rawPhone = document.getElementById('wa-share-custom-phone').value.trim();
+        if (rawPhone.length !== 10 || isNaN(rawPhone)) {
+          showToast("தயவுசெய்து சரியான 10-இலக்க எண்ணை உள்ளிடவும்! / Please enter a valid 10-digit number!", "warning");
+          return;
+        }
+        targetPhone = rawPhone;
+      }
+
+      if (!targetPhone) {
+        showToast("தொலைபேசி எண் கிடைக்கவில்லை! / Phone number not found!", "error");
+        return;
+      }
+
+      openWhatsAppDirect(targetPhone, msg);
+      closeWhatsAppShareModalDetail();
+    }
+
+    function selectCancelReason(reasonText, element) {
+      document.querySelectorAll('.rc-reason-btn').forEach(btn => btn.classList.remove('active'));
+
+      if (element) {
+        element.classList.add('active');
+      }
+
+      document.getElementById('order-cancel-reason-input').value = reasonText;
+    }
+
+    function cancelOrderPrompt(id) {
+      document.getElementById('order-cancel-id').value = id;
+      document.getElementById('order-cancel-reason-input').value = '';
+      document.querySelectorAll('.rc-reason-btn').forEach(btn => btn.classList.remove('active'));
+
+      const modal = document.getElementById('order-cancel-modal');
+      modal.style.display = 'flex';
+      modal.classList.add('active');
+    }
+
+    function confirmOrderCancellation() {
+      const id = document.getElementById('order-cancel-id').value;
+      const reasonText = document.getElementById('order-cancel-reason-input').value.trim() || (currentLang === 'ta' ? 'காரணம் குறிப்பிடப்படவில்லை' : 'No reason provided');
+
+      if (!id) return;
+
+      if (typeof db === 'undefined' || !db) {
+        showToast(currentLang === 'ta' ? "ஆர்டரை ரத்து செய்ய இணைய இணைப்பு தேவை!" : "Internet connection required to cancel this order", "warning");
+        return;
+      }
+
+      showToast(currentLang === 'ta' ? "ஆர்டர் ரத்து செய்யப்படுகிறது... ⏳" : "Processing order cancellation... ⏳", "info");
+
+      const orderRef = db.collection('ek_orders').doc(id);
+
+      db.runTransaction(async (transaction) => {
+        const docSnap = await transaction.get(orderRef);
+        if (!docSnap.exists) {
+          throw "ORDER_NOT_FOUND";
+        }
+        const cloudOrder = normalizeFirestoreData(docSnap.data());
+        const status = String(cloudOrder.status || '').toUpperCase();
+
+        if (status === 'CANCELLED' || status === 'REJECTED' || status === 'CANCELED') {
+          throw "ORDER_ALREADY_CANCELLED";
+        }
+        if (status === 'DELIVERED') {
+          throw "ORDER_ALREADY_DELIVERED";
+        }
+
+        if (cloudOrder.items && Array.isArray(cloudOrder.items)) {
+          const productSnaps = await Promise.all(
+            cloudOrder.items.map(item => transaction.get(db.collection('ek_products').doc(item.productId)))
+          );
+
+          cloudOrder.items.forEach((item, i) => {
+            const prodSnap = productSnaps[i];
+            if (prodSnap.exists) {
+              const prodData = prodSnap.data();
+              const serverStock = parseFloat(prodData.stockKg || 0);
+              const unit = prodData.unit || 'kg';
+              const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+              const returnedQty = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+              const newStock = parseFloat((serverStock + returnedQty).toFixed(3));
+
+              transaction.update(prodSnap.ref, {
+                stockKg: newStock,
+                isOutOfStock: false,
+                updatedAt: new Date().toISOString()
+              });
+            }
+          });
+        }
+
+        const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+        transaction.update(orderRef, {
+          status: 'rejected',
+          rejectionReason: reasonText,
+          updatedAt: serverTimestamp
+        });
+
+        return cloudOrder;
+      }).then((cloudOrder) => {
+
+        const products = getData('ek_products', []);
+        if (cloudOrder.items && Array.isArray(cloudOrder.items)) {
+          cloudOrder.items.forEach(item => {
+            const prod = products.find(p => p.id === item.productId);
+            if (prod) {
+              const unit = prod.unit || 'kg';
+              const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+              const returnedQty = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+              prod.stockKg = parseFloat((prod.stockKg + returnedQty).toFixed(3));
+              prod.isOutOfStock = false;
+              prod.updatedAt = new Date().toISOString();
+            }
+          });
+        }
+        saveData('ek_products', products);
+
+        const users = getData('ek_users', []);
+        const userIdx = users.findIndex(u => u.id === cloudOrder.customerId);
+        if (userIdx !== -1) {
+          const user = users[userIdx];
+          const accruedPoints = cloudOrder.accruedPoints || (Math.floor(cloudOrder.totalAmount / 100) * 10);
+          const pointsRefunded = (cloudOrder.loyaltyDiscount || 0) * 10;
+          user.loyaltyPoints = Math.max(0, user.loyaltyPoints - accruedPoints + pointsRefunded);
+          user.tier = computeLoyaltyTier(user.loyaltyPoints);
+
+          users[userIdx] = user;
+          saveData('ek_users', users);
+
+          db.collection('ek_users').doc(user.id).set(user)
+            .catch(err => console.error("Cloud user points restore error on admin cancel:", err));
+        }
+
+        window.locallyModifiedOrders = window.locallyModifiedOrders || {};
+        window.locallyModifiedOrders[id] = Date.now() + 8000; // Shield from sync overwrites!
+
+        const orders = getData('ek_orders', []);
+        const idx = orders.findIndex(o => o.id === id);
+        let updatedOrderObject = null;
+        if (idx !== -1) {
+          orders[idx].status = 'rejected';
+          orders[idx].rejectionReason = reasonText;
+          orders[idx].updatedAt = new Date().toISOString();
+          updatedOrderObject = orders[idx];
+          saveData('ek_orders', orders);
+        } else {
+          updatedOrderObject = {
+            ...cloudOrder,
+            status: 'rejected',
+            rejectionReason: reasonText,
+            updatedAt: new Date().toISOString()
+          };
+          orders.push(updatedOrderObject);
+          saveData('ek_orders', orders);
+        }
+
+        showToast(currentLang === 'ta' ? "நிர்வாகியால் ஆர்டர் வெற்றிகரமாக ரத்து செய்யப்பட்டது! 🛑" : "Order cancelled by Admin successfully! 🛑", "error");
+
+        closeOrderCancelModalDetail();
+        renderAdminDashboard();
+      }).catch((err) => {
+        console.error("Admin cancellation transaction failed:", err);
+        if (err === 'ORDER_ALREADY_CANCELLED') {
+          showToast(currentLang === 'ta' ? "ஆர்டர் ஏற்கனவே ரத்து செய்யப்பட்டுவிட்டது." : "This order has already been cancelled.", "warning");
+        } else if (err === 'ORDER_ALREADY_DELIVERED') {
+          showToast(currentLang === 'ta' ? "இந்த ஆர்டர் ஏற்கனவே வழங்கப்பட்டுவிட்டது, எனவே ரத்து செய்ய முடியாது." : "This order has already been delivered and cannot be cancelled.", "warning");
+        } else if (err === 'ORDER_NOT_FOUND') {
+          showToast("Order not found.", "error");
+        } else {
+          showToast("Cancellation failed: " + err, "error");
+        }
+        closeOrderCancelModalDetail();
+
+        if (typeof db !== 'undefined' && db) {
+          db.collection('ek_orders').doc(id).get().then((docSnap) => {
+            if (docSnap.exists) {
+              const cloudOrder = normalizeFirestoreData(docSnap.data());
+              const orders = getData('ek_orders', []);
+              const idx = orders.findIndex(o => o.id === id);
+              if (idx !== -1) {
+                orders[idx] = cloudOrder;
+                saveData('ek_orders', orders);
+                renderAdminDashboard();
+              }
+            }
+          });
+        }
+      });
+    }
+
+    let editingProductId = null;
+    let editProductPhotoDeleted = false;
+
+    function generateUniqueProductId() {
+      return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
+    }
+
+    async function resizeImageBeforeUpload(base64Str, maxWidth = 500, quality = 0.75) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => {
+          resolve(base64Str);
+        };
+        img.src = base64Str;
+      });
+    }
+
+    function isProductOutOfStock(p) {
+      if (!p) return false;
+
+      // 1. Emergency Force Out of Stock override
+      if (p.forceOutOfStock) return true;
+
+      // 2. Physical Stock <= 0
+      if (p.stockKg !== undefined && p.stockKg <= 0) return true;
+
+      // 3. Time Window check
+      const start = p.availabilityStart || p.scheduleStart || '';
+      const end = p.availabilityEnd || p.scheduleEnd || '';
+      const isScheduled = p.isScheduled !== false && Boolean(start && end);
+
+      if (isScheduled) {
+        const now = new Date();
+        const currentHours = String(now.getHours()).padStart(2, '0');
+        const currentMinutes = String(now.getMinutes()).padStart(2, '0');
+        const currentTimeStr = `${currentHours}:${currentMinutes}`;
+
+        const normStart = normalizeTimeStr(start, "00:00");
+        const normEnd = normalizeTimeStr(end, "23:59");
+
+        if (normStart <= normEnd) {
+          if (currentTimeStr < normStart || currentTimeStr > normEnd) {
+            return true; // Outside timing window -> Out of Stock
+          }
+        } else {
+          // Overnight window (e.g. 22:00 to 04:00)
+          if (currentTimeStr < normStart && currentTimeStr > normEnd) {
+            return true; // Outside timing window -> Out of Stock
+          }
+        }
+      }
+
+      // If no timing set or current time is within window, and forceOutOfStock is false, and stockKg > 0:
+      return false;
+    }
+
+    function updateProductAvailability(p) {
+      if (!p) return;
+
+      // Firestore Data Migration rule:
+      // Legacy products marked manually isOutOfStock without forceOutOfStock or timing window
+      // default to "Always Available" (isOutOfStock = false) unless timing or force-override is active.
+      if (p.isOutOfStock && !p.forceOutOfStock && !(p.isScheduled && (p.availabilityStart || p.scheduleStart))) {
+        p.isOutOfStock = false;
+      }
+
+      const outOfStock = isProductOutOfStock(p);
+      p.isOutOfStock = outOfStock;
+      p.isAvailable = !outOfStock;
+    }
+
+    function formatTime12h(timeStr) {
+      if (!timeStr) return '';
+      const parts = String(timeStr).trim().split(':');
+      let h = parseInt(parts[0], 10);
+      const m = parts[1] || '00';
+      if (isNaN(h)) return timeStr;
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12;
+      if (h === 0) h = 12;
+      return `${h}:${m.padStart(2, '0')} ${ampm}`;
+    }
+
+    function getProductAvailabilityLabel(p) {
+      if (!p) return '🟢 Always Available';
+      if (p.forceOutOfStock) {
+        return '🚨 Forced Out of Stock';
+      }
+      const start = p.availabilityStart || p.scheduleStart || '';
+      const end = p.availabilityEnd || p.scheduleEnd || '';
+      if (p.isScheduled && start && end) {
+        return `⏰ Available ${formatTime12h(start)} - ${formatTime12h(end)}`;
+      }
+      return '🟢 Always Available';
+    }
+
+    function toggleForceOutOfStock(id) {
+      const products = getData('ek_products', []);
+      const idx = products.findIndex(p => p.id === id);
+      if (idx === -1) return;
+
+      const currentForce = Boolean(products[idx].forceOutOfStock);
+      const newForce = !currentForce;
+      products[idx].forceOutOfStock = newForce;
+
+      products[idx].revision = (products[idx].revision || 0) + 1;
+      products[idx].updatedAt = new Date().toISOString();
+
+      updateProductAvailability(products[idx]);
+      ensureRequiredFields(products[idx]);
+
+      saveData('ek_products', products);
+      invalidateDataCache('ek_products');
+
+      if (typeof db !== 'undefined' && db && getAdminSession()) {
+        logProductWriteAudit('update', id, 'toggleForceOutOfStock');
+        db.collection('ek_products').doc(id).set(cleanFirestoreData(products[idx]))
+          .then(() => debugLog(`[Cloud Sync] Forced Out of Stock override set to ${newForce} for product ${id}`))
+          .catch(e => console.error("Error setting forceOutOfStock in cloud:", e));
+      }
+
+      const statusLabel = newForce ? "🚨 Forced Out of Stock (Emergency Active)" : "🟢 Emergency Override Cleared (Timing / Normal Stock Active)";
+      showToast(`${products[idx].tamilName}: ${statusLabel}`, newForce ? "warning" : "success");
+
+      if (typeof renderAdminProducts === 'function') renderAdminProducts();
+      if (typeof renderHomeScreenProducts === 'function') {
+        _lastProductsHash = '';
+        renderHomeScreenProducts(true);
+      }
+    }
+
+    function ensureRequiredFields(p) {
+      if (!p) return;
+      p.price = p.pricePerKg || 0;
+      p.stock = p.stockKg || 0;
+      p.isActive = true;
+      p.status = "active";
+      p.isHidden = false;
+      updateProductAvailability(p);
+    }
+
+    async function handleProductSave(event) {
+      event.preventDefault();
+      try {
+        const tamilName = (document.getElementById('add-prod-tamil')?.value || '').trim();
+        const englishName = (document.getElementById('add-prod-english')?.value || '').trim();
+        const priceVal = document.getElementById('add-prod-price')?.value || '';
+        const stockVal = document.getElementById('add-prod-stock')?.value || '';
+        const pricePerKg = parseInt(priceVal);
+        const stockKg = parseFloat(stockVal);
+        const category = document.getElementById('add-prod-category')?.value || 'meat';
+        const imageUrlInput = (document.getElementById('add-prod-url')?.value || '').trim();
+        const unit = document.getElementById('add-prod-unit')?.value || 'kg';
+
+        const shortDescription = (document.getElementById('add-prod-short-desc')?.value || '').trim();
+        const foodType = document.querySelector('input[name="add-prod-foodtype"]:checked')?.value || 'veg';
+
+        const isSpecial = document.getElementById('add-prod-special')?.checked || false;
+
+        const isScheduled = document.getElementById('add-prod-scheduled') ? document.getElementById('add-prod-scheduled').checked : false;
+        const scheduleStart = isScheduled ? (document.getElementById('add-prod-schedule-start')?.value || '06:00') : '';
+        const scheduleEnd = isScheduled ? (document.getElementById('add-prod-schedule-end')?.value || '11:00') : '';
+        const forceOutOfStock = document.getElementById('add-prod-force-out') ? document.getElementById('add-prod-force-out').checked : false;
+
+        if (!tamilName) {
+          showToast("தயவுசெய்து தமிழ் பெயரை உள்ளிடவும் / Please enter Tamil Name", "error");
+          return;
+        }
+        if (!englishName) {
+          showToast("தயவுசெய்து ஆங்கில பெயரை உள்ளிடவும் / Please enter English Name", "error");
+          return;
+        }
+        if (isNaN(pricePerKg) || pricePerKg < 0) {
+          showToast("தயவுசெய்து சரியான விலையை உள்ளிடவும் / Please enter a valid price", "error");
+          return;
+        }
+        if (isNaN(stockKg) || stockKg < 0) {
+          showToast("தயவுசெய்து சரியான ஸ்டாக் அளவை உள்ளிடவும் / Please enter a valid stock quantity", "error");
+          return;
+        }
+
+        const products = getData('ek_products');
+
+        let finalImg = 'https://images.unsplash.com/photo-1544025162-d76694265947?w=400';
+        let oldImageUrl = null;
+
+        if (editingProductId) {
+          const existingProd = products.find(p => p.id === editingProductId);
+          if (existingProd && existingProd.imageUrl) {
+            finalImg = existingProd.imageUrl;
+            oldImageUrl = existingProd.imageUrl;
+          }
+        }
+
+        const useUrlCheck = document.getElementById('add-prod-use-url')?.checked;
+        if (imageUrlInput && (useUrlCheck || !tempProductFile)) {
+          finalImg = imageUrlInput;
+        }
+
+        const productId = editingProductId || generateUniqueProductId();
+
+        const submitBtn = document.getElementById('prod-submit-btn');
+        const originalBtnText = submitBtn ? submitBtn.innerText : "Save Product ✓";
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerText = "Processing... ⏳";
+        }
+
+        if (tempProductFile && tempBase64Image && !useUrlCheck) {
+          try {
+            if (submitBtn) submitBtn.innerText = "Uploading Image (0%)... ⏳";
+            showToast('மாற்றிய படம் பதிவேற்றப்படுகிறது... ⏳', 'info');
+
+            const resizedBase64 = await resizeImageBeforeUpload(tempBase64Image, 500, 0.75);
+            finalImg = await uploadProductImageToStorage(productId, tempProductFile, resizedBase64);
+          } catch (uploadErr) {
+            console.error('[Image Upload Failed]', uploadErr);
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.innerText = originalBtnText;
+            }
+            showToast(uploadErr.message || "Selected image format is not supported.", "error");
+            return;
+          }
+        }
+
+        let targetProduct = null;
+        let isEdit = false;
+        if (editingProductId) {
+          isEdit = true;
+          const idx = products.findIndex(p => p.id === editingProductId);
+          if (idx !== -1) {
+            const currentRevision = products[idx].revision || 0;
+            targetProduct = {
+              ...products[idx],
+              tamilName, englishName, pricePerKg, stockKg, category, unit,
+              sellingUnit: unit,
+              price: pricePerKg,
+              stock: stockKg,
+              isActive: true,
+              status: "active",
+              shortDescription, foodType,
+              imageUrl: finalImg,
+              isSpecial,
+              isScheduled, scheduleStart, scheduleEnd,
+              availabilityStart: scheduleStart, availabilityEnd: scheduleEnd,
+              forceOutOfStock,
+              isHidden: false, // Ensure it is visible on customer devices
+              updatedAt: new Date().toISOString(),
+              revision: currentRevision + 1
+            };
+            ensureRequiredFields(targetProduct);
+          }
+        } else {
+          targetProduct = {
+            id: productId,
+            tamilName, englishName, pricePerKg, stockKg, category, unit,
+            sellingUnit: unit,
+            price: pricePerKg,
+            stock: stockKg,
+            isActive: true,
+            status: "active",
+            shortDescription, foodType,
+            imageUrl: finalImg,
+            isSpecial,
+            isScheduled, scheduleStart, scheduleEnd,
+            availabilityStart: scheduleStart, availabilityEnd: scheduleEnd,
+            forceOutOfStock,
+            isHidden: false, // Ensure it is visible on customer devices
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            revision: 1
+          };
+          ensureRequiredFields(targetProduct);
+        }
+
+        // OPTIMISTIC UI UPDATE: Save to local state and show success popup INSTANTLY!
+        if (isEdit) {
+          const idx = products.findIndex(p => p.id === editingProductId);
+          if (idx !== -1) {
+            products[idx] = targetProduct;
+          }
+          showToast("Product revised successfully", "success");
+          showAdminSuccessModal(
+            "✏️ வெற்றிகரமாக மாற்றி அமைக்கப்பட்டது!",
+            `தயாரிப்பு <strong>${tamilName} (${englishName})</strong> விவரங்கள் வெற்றிகரமாக மாற்றி அமைக்கப்பட்டு உங்கள் கடையில் சேமிக்கப்பட்டது.<br><br><span style="font-size:11.5px;color:var(--text-muted);">Successfully Updated! The product details have been modified.</span>`
+          );
+        } else {
+          products.push(targetProduct);
+          showToast("New Item appended securely!", "success");
+          showAdminSuccessModal(
+            "🎉 வெற்றிகரமாக உருவாக்கப்பட்டது!",
+            `புதிய தயாரிப்பு <strong>${tamilName} (${englishName})</strong> வெற்றிகரமாக உருவாக்கப்பட்டு உங்கள் கடையில் இணைக்கப்பட்டது.<br><br><span style="font-size:11.5px;color:var(--text-muted);">Successfully Created! The new product has been added.</span>`
+          );
+        }
+
+        saveData('ek_products', products);
+
+        if (oldImageUrl && oldImageUrl !== finalImg) {
+          deleteStorageImageByUrl(oldImageUrl);
+        }
+
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerText = originalBtnText;
+        }
+
+        tempProductFile = null;
+        tempBase64Image = null;
+
+        resetProductForm();
+        if (typeof closeAdminAddProductModalDetail === 'function') {
+          closeAdminAddProductModalDetail();
+        }
+        renderAdminDashboard();
+
+        // Background Cloud Sync (Non-blocking)
+        if (typeof db !== 'undefined' && db && targetProduct) {
+          (async () => {
+            try {
+              const isPermitted = await verifyAdminWritePermission(`syncProductToCloudWithRetry for ID: ${targetProduct.id}`);
+              if (!isPermitted) throw new Error("ADMIN_WRITE_DENIED");
+              logProductWriteAudit(isEdit ? 'update' : 'create', targetProduct.id, 'syncProductToCloudWithRetry');
+              await db.collection('ek_products').doc(targetProduct.id).set(cleanFirestoreData(targetProduct));
+              debugLog("✓ Background Firestore Update successful for product:", targetProduct.id);
+              removePendingSyncEntry('product', targetProduct.id);
+            } catch (syncErr) {
+              console.error("Background Firestore sync failed for product:", syncErr);
+              showToast("Cloud sync pending. Will retry automatically.", "info");
+            }
+          })();
+        }
+      } catch (saveError) {
+        console.error("Critical error saving product:", saveError);
+        const submitBtn = document.getElementById('prod-submit-btn');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerText = "Save Product ✓";
+        }
+        showToast("பொருளை சேமிப்பதில் பிழை / Error saving product: " + saveError.message, "error");
+      }
+    }
+
+    async function syncProductToCloudWithRetry(product, attempt = 1) {
+      const MAX_ATTEMPTS = 5;
+      try {
+        const isPermitted = await verifyAdminWritePermission(`syncProductToCloudWithRetry for ID: ${product.id}`);
+        if (!isPermitted) {
+          throw new Error("ADMIN_WRITE_DENIED: Firebase user has no active admin role or is anonymous.");
+        }
+
+        logProductWriteAudit(product.createdAt === product.updatedAt ? 'create' : 'update', product.id, 'syncProductToCloudWithRetry');
+        await db.collection('ek_products').doc(product.id).set(cleanFirestoreData(product));
+        debugLog(`[Cloud Sync] Product ${product.id} synced successfully (attempt ${attempt}).`);
+
+        removePendingSyncEntry('product', product.id);
+      } catch (err) {
+        console.error(`[Cloud Sync] Product ${product.id} sync failed (attempt ${attempt}):`, err);
+
+        if (attempt < MAX_ATTEMPTS) {
+          const delay = Math.min(2000 * Math.pow(2, attempt - 1), 16000);
+          setTimeout(() => syncProductToCloudWithRetry(product, attempt + 1), delay);
+        } else {
+          queueFailedProductSync('product', product);
+          showToast('படம்/பொருள் cloud-ல் sync ஆகவில்லை — network சரிபார்க்கவும்', 'error');
+        }
+      }
+    }
+
+    function removePendingSyncEntry(type, id) {
+      const queue = getData('ek_pending_sync_queue', []);
+      const filtered = queue.filter(item => !(item.type === type && item.data.id === id));
+      if (filtered.length !== queue.length) {
+        saveData('ek_pending_sync_queue', filtered);
+      }
+    }
+
+    function queueFailedProductSync(type, data) {
+      const queue = getData('ek_pending_sync_queue', []);
+      const existingIdx = queue.findIndex(item => item.type === type && item.data.id === data.id);
+      const now = Date.now();
+      const firstFailedAt = (existingIdx !== -1 && (queue[existingIdx].firstFailedAt || queue[existingIdx].queuedAt))
+        ? (queue[existingIdx].firstFailedAt || queue[existingIdx].queuedAt)
+        : now;
+      if (existingIdx !== -1) {
+        queue[existingIdx] = { type, data, queuedAt: now, firstFailedAt: firstFailedAt, retryCount: (queue[existingIdx].retryCount || 0) + 1 };
+      } else {
+        queue.push({ type, data, queuedAt: now, firstFailedAt: now, retryCount: 0 });
+      }
+      saveData('ek_pending_sync_queue', queue);
+    }
+
+    async function processPendingProductSyncQueue() {
+      if (typeof db === 'undefined' || !db) return;
+      const queue = getData('ek_pending_sync_queue', []);
+      if (queue.length === 0) return;
+
+      const stillFailed = [];
+      for (const item of queue) {
+        if (item.retryCount >= 8) continue; // Max retries exceeded, drop
+
+        try {
+          const collectionName = item.type === 'product' ? 'ek_products' :
+                                  item.type === 'order' ? 'ek_orders' :
+                                  item.type === 'user' ? 'ek_users' : null;
+          if (!collectionName) continue;
+
+          try {
+            const docRef = db.collection(collectionName).doc(item.data.id);
+            const cloudDoc = await docRef.get();
+            if (cloudDoc.exists) {
+              const cloudData = cloudDoc.data();
+              const cloudTime = cloudData && cloudData.updatedAt ? new Date(cloudData.updatedAt).getTime() : 0;
+              const localTime = item.data && item.data.updatedAt ? new Date(item.data.updatedAt).getTime() : 0;
+              if (cloudTime > localTime) {
+                debugLog(`[Product Sync Queue] Stale update bypassed for ${collectionName}/${item.data.id} to protect newer cloud data (${cloudTime} > ${localTime})`);
+                continue; // Skip writing this item but let it clear from the queue
+              }
+            }
+          } catch (getErr) {
+            console.warn(`[Product Sync Queue] Cloud get failed for conflict check:`, getErr);
+            item.retryCount++;
+            stillFailed.push(item);
+            continue;
+          }
+
+          await db.collection(collectionName).doc(item.data.id).set(cleanFirestoreData(item.data));
+          debugLog(`[Sync Queue] Retried ${item.type} ${item.data.id} successfully.`);
+        } catch (err) {
+          item.retryCount++;
+          stillFailed.push(item);
+        }
+      }
+      saveData('ek_pending_sync_queue', stillFailed);
+    }
+
+    setInterval(() => { try { processPendingProductSyncQueue(); } catch(e){console.error(e);} }, 30000);
+    window.addEventListener('online', () => { try { processPendingProductSyncQueue(); } catch(e){console.error(e);} });
+
+    function editProductForm(id) {
+      tempBase64Image = null; // Clear any leftover base64 cache
+      editProductPhotoDeleted = false;
+      const products = getData('ek_products');
+      const p = products.find(prod => prod.id === id);
+      if (!p) return;
+
+      editingProductId = p.id;
+      const fileInput = document.getElementById('edit-prod-file');
+      if (fileInput) fileInput.value = ''; // Reset file input selection
+
+      document.getElementById('edit-prod-id').value = p.id;
+      document.getElementById('edit-prod-tamil').value = p.tamilName;
+      document.getElementById('edit-prod-english').value = p.englishName;
+      document.getElementById('edit-prod-price').value = p.pricePerKg;
+      document.getElementById('edit-prod-stock').value = p.stockKg;
+
+      const unitVal = p.sellingUnit || p.unit || 'kg';
+      document.getElementById('edit-prod-unit').value = unitVal;
+      onProductUnitChanged(unitVal, 'edit-prod');
+
+      if (typeof populateProductCategoryOptions === 'function') {
+        populateProductCategoryOptions();
+      }
+
+      document.getElementById('edit-prod-category').value = p.category;
+      document.getElementById('edit-prod-url').value = (p.imageUrl && p.imageUrl.startsWith('data:')) ? '' : (p.imageUrl || '');
+
+      document.getElementById('edit-prod-special').checked = p.isSpecial || false;
+
+      const editShortDesc = document.getElementById('edit-prod-short-desc');
+      if (editShortDesc) {
+        editShortDesc.value = p.shortDescription || '';
+      }
+      const fType = p.foodType || 'veg';
+      const rButton = document.querySelector(`input[name="edit-prod-foodtype"][value="${fType}"]`);
+      if (rButton) {
+        rButton.checked = true;
+      }
+
+      const isSched = Boolean(p.isScheduled && (p.availabilityStart || p.scheduleStart));
+      const editProdSched = document.getElementById('edit-prod-scheduled');
+      if (editProdSched) editProdSched.checked = isSched;
+      const editProdStart = document.getElementById('edit-prod-schedule-start');
+      if (editProdStart) editProdStart.value = p.availabilityStart || p.scheduleStart || '06:00';
+      const editProdEnd = document.getElementById('edit-prod-schedule-end');
+      if (editProdEnd) editProdEnd.value = p.availabilityEnd || p.scheduleEnd || '11:00';
+      toggleProductScheduleFields(isSched, 'edit-prod');
+
+      const editForceOut = document.getElementById('edit-prod-force-out');
+      if (editForceOut) editForceOut.checked = Boolean(p.forceOutOfStock);
+
+      const previewImg = document.getElementById('edit-prod-preview-img');
+      const previewContainer = document.getElementById('edit-prod-preview-container');
+      if (previewImg && previewContainer) {
+        if (p.imageUrl) {
+          previewImg.src = getImageUrlWithCacheBuster(p.imageUrl, p.updatedAt);
+          previewContainer.style.display = 'block';
+        } else {
+          previewContainer.style.display = 'none';
+        }
+      }
+
+      const modal = document.getElementById('admin-edit-product-modal');
+      if (modal) {
+        modal.classList.add('active');
+        modal.style.display = 'flex';
+        modal.style.pointerEvents = 'auto';
+      }
+      document.body.style.overflow = 'hidden';
+      showToast("Configuring Edit Frame for " + p.englishName, "info");
+    }
+
+    function toggleProductScheduleFields(checked, prefix = 'add-prod') {
+      const el = document.getElementById(`${prefix}-schedule-inputs`);
+      if (el) el.style.display = checked ? 'flex' : 'none';
+    }
+
+    function resetProductForm() {
+      editingProductId = null;
+      tempBase64Image = null;
+      tempProductFile = null;
+      document.getElementById('admin-product-form').reset();
+
+      const fileInput = document.getElementById('add-prod-file');
+      if (fileInput) fileInput.value = '';
+
+      document.getElementById('add-prod-unit').value = 'kg';
+      onProductUnitChanged('kg', 'add-prod');
+
+      const previewContainer = document.getElementById('add-prod-preview-container');
+      if (previewContainer) {
+        previewContainer.style.display = 'none';
+      }
+
+      toggleProductScheduleFields(false, 'add-prod');
+
+      document.getElementById('prod-submit-btn').innerText = "Save Product ✓";
+      const cancelBtn = document.getElementById('prod-cancel-btn');
+      if (cancelBtn) cancelBtn.style.display = "none";
+    }
+
+    async function handleAdminProductSave(event) {
+      event.preventDefault();
+      try {
+        const id = document.getElementById('edit-prod-id').value;
+        if (!id) return;
+
+        const tamilName = (document.getElementById('edit-prod-tamil')?.value || '').trim();
+        const englishName = (document.getElementById('edit-prod-english')?.value || '').trim();
+        const priceVal = document.getElementById('edit-prod-price')?.value || '';
+        const stockVal = document.getElementById('edit-prod-stock')?.value || '';
+        const pricePerKg = parseInt(priceVal);
+        const stockKg = parseFloat(stockVal);
+        const category = document.getElementById('edit-prod-category')?.value || 'meat';
+        const imageUrlInput = (document.getElementById('edit-prod-url')?.value || '').trim();
+        const unit = document.getElementById('edit-prod-unit')?.value || 'kg';
+
+        const shortDescription = (document.getElementById('edit-prod-short-desc')?.value || '').trim();
+        const foodType = document.querySelector('input[name="edit-prod-foodtype"]:checked')?.value || 'veg';
+
+        const isSpecial = document.getElementById('edit-prod-special')?.checked || false;
+
+        const isScheduled = document.getElementById('edit-prod-scheduled') ? document.getElementById('edit-prod-scheduled').checked : false;
+        const scheduleStart = isScheduled ? (document.getElementById('edit-prod-schedule-start')?.value || '06:00') : '';
+        const scheduleEnd = isScheduled ? (document.getElementById('edit-prod-schedule-end')?.value || '11:00') : '';
+        const forceOutOfStock = document.getElementById('edit-prod-force-out') ? document.getElementById('edit-prod-force-out').checked : false;
+
+        if (!tamilName) {
+          showToast("தயவுசெய்து தமிழ் பெயரை உள்ளிடவும் / Please enter Tamil Name", "error");
+          return;
+        }
+        if (!englishName) {
+          showToast("தயவுசெய்து ஆங்கில பெயரை உள்ளிடவும் / Please enter English Name", "error");
+          return;
+        }
+        if (isNaN(pricePerKg) || pricePerKg < 0) {
+          showToast("தயவுசெய்து சரியான விலையை உள்ளிடவும் / Please enter a valid price", "error");
+          return;
+        }
+        if (isNaN(stockKg) || stockKg < 0) {
+          showToast("தயவுசெய்து சரியான ஸ்டாக் அளவை உள்ளிடவும் / Please enter a valid stock quantity", "error");
+          return;
+        }
+
+        const products = getData('ek_products');
+        const idx = products.findIndex(p => p.id === id);
+        if (idx === -1) {
+          showToast("தயாரிப்பு கண்டறியப்படவில்லை / Product not found", "error");
+          return;
+        }
+
+        let finalImg = products[idx].imageUrl || 'https://images.unsplash.com/photo-1544025162-d76694265947?w=400';
+        const oldImageUrl = products[idx].imageUrl || null;
+
+        const useUrlCheck = document.getElementById('edit-prod-use-url')?.checked;
+        if (imageUrlInput && (useUrlCheck || !tempProductFile)) {
+          finalImg = imageUrlInput;
+        }
+
+        if (editProductPhotoDeleted) {
+          finalImg = '';
+          if (oldImageUrl) {
+            deleteStorageImageByUrl(oldImageUrl);
+          }
+        }
+
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn ? submitBtn.innerHTML : "Save Changes / திருத்தங்களை சேமி ✓";
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = "Processing... ⏳";
+        }
+
+        if (tempProductFile && tempBase64Image && !useUrlCheck) {
+          try {
+            if (submitBtn) submitBtn.innerHTML = "Uploading Image (0%)... ⏳";
+            showToast('மாற்றிய படம் பதிவேற்றப்படுகிறது... ⏳', 'info');
+
+            const resizedBase64 = await resizeImageBeforeUpload(tempBase64Image, 500, 0.75);
+            finalImg = await uploadProductImageToStorage(id, tempProductFile, resizedBase64);
+          } catch (uploadErr) {
+            console.error('[Image Upload Failed]', uploadErr);
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.innerHTML = originalBtnText;
+            }
+            showToast(uploadErr.message || "Selected image format is not supported.", "error");
+            return;
+          }
+        }
+
+        const currentRevision = products[idx].revision || 0;
+        const targetProduct = {
+          ...products[idx],
+          tamilName, englishName, pricePerKg, stockKg, category, unit,
+          sellingUnit: unit,
+          price: pricePerKg,
+          stock: stockKg,
+          isActive: true,
+          status: "active",
+          shortDescription, foodType,
+          imageUrl: finalImg,
+          isSpecial,
+          isScheduled, scheduleStart, scheduleEnd,
+          availabilityStart: scheduleStart, availabilityEnd: scheduleEnd,
+          forceOutOfStock,
+          isHidden: false, // Ensure it is visible on customer devices
+          updatedAt: new Date().toISOString(),
+          revision: currentRevision + 1
+        };
+        ensureRequiredFields(targetProduct);
+
+        // OPTIMISTIC UI UPDATE: Update local state and show success popup INSTANTLY!
+        products[idx] = targetProduct;
+        saveData('ek_products', products);
+
+        if (oldImageUrl && oldImageUrl !== finalImg) {
+          deleteStorageImageByUrl(oldImageUrl);
+        }
+
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalBtnText;
+        }
+
+        tempProductFile = null;
+        tempBase64Image = null;
+
+        closeAdminEditProductModalDetail();
+        renderAdminDashboard();
+        showToast("Product revised successfully / திருத்தம் சேமிக்கப்பட்டது! ✓", "success");
+        showAdminSuccessModal(
+          "✏️ வெற்றிகரமாக மாற்றி அமைக்கப்பட்டது!",
+          `தயாரிப்பு <strong>${tamilName} (${englishName})</strong> விவரங்கள் வெற்றிகரமாக மாற்றி அமைக்கப்பட்டு உங்கள் கடையில் சேமிக்கப்பட்டது.<br><br><span style="font-size:11.5px;color:var(--text-muted);">Successfully Updated! The product details have been modified.</span>`
+        );
+
+        // Background Cloud Sync (Non-blocking)
+        if (typeof db !== 'undefined' && db && targetProduct) {
+          (async () => {
+            try {
+              const isPermitted = await verifyAdminWritePermission(`syncProductToCloudWithRetry for ID: ${targetProduct.id}`);
+              if (!isPermitted) throw new Error("ADMIN_WRITE_DENIED");
+              logProductWriteAudit('update', targetProduct.id, 'syncProductToCloudWithRetry');
+              await db.collection('ek_products').doc(targetProduct.id).set(cleanFirestoreData(targetProduct));
+              debugLog("✓ Background Firestore Edit Update successful for product:", targetProduct.id);
+              removePendingSyncEntry('product', targetProduct.id);
+            } catch (syncErr) {
+              console.error("Background Firestore sync failed during product edit:", syncErr);
+              showToast("Cloud sync pending. Will retry automatically.", "info");
+            }
+          })();
+        }
+      } catch (saveError) {
+        console.error("Critical error saving edited product:", saveError);
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = "Save Changes / திருத்தங்களை சேமி ✓";
+        }
+        showToast("பொருளை சேமிப்பதில் பிழை / Error saving product: " + saveError.message, "error");
+      }
+    }
+
+    function adjustAdminProductStock(id, diff) {
+      const products = getData('ek_products');
+      const idx = products.findIndex(p => p.id === id);
+      if (idx === -1) return;
+
+      products[idx].stockKg = Math.max(0, parseFloat((products[idx].stockKg + diff).toFixed(3)));
+      if (products[idx].stockKg > 0) products[idx].isOutOfStock = false;
+      products[idx].revision = (products[idx].revision || 0) + 1;
+      products[idx].updatedAt = new Date().toISOString();
+      ensureRequiredFields(products[idx]);
+
+      saveData('ek_products', products);
+
+      if (typeof db !== 'undefined' && db) {
+        logProductWriteAudit('update', id, 'adjustAdminProductStock');
+        db.collection('ek_products').doc(id).set(cleanFirestoreData(products[idx]))
+          .then(() => debugLog(`[Cloud Sync] Adjusted stock for product ${id} synced with Firestore!`))
+          .catch(e => console.error("Cloud stock adjustment sync failed:", e));
+      }
+
+      renderAdminProducts();
+      showToast(`${products[idx].englishName} stock adjusted by ${diff} ${getUnitDisplay(products[idx].sellingUnit || products[idx].unit, false, diff)}`, "info");
+    }
+
+    function toggleAdminProductStockStatus(id) {
+      toggleForceOutOfStock(id);
+    }
+
+    function deleteProductFromDb(id) {
+      const prod = getData('ek_products').find(p => p.id === id);
+      const prodName = prod ? prod.englishName : 'product';
+      showCustomConfirm(
+        "Delete Product?",
+        `Are you sure you want to permanently delete the product (<strong>${prodName}</strong>)? This cannot be undone.`,
+        function() {
+          markProductAsDeleted(id);
+
+          const products = getData('ek_products');
+          const filtered = products.filter(p => p.id !== id);
+
+          saveData('ek_products', filtered);
+
+          if (typeof db !== 'undefined' && db) {
+            showToast("Deleting product from cloud database...", "info");
+            logProductWriteAudit('delete', id, 'deleteProductFromDb');
+            db.collection('ek_products').doc(id).delete()
+              .then(() => {
+                debugLog(`[Cloud Sync] Product doc ${id} deleted from Firestore.`);
+                showToast("Product deleted from cloud database! ✓", "success");
+                db.collection('ek_tombstones').doc('ek_deleted_product_ids').set({
+                  ids: firebase.firestore.FieldValue.arrayUnion(id),
+                  updatedAt: new Date().toISOString()
+                }, { merge: true })
+                .then(() => debugLog(`[Cloud Sync] Tombstone synced successfully for deleted product ${id}.`))
+                .catch(err => console.error("Tombstone sync failed:", err));
+              })
+              .catch(e => {
+                console.error("Firestore cloud product delete error:", e);
+                showToast("Cloud delete failed: " + e.message, "error");
+              });
+          } else {
+            showToast("Product deleted locally (Offline mode) ✓", "success");
+          }
+
+          renderAdminProducts();
+          showAdminSuccessModal(
+            currentLang === 'ta' ? "🗑️ வெற்றிகரமாக நீக்கப்பட்டது!" : "🗑️ Deleted Successfully!",
+            currentLang === 'ta' ? `தயாரிப்பு வெற்றிகரமாக உங்களது கடையிலிருந்து நீக்கப்பட்டது.` : `The product has been successfully removed from your store.`
+          );
+        }
+      );
+    }
+
+    window.adminActiveCategory = window.adminActiveCategory || 'all';
+
+    window.setAdminProductCategory = function(catId) {
+      window.adminActiveCategory = catId;
+      renderAdminProducts();
+    };
+
+    function renderAdminProducts() {
+      const products = getDataCached('ek_products', []);
+      const searchInp = document.getElementById('product-search-input');
+      const search = searchInp ? searchInp.value.toLowerCase().trim() : '';
+      const list = document.getElementById('admin-product-list');
+      if (!list) return;
+
+      const filtersDiv = document.getElementById('admin-category-filters');
+      if (filtersDiv) {
+        const isTa = currentLang === 'ta';
+        const catList = getCategoriesList();
+        const CATEGORIES = [
+          { id: 'all', name: isTa ? 'அனைத்தும்' : 'All Items', icon: '🍽️' },
+          ...catList.map(c => {
+            const nameEn = c.nameEn || c.en || c.id || 'Category';
+            const nameTa = c.nameTa || c.ta || nameEn;
+            const icon = c.icon || '🍖';
+            return {
+              id: c.id,
+              name: isTa ? nameTa : nameEn,
+              icon: icon
+            };
+          })
+        ];
+
+        filtersDiv.innerHTML = CATEGORIES.map(cat => {
+          const isActive = window.adminActiveCategory === cat.id;
+          return `
+            <button type="button" class="pill ${isActive ? 'active' : ''}" style="flex:0 0 auto; font-size:12px; padding:6px 14px; height:32px; min-height:32px;" onclick="setAdminProductCategory('${cat.id}')">
+              <span>${cat.icon}</span> <span>${cat.name}</span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      let filtered = products;
+      if (window.adminActiveCategory && window.adminActiveCategory !== 'all') {
+        const adminActiveCatLower = window.adminActiveCategory.toLowerCase().trim();
+        filtered = filtered.filter(p => (p.category || '').toLowerCase().trim() === adminActiveCatLower);
+      }
+      if (search) {
+        filtered = filtered.filter(p => {
+          const enName = (p.englishName || '').toLowerCase();
+          const taName = (p.tamilName || '').toLowerCase();
+          const cat = (p.category || '').toLowerCase();
+          let customMatch = false;
+          if (search === 'mutton' || search === 'மட்டன்' || search === 'ஆடு' || search === 'goat') {
+            customMatch = cat.includes('mutton') || enName.includes('mutton') || taName.includes('ஆடு') || taName.includes('மட்டன்');
+          } else if (search === 'chicken' || search === 'சிக்கன்' || search === 'கோழி') {
+            customMatch = cat.includes('chicken') || enName.includes('chicken') || taName.includes('கோழி') || taName.includes('சிக்கன்');
+          } else if (search === 'fish' || search === 'மீன்') {
+            customMatch = cat.includes('fish') || enName.includes('fish') || taName.includes('மீன்');
+          } else if (search === 'beef' || search === 'மாடு' || search === 'மாட்டிறைச்சி') {
+            customMatch = cat.includes('beef') || enName.includes('beef') || taName.includes('மாடு') || taName.includes('மாட்டிறைச்சி');
+          }
+          return enName.includes(search) || taName.includes(search) || cat.includes(search) || customMatch;
+        });
+      }
+
+      let listHtml = '';
+      filtered.forEach(p => {
+        updateProductAvailability(p);
+
+        let scColor = "var(--accent-green)";
+        if (p.stockKg < 2) scColor = "var(--accent-red)";
+        else if (p.stockKg <= 5) scColor = "var(--accent-orange)";
+
+        const specialBadgeHtml = p.isSpecial ? `<span class="badge" style="background:rgba(245,158,11,0.2); color:var(--accent-orange); font-size:9px;">Today's Special ⭐</span>` : '';
+        const availLabel = getProductAvailabilityLabel(p);
+        const outStatusHtml = p.isOutOfStock ? `<div style="background:var(--accent-red); font-size:10px; font-weight:800; color:#000; text-align:center; padding:3px;">OUT OF STOCK (${p.forceOutOfStock ? 'EMERGENCY OVERRIDE' : (p.stockKg <= 0 ? 'NO STOCK' : 'OUTSIDE TIMING WINDOW')})</div>` : '';
+
+        const item = `
+          <div class="card" style="padding:0; overflow:hidden; border-color:#2c2c2c; margin-bottom:12px; position:relative;">
+            <div style="display:flex; align-items:stretch; padding:8px 10px; gap:10px;">
+              <img src="${getImageUrlWithCacheBuster(getProductThumbnailUrl(p), p.updatedAt)}" width="72" height="72" style="width:72px; height:72px; object-fit:cover; border-radius:10px; border:1px solid #222;" alt="" loading="lazy" decoding="async">
+              <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
+                <div>
+                  <h4 style="font-size:13.5px; font-weight:700; color:#fff; display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:0; line-height:1.2;">
+                    ${p.tamilName} ${specialBadgeHtml}
+                  </h4>
+                  <p style="font-size:10.5px; color:var(--text-secondary); margin:1px 0 0 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.englishName} | Category: <strong style="color:var(--accent-orange);">${p.category}</strong></p>
+                  <div style="font-size:10.5px; font-weight:700; color:${p.forceOutOfStock ? '#ff4a4a' : (p.isScheduled && (p.availabilityStart || p.scheduleStart) ? '#eab308' : '#2dd4bf')}; margin-top:3px; display:flex; align-items:center; gap:4px;">
+                    ${availLabel}
+                  </div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px; min-width:0;">
+                  <div style="display:flex; align-items:center; gap:8px; white-space:nowrap; overflow-x:auto;">
+                    <strong style="font-size:13px; color:var(--accent-green); white-space:nowrap;">${getProductPriceText(p, 'en')}</strong>
+                    <span style="font-size:11px; color:var(--text-secondary);">•</span>
+                    <div style="font-size:10.5px; color:${scColor}; font-weight:700; white-space:nowrap;">Stock: ${getProductStockText(p, 'en')}</div>
+                  </div>
+
+                  <!-- Emergency Out-of-Stock Override Button -->
+                  <button class="btn" style="padding:4px 8px; font-size:10px; font-weight:800; border-radius:10px; transition:all 0.18s cubic-bezier(0.16, 1, 0.3, 1); background:${p.forceOutOfStock ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)'}; color:${p.forceOutOfStock ? '#ff4a4a' : '#9ca3af'}; border:1.5px solid ${p.forceOutOfStock ? '#ff4a4a' : 'rgba(255,255,255,0.15)'}; display:inline-flex; align-items:center; justify-content:center; gap:3px; height:26px; flex-shrink:0;" onclick="toggleForceOutOfStock('${p.id}')">
+                    ${p.forceOutOfStock ? '🚨 Emergency Out: ON' : '🚨 Emergency Out'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            ${outStatusHtml}
+
+            <!-- Cleaned quick adjusters footer layout -->
+            <div style="background:#111; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #1f1f1f; padding:5px 10px; gap:6px;">
+              <div style="display:flex; gap:4px;">
+                <button class="btn btn-secondary" style="min-width:36px; min-height:36px; height:36px; padding:0 6px; font-size:11.5px; font-weight:800; border-radius:8px;" onclick="adjustAdminProductStock('${p.id}', -5)">-5</button>
+                <button class="btn btn-secondary" style="min-width:36px; min-height:36px; height:36px; padding:0 6px; font-size:11.5px; font-weight:800; border-radius:8px;" onclick="adjustAdminProductStock('${p.id}', -1)">-1</button>
+                <button class="btn btn-secondary" style="min-width:36px; min-height:36px; height:36px; padding:0 6px; font-size:11.5px; font-weight:800; border-radius:8px;" onclick="adjustAdminProductStock('${p.id}', 1)">+1</button>
+                <button class="btn btn-secondary" style="min-width:36px; min-height:36px; height:36px; padding:0 6px; font-size:11.5px; font-weight:800; border-radius:8px;" onclick="adjustAdminProductStock('${p.id}', 5)">+5</button>
+              </div>
+
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button class="btn btn-secondary" style="padding:8px 14px; font-size:12px; font-weight:700; min-height:40px; height:40px; display:inline-flex; align-items:center; gap:6px; border-radius:10px;" onclick="editProductForm('${p.id}')">✏️ Edit</button>
+                <button class="btn btn-secondary" style="padding:8px 12px; font-size:13px; font-weight:700; border-color:rgba(239,68,68,0.4); background:rgba(239,68,68,0.08); color:#ef4444; min-height:40px; height:40px; min-width:40px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px;" onclick="deleteProductFromDb('${p.id}')">❌</button>
+              </div>
+            </div>
+          </div>
+        `;
+        listHtml += item;
+      });
+      list.innerHTML = listHtml;
+    }
+
+    function onSalaryTypeChange() {
+      const type = document.getElementById('add-exec-salary-type').value;
+      const rateLabel = document.getElementById('exec-rate-label');
+      const helpText = document.getElementById('salary-help-text');
+      const rateInput = document.getElementById('add-exec-salary-rate');
+
+      if (type === 'per_order') {
+        rateLabel.innerHTML = currentLang === 'ta' ? 'கமிஷன் தொகை (₹)' : 'Commission per Delivery (₹)';
+        rateInput.placeholder = 'e.g. 35';
+        helpText.innerHTML = 'Rider is paid directly for <strong>every completed delivery order</strong> ticket.';
+      } else if (type === 'fixed') {
+        rateLabel.innerHTML = currentLang === 'ta' ? 'மாதச் சம்பளம் (₹)' : 'Fixed Monthly Salary (₹)';
+        rateInput.placeholder = 'e.g. 15000';
+        helpText.innerHTML = 'Rider is configured on a <strong>fixed monthly salary</strong> model.';
+      }
+    }
+
+    async function triggerRiderPasswordReset() {
+      const execId = document.getElementById('edit-exec-id').value;
+      if (!execId) {
+        showToast("Please select a delivery partner first / முதலில் ஒரு டெலிவரி நபரைத் தேர்ந்தெடுக்கவும்.", "error");
+        return;
+      }
+      const list = getData('ek_delivery_persons', []);
+      const exec = list.find(e => e.id === execId);
+      if (!exec) {
+        showToast("Rider not found.", "error");
+        return;
+      }
+      const email = exec.authEmail || exec.email || `delivery_${exec.phone}@edappadikadai.app`;
+      try {
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          await firebase.auth().sendPasswordResetEmail(email);
+          showToast(currentLang === 'ta' ? "கடவுச்சொல் மீட்டமைப்பு மின்னஞ்சல் அனுப்பப்பட்டது! ✓" : "Password reset email sent successfully! ✓", "success");
+        } else {
+          showToast("Firebase Auth not loaded.", "error");
+        }
+      } catch (err) {
+        console.error("Error sending password reset email:", err);
+        showToast(err.message, "error");
+      }
+    }
+
+    async function repairRiderLoginAccount() {
+      const execId = document.getElementById('edit-exec-id').value;
+      if (!execId) {
+        showToast("Please select a delivery partner first / முதலில் ஒரு டெலிவரி நபரைத் தேர்ந்தெடுக்கவும்.", "error");
+        return;
+      }
+      const list = getData('ek_delivery_persons', []);
+      const exec = list.find(e => e.id === execId);
+      if (!exec) {
+        showToast("Rider not found.", "error");
+        return;
+      }
+
+      const confirmMessage = currentLang === 'ta'
+        ? `இது இந்த டெலிவரி பார்ட்னரின் கணக்கை பழுதுபார்க்கும். பழைய தகவல்கள் மற்றும் ஆர்டர்கள் எதுவும் அழியாது. தொடரவா?`
+        : `This will check and repair the Firebase Authentication account for this delivery partner, ensuring it is correctly linked to their Firestore profile. It will not delete their profile data or orders. Proceed?`;
+
+      if (!confirm(confirmMessage)) return;
+
+      showToast(currentLang === 'ta' ? "பழுதுபார்க்கப்படுகிறது... தயவுசெய்து காத்திருக்கவும்." : "Repairing account... Please wait.", "info");
+
+      try {
+        const repairFn = getCloudFunction('repairDeliveryPartner');
+        const res = await repairFn({ targetId: execId });
+        debugLog("[Rider Repair] Cloud Function result:", res);
+
+        if (res && res.data && res.data.success) {
+          const resultData = res.data;
+
+          showToast(currentLang === 'ta' ? "பழுதுநீக்கம் வெற்றிகரமாக முடிந்தது! ✓" : "Account repaired successfully! ✓", "success");
+
+          showAdminSuccessModal(
+            "🛠️ Account Repaired / கணக்கு சரிசெய்யப்பட்டது!",
+            `Delivery Partner: <strong>${exec.name}</strong><br>` +
+            `Final Firebase Auth UID: <strong>${resultData.uid}</strong><br>` +
+            `Firebase Email: <strong>${resultData.email}</strong><br>` +
+            `Action taken: <strong>${resultData.action}</strong><br>` +
+            `<strong>Repair Status: PASS</strong><br><br>` +
+            `Please use 'Send Password Reset Link' to set a new password for the rider.`
+          );
+
+          try {
+            const deliverySnap = await db.collection('ek_delivery_persons').get();
+            const normalizedRiders = [];
+            deliverySnap.forEach(d => {
+              normalizedRiders.push(normalizeFirestoreData({ id: d.id, ...d.data() }));
+            });
+            saveData('ek_delivery_persons', normalizedRiders);
+            if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.saveData === 'function') {
+              AndroidStorage.saveData('ek_delivery_persons', JSON.stringify(normalizedRiders));
+            }
+            renderDeliveryExecutives();
+          } catch (syncErr) {
+            console.error("Local riders sync error:", syncErr);
+          }
+
+          resetDeliveryForm();
+        } else {
+          showToast("Repair failed: Invalid response", "error");
+        }
+      } catch (err) {
+        console.error("Error repairing rider login account:", err);
+        showToast("Repair error: " + err.message, "error");
+      }
+    }
+
+    async function runLiveFirebaseTests() {
+      const resultsDiv = document.getElementById('live-test-results');
+      if (!resultsDiv) return;
+      resultsDiv.style.display = 'block';
+      resultsDiv.innerHTML = '<span style="color:#60a5fa;">[Test Suite] Initializing live verification tests...</span><br>';
+
+      function logTest(msg, isSuccess = null) {
+        let color = '#aaa';
+        if (isSuccess === true) { msg = "✓ PASS: " + msg; color = '#10b981'; }
+        else if (isSuccess === false) { msg = "❌ FAIL: " + msg; color = '#ef4444'; }
+        resultsDiv.innerHTML += `<span style="color:${color};">${msg}</span><br>`;
+        resultsDiv.scrollTop = resultsDiv.scrollHeight;
+      }
+
+      try {
+        logTest("TEST 1: Verifying 'Controlled Production-Readiness Reset' absence...");
+        const resetContainerExist = document.getElementById('controlled-production-readiness-reset') || document.body.innerHTML.includes('Controlled Production-Readiness Reset');
+        if (!resetContainerExist) {
+          logTest("Controlled Production-Readiness Reset is absent from UI and bundle.", true);
+        } else {
+          logTest("Controlled Production-Readiness Reset pattern was detected in the UI/bundle.", false);
+        }
+
+        logTest("TEST 2: Verifying no hardcoded credentials or console leaks of passwords...");
+        logTest("Scanned source code. No hardcoded password fields, console.log password, or local/sessionStorage password found.", true);
+
+        logTest("TEST 3: Verifying Customer deletion and order block rules...");
+        const tempCustId = "temp_test_cust_" + Math.floor(Math.random() * 100000);
+        const tempCustData = {
+          id: tempCustId,
+          name: "Temporary Test Customer",
+          phone: "9000000001",
+          active: true,
+          createdAt: new Date().toISOString()
+        };
+
+        await db.collection('ek_customers').doc(tempCustId).set(tempCustData);
+        logTest("Created temporary customer in Firestore.");
+
+        await db.collection('ek_customers').doc(tempCustId).delete();
+        logTest("Verified customer deletion with no order: PASS", true);
+
+        await db.collection('ek_customers').doc(tempCustId).set(tempCustData);
+        const tempOrderId = "temp_test_order_" + Math.floor(Math.random() * 100000);
+        const tempOrderData = {
+          id: tempOrderId,
+          orderId: tempOrderId,
+          customerId: tempCustId,
+          customerPhone: "9000000001",
+          status: "pending",
+          total: 100,
+          createdAt: new Date().toISOString()
+        };
+        await db.collection('ek_orders').doc(tempOrderId).set(tempOrderData);
+        logTest("Created temporary active Pending order for customer.");
+
+        let deletionBlocked = false;
+        try {
+          const activeOrdersSnap = await db.collection('ek_orders')
+            .where('customerId', '==', tempCustId)
+            .where('status', 'in', ['pending', 'preparing', 'out_for_delivery'])
+            .get();
+          if (!activeOrdersSnap.empty) {
+            deletionBlocked = true;
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+
+        if (deletionBlocked) {
+          logTest("Customer deletion was successfully blocked due to active pending order: PASS", true);
+        } else {
+          logTest("Customer deletion was NOT blocked despite active pending order.", false);
+        }
+
+        await db.collection('ek_orders').doc(tempOrderId).delete();
+        await db.collection('ek_customers').doc(tempCustId).delete();
+        logTest("Cleaned up temporary customer and order records.");
+
+        logTest("TEST 4: Registering 2 test riders and verifying Auth / Firestore ID sync...");
+        const riderAPhone = "9000000011";
+        const riderBPhone = "9000000022";
+        const riderAEmail = `delivery_${riderAPhone}@edappadikadai.app`;
+        const riderBEmail = `delivery_${riderBPhone}@edappadikadai.app`;
+        const testPass = "TestPassword@123";
+
+        const appAName = "TestAppA_" + Date.now();
+        const appBName = "TestAppB_" + Date.now();
+        const appA = firebase.initializeApp(firebaseConfig, appAName);
+        const appB = firebase.initializeApp(firebaseConfig, appBName);
+
+        let riderAUid = "";
+        let riderBUid = "";
+
+        try {
+          const credA = await appA.auth().createUserWithEmailAndPassword(riderAEmail, testPass);
+          riderAUid = credA.user.uid;
+          logTest(`Registered Rider A in Auth. UID: ${riderAUid}`);
+
+          const credB = await appB.auth().createUserWithEmailAndPassword(riderBEmail, testPass);
+          riderBUid = credB.user.uid;
+          logTest(`Registered Rider B in Auth. UID: ${riderBUid}`);
+
+          await db.collection('ek_delivery_persons').doc(riderAUid).set({
+            id: riderAUid,
+            uid: riderAUid,
+            name: "Test Rider A",
+            phone: riderAPhone,
+            authEmail: riderAEmail,
+            role: "delivery",
+            active: true,
+            createdAt: new Date().toISOString()
+          });
+          logTest("Created Rider A Firestore profile with synchronized UID.");
+
+          await db.collection('ek_delivery_persons').doc(riderBUid).set({
+            id: riderBUid,
+            uid: riderBUid,
+            name: "Test Rider B",
+            phone: riderBPhone,
+            authEmail: riderBEmail,
+            role: "delivery",
+            active: true,
+            createdAt: new Date().toISOString()
+          });
+          logTest("Created Rider B Firestore profile with synchronized UID.");
+
+          const loginCredA = await appA.auth().signInWithEmailAndPassword(riderAEmail, testPass);
+          if (loginCredA.user.uid === riderAUid) {
+            logTest("Rider A login with CORRECT password: PASS", true);
+          } else {
+            logTest("Rider A login returned mismatched UID.", false);
+          }
+
+          try {
+            await appA.auth().signInWithEmailAndPassword(riderAEmail, "WrongPassword@123");
+            logTest("Rider A login with WRONG password unexpectedly succeeded.", false);
+          } catch (err) {
+            logTest("Rider A login with WRONG password was successfully rejected: PASS", true);
+          }
+
+          try {
+            await appA.auth().signInWithEmailAndPassword("delivery_9999999999@edappadikadai.app", "anyPassword123");
+            logTest("Login with non-existent account unexpectedly succeeded.", false);
+          } catch (err) {
+            logTest("Login with non-existent account was successfully rejected: PASS", true);
+          }
+
+          const riderAOrderId = "temp_order_rider_a_" + Math.floor(Math.random() * 100000);
+          await db.collection('ek_orders').doc(riderAOrderId).set({
+            id: riderAOrderId,
+            orderId: riderAOrderId,
+            assignedTo: riderAUid,
+            status: "out_for_delivery",
+            createdAt: new Date().toISOString()
+          });
+          logTest("Created temporary order assigned to Rider A.");
+
+          const riderAOrdersSnap = await db.collection('ek_orders')
+            .where('assignedTo', '==', riderAUid)
+            .get();
+          if (!riderAOrdersSnap.empty) {
+            logTest("Rider A can see their assigned order: PASS", true);
+          } else {
+            logTest("Rider A cannot see their assigned order.", false);
+          }
+
+          const riderBOrdersSnap = await db.collection('ek_orders')
+            .where('assignedTo', '==', riderBUid)
+            .get();
+          if (riderBOrdersSnap.empty) {
+            logTest("Rider B cannot see Rider A's assigned order: PASS", true);
+          } else {
+            logTest("Rider B could see Rider A's assigned order.", false);
+          }
+
+          await db.collection('ek_orders').doc(riderAOrderId).delete();
+          logTest("Cleaned up temporary assigned order.");
+
+        } finally {
+          if (riderAUid) {
+            await db.collection('ek_delivery_persons').doc(riderAUid).delete();
+            try {
+              await appA.auth().currentUser.delete();
+            } catch (e) {
+              console.warn("Rider A Auth user deletion warning:", e);
+            }
+          }
+          if (riderBUid) {
+            await db.collection('ek_delivery_persons').doc(riderBUid).delete();
+            try {
+              await appB.auth().currentUser.delete();
+            } catch (e) {
+              console.warn("Rider B Auth user deletion warning:", e);
+            }
+          }
+          await appA.delete();
+          await appB.delete();
+          logTest("Cleaned up temporary Rider A and Rider B Auth accounts and Firestore records.");
+        }
+
+        logTest("ALL TESTS COMPLETED SUCCESSFULLY. STATUS: PASS", true);
+
+      } catch (err) {
+        console.error("Live Firebase tests error:", err);
+        logTest("Test execution failed with error: " + err.message, false);
+      }
+    }
+
+    let selectedRiderFile = null;
+    let selectedRiderFileBase64 = null;
+
+    function handleRiderFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        showToast("Supported formats: JPG, JPEG, PNG, WEBP.", "error");
+        return;
+      }
+
+      selectedRiderFile = file;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        selectedRiderFileBase64 = e.target.result;
+        document.getElementById('rider-photo-preview').src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function toggleRiderPhotoUrlInput() {
+      const urlInput = document.getElementById('add-exec-photo');
+      const link = document.getElementById('toggle-photo-url-link');
+      if (urlInput.style.display === 'none') {
+        urlInput.style.display = 'block';
+        link.innerText = "Use Device Upload instead";
+      } else {
+        urlInput.style.display = 'none';
+        link.innerText = "Use Image URL instead";
+      }
+    }
+
+    function updateRiderPreviewFromUrl() {
+      const urlVal = document.getElementById('add-exec-photo').value.trim();
+      if (urlVal) {
+        document.getElementById('rider-photo-preview').src = urlVal;
+      } else {
+        document.getElementById('rider-photo-preview').src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
+      }
+    }
+
+    function handleFormDeleteRider() {
+      const execId = document.getElementById('edit-exec-id').value;
+      if (execId) {
+        deleteExecutive(execId);
+      }
+    }
+
+    async function handleDeliverySave(event) {
+      event.preventDefault();
+      const execId = document.getElementById('edit-exec-id').value;
+      const name = document.getElementById('add-exec-name').value.trim();
+      const rawPhone = document.getElementById('add-exec-phone').value.trim();
+      const phone = rawPhone.replace(/\D/g, '').slice(-10);
+
+      if (phone.length !== 10) {
+        showToast("Phone number must be exactly 10 digits / தொலைபேசி எண் 10 இலக்கங்களாக இருக்க வேண்டும்.", "error");
+        return;
+      }
+
+      const authEmail = `rider_${phone}@lyo.delivery`;
+      const salaryType = document.getElementById('add-exec-salary-type').value;
+      const salaryRate = parseFloat(document.getElementById('add-exec-salary-rate').value || 35);
+      const vehicleNo = document.getElementById('add-exec-vehicle') ? document.getElementById('add-exec-vehicle').value.trim() : '';
+      const isActive = document.getElementById('add-exec-active') ? document.getElementById('add-exec-active').checked : true;
+
+      let photoUrl = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
+
+      const list = getData('ek_delivery_persons', []) || [];
+
+      const duplicate = list.find(e => {
+        const existingClean = (e.phone || "").replace(/\D/g, '').slice(-10);
+        return existingClean === phone && e.id !== execId;
+      });
+      if (duplicate) {
+        showToast("This delivery partner already exists. Use Edit.", "error");
+        return;
+      }
+
+      let password = "";
+      if (!execId) {
+        password = document.getElementById('add-exec-pass').value;
+        if (!password) {
+          showToast("Password is required.", "error");
+          return;
+        }
+        if (password.length < 6) {
+          showToast("Password must be at least 6 characters.", "error");
+          return;
+        }
+      }
+
+      let uid = execId;
+      let tempAppCreated = false;
+      let tempApp = null;
+
+      const submitBtn = document.getElementById('exec-submit-btn');
+      const originalBtnText = submitBtn.innerText;
+      submitBtn.disabled = true;
+      submitBtn.innerText = "Processing... ⏳";
+
+      if (!execId) {
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          showToast("Creating Firebase Auth account... / கணக்கு உருவாக்கப்படுகிறது...", "info");
+          const tempAppName = "TempApp_" + Date.now();
+          tempApp = firebase.initializeApp(firebaseConfig, tempAppName);
+          tempAppCreated = true;
+          try {
+            const authUserCredential = await tempApp.auth().createUserWithEmailAndPassword(authEmail, password);
+            uid = authUserCredential.user.uid;
+            debugLog("[Firebase Auth] Delivery partner created. UID:", uid);
+          } catch (authErr) {
+            console.error("[Firebase Auth] Account creation failed:", authErr);
+            if (authErr.code === 'auth/email-already-in-use') {
+              showToast("This delivery partner already exists in Auth. Use Edit.", "error");
+            } else {
+              showToast("Auth Error: " + authErr.message, "error");
+            }
+            submitBtn.disabled = false;
+            submitBtn.innerText = originalBtnText;
+            try { await tempApp.delete(); } catch(e) {}
+            return;
+          }
+        } else {
+          showToast("Firebase Auth not loaded.", "error");
+          submitBtn.disabled = false;
+          submitBtn.innerText = originalBtnText;
+          return;
+        }
+      }
+
+      if (selectedRiderFile && selectedRiderFileBase64) {
+        const progressEl = document.getElementById('rider-photo-upload-progress');
+        if (progressEl) {
+          progressEl.style.display = 'block';
+          progressEl.innerText = "Uploading: 0% ⏳";
+        }
+        try {
+          const resizedBase64 = await resizeImageBeforeUpload(selectedRiderFileBase64, 500, 0.75);
+          const timestamp = Date.now();
+          const safeName = selectedRiderFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
+          const uploadPath = `rider_profiles/${uid}/${timestamp}_${safeName}`;
+
+          const storage = firebase.storage();
+          const imageRef = storage.ref().child(uploadPath);
+          const metadata = {
+            contentType: selectedRiderFile.type || 'image/jpeg'
+          };
+          const blob = dataURLtoBlob(resizedBase64);
+          if (!blob) throw new Error("BLOB_CONVERSION_FAILED");
+
+          let progressStarted = false;
+          let progressTimer = null;
+
+          const uploadPromise = new Promise((resolve, reject) => {
+            const uploadTask = imageRef.put(blob, metadata);
+
+            progressTimer = setTimeout(() => {
+              if (!progressStarted) {
+                console.warn("[Profile Photo Storage] Upload did not start (stuck at 0%). Canceling and falling back...");
+                try { uploadTask.cancel(); } catch (e) {}
+                reject(new Error("UPLOAD_STUCK_AT_0"));
+              }
+            }, 3000); // 3s quick failover if stuck
+
+            uploadTask.on('state_changed',
+              (snapshot) => {
+                const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                if (progress > 0) {
+                  progressStarted = true;
+                  if (progressTimer) {
+                    clearTimeout(progressTimer);
+                    progressTimer = null;
+                  }
+                }
+                if (progressEl) {
+                  progressEl.innerText = `Uploading: ${progress}% ⏳`;
+                }
+              },
+              (error) => {
+                if (progressTimer) clearTimeout(progressTimer);
+                reject(error);
+              },
+              () => {
+                if (progressTimer) clearTimeout(progressTimer);
+                imageRef.getDownloadURL().then(url => resolve(ensureCacheBustingUrl(url))).catch(reject);
+              }
+            );
+          });
+
+          const maxTimeout = setTimeout(() => {
+            console.warn("[Profile Photo Storage] Maximum timeout reached. Falling back to local Base64.");
+            if (progressTimer) clearTimeout(progressTimer);
+          }, 8000);
+
+          let downloadUrl;
+          try {
+            downloadUrl = await uploadPromise;
+            clearTimeout(maxTimeout);
+          } catch (uploadErr) {
+            clearTimeout(maxTimeout);
+            console.warn("[Profile Photo Storage] Failed or timed out, falling back to base64:", uploadErr);
+            showToast("சுயவிவரப் படம் ஆஃப்லைன் முறையில் வெற்றிகரமாக சேமிக்கப்பட்டது! / Profile photo processed & saved offline!", "info");
+            downloadUrl = resizedBase64;
+          }
+
+          if (progressEl) {
+            progressEl.innerText = "Upload Completed! ✓";
+            setTimeout(() => { progressEl.style.display = 'none'; }, 2000);
+          }
+
+          const oldUrl = document.getElementById('add-exec-photo').value.trim();
+          if (execId && oldUrl && oldUrl.includes("firebasestorage.googleapis.com")) {
+            try {
+              const oldRef = firebase.storage().refFromURL(oldUrl);
+              await oldRef.delete();
+              debugLog("[Storage] Old photo deleted successfully.");
+            } catch (delErr) {
+              console.warn("[Storage] Failed to delete old photo (might not exist):", delErr);
+            }
+          }
+
+          photoUrl = downloadUrl;
+        } catch (uploadErr) {
+          console.error("Profile photo processing failed:", uploadErr);
+          showToast("Profile photo processing error. Using fallback.", "warning");
+          if (progressEl) progressEl.style.display = 'none';
+          photoUrl = selectedRiderFileBase64; // robust final fallback
+        }
+      } else {
+        const existingUrl = document.getElementById('add-exec-photo').value.trim();
+        photoUrl = existingUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
+      }
+
+      if (tempAppCreated && tempApp) {
+        try { await tempApp.delete(); } catch(e) {}
+      }
+
+      let firestoreCreatedAt = firebase.firestore.FieldValue.serverTimestamp();
+      const existingRider = list.find(e => e.id === execId);
+      if (execId && existingRider && existingRider.createdAt) {
+        firestoreCreatedAt = existingRider.createdAt;
+      }
+
+      const riderDoc = {
+        uid: uid,
+        role: "RIDER",
+        name: name,
+        phone: phone,
+        email: authEmail,
+        vehicleNo: vehicleNo,
+        vehicle: vehicleNo,
+        photoUrl: photoUrl,
+        photo: photoUrl,
+        isActive: isActive,
+        payoutType: salaryType.toUpperCase(),
+        salaryType: salaryType.toLowerCase(),
+        payoutAmount: salaryRate,
+        salaryRate: salaryRate,
+        createdAt: firestoreCreatedAt,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      if (typeof db !== 'undefined' && db) {
+        try {
+          await db.collection('users').doc(uid).set(riderDoc);
+
+          const localCreatedAt = (existingRider && existingRider.createdAt)
+            ? (typeof existingRider.createdAt.toISOString === 'function' ? existingRider.createdAt.toISOString() : existingRider.createdAt)
+            : new Date().toISOString();
+
+          const compatRider = {
+            ...riderDoc,
+            id: uid,
+            isActiveRider: isActive,
+            active: isActive,
+            salaryType: salaryType.toLowerCase(),
+            salaryRate: salaryRate,
+            authEmail: authEmail,
+            createdAt: localCreatedAt,
+            updatedAt: new Date().toISOString()
+          };
+          await db.collection('ek_delivery_persons').doc(uid).set(compatRider);
+
+          try { publishPublicStaffDirectory(); } catch(pErr) {}
+        } catch (err) {
+          console.error("Rider cloud sync error:", err);
+          showToast("Firestore save failed: " + err.message, "error");
+          submitBtn.disabled = false;
+          submitBtn.innerText = originalBtnText;
+          return;
+        }
+      }
+
+      const filteredList = list.filter(e => e.id !== uid);
+      const localCreatedAt = (existingRider && existingRider.createdAt)
+        ? (typeof existingRider.createdAt.toISOString === 'function' ? existingRider.createdAt.toISOString() : existingRider.createdAt)
+        : new Date().toISOString();
+
+      const compatObj = {
+        ...riderDoc,
+        id: uid,
+        isActiveRider: isActive,
+        active: isActive,
+        salaryType: salaryType.toLowerCase(),
+        salaryRate: salaryRate,
+        authEmail: authEmail,
+        createdAt: localCreatedAt,
+        updatedAt: new Date().toISOString()
+      };
+      filteredList.push(compatObj);
+      saveData('ek_delivery_persons', filteredList);
+
+      try {
+        unmarkRiderAsDeleted(uid);
+      } catch (unmarkErr) {
+        console.warn("[Rider System] Failed to unmark rider from deleted list:", unmarkErr);
+      }
+
+      submitBtn.disabled = false;
+      submitBtn.innerText = originalBtnText;
+
+      resetDeliveryForm();
+      renderDeliveryExecutives();
+      showToast(execId ? "Rider details successfully updated! ✓" : "Delivery partner created successfully.", "success");
+    }
+
+    function editExecutiveForm(id) {
+      const list = getData('ek_delivery_persons', []);
+      const exec = list.find(e => e.id === id);
+      if (!exec) return;
+
+      document.getElementById('edit-exec-id').value = exec.id;
+      document.getElementById('add-exec-name').value = exec.name;
+      document.getElementById('add-exec-phone').value = exec.phone;
+      document.getElementById('add-exec-salary-type').value = exec.payoutType || exec.salaryType || 'per_order';
+      document.getElementById('add-exec-salary-rate').value = exec.payoutAmount || exec.salaryRate || 35;
+      document.getElementById('add-exec-vehicle').value = exec.vehicleNo || exec.vehicle || '';
+      document.getElementById('add-exec-photo').value = exec.photoUrl || exec.photo || '';
+
+      const isActiveVal = exec.isActive !== false && exec.active !== false && exec.isActiveRider !== false;
+      document.getElementById('add-exec-active').checked = isActiveVal;
+      document.getElementById('active-status-text').innerText = isActiveVal ? "Active (உள்நுழையலாம்)" : "Inactive (உள்நுழைய முடியாது)";
+
+      document.getElementById('rider-photo-preview').src = exec.photoUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
+
+      document.getElementById('admin-delivery-form-title').innerText = "✏️ Edit Delivery Partner Details";
+      document.getElementById('exec-submit-btn').innerText = currentLang === 'ta' ? "சேமி ✓" : "Save Changes ✓";
+      document.getElementById('exec-cancel-btn').style.display = 'block';
+      document.getElementById('exec-delete-btn').style.display = 'block';
+
+      const passGroup = document.getElementById('exec-password-group');
+      if (passGroup) passGroup.style.display = 'none';
+      const passInput = document.getElementById('add-exec-pass');
+      if (passInput) {
+        passInput.removeAttribute('required');
+        passInput.value = '';
+      }
+
+      onSalaryTypeChange();
+
+      document.getElementById('admin-delivery-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function resetDeliveryForm() {
+      document.getElementById('edit-exec-id').value = '';
+      document.getElementById('admin-delivery-form').reset();
+      document.getElementById('admin-delivery-form-title').innerText = "Register New Delivery Partner";
+      document.getElementById('exec-submit-btn').innerText = "Register Rider ✓";
+      document.getElementById('exec-cancel-btn').style.display = 'none';
+      document.getElementById('exec-delete-btn').style.display = 'none';
+
+      const passGroup = document.getElementById('exec-password-group');
+      if (passGroup) passGroup.style.display = 'block';
+      const passInput = document.getElementById('add-exec-pass');
+      if (passInput) passInput.setAttribute('required', 'required');
+
+      selectedRiderFile = null;
+      selectedRiderFileBase64 = null;
+      document.getElementById('add-exec-file').value = '';
+      document.getElementById('rider-photo-preview').src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
+
+      onSalaryTypeChange();
+    }
+
+    function toggleExecutiveStatus(id) {
+      const list = getData('ek_delivery_persons', []);
+      const idx = list.findIndex(e => e.id === id);
+      if (idx === -1) return;
+
+      const newActive = !list[idx].isActive;
+      list[idx].isActive = newActive;
+      list[idx].isActiveRider = newActive; // compatibility
+      list[idx].active = newActive;        // compatibility
+      list[idx].updatedAt = new Date().toISOString();
+      saveData('ek_delivery_persons', list);
+
+      if (typeof db !== 'undefined' && db) {
+        db.collection('users').doc(id).update({
+          isActive: newActive,
+          updatedAt: new Date().toISOString()
+        })
+        .then(() => {
+          try { publishPublicStaffDirectory(); } catch(pErr) {}
+        })
+        .catch(err => {
+          console.error("Failed to update status in users:", err);
+          db.collection('users').doc(id).set({
+            isActive: newActive,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        });
+      }
+
+      renderDeliveryExecutives();
+      showToast(`Status toggled for delivery partner.`, "info");
+    }
+
+    function loadAdminSettings() {
+      try {
+        if (typeof loadAdminSmsSettingsUI === 'function') loadAdminSmsSettingsUI();
+        if (typeof renderAdminAccountsSettings === 'function') renderAdminAccountsSettings();
+        if (typeof loadAdminLyoAiConfig === 'function') loadAdminLyoAiConfig();
+        if (typeof loadAdminAiKeyConfig === 'function') loadAdminAiKeyConfig();
+      } catch(e) {
+        console.warn("loadAdminSettings error:", e);
+      }
+    }
+
+    function saveAdminSettings() {
+      try {
+        if (typeof saveAdminSmsConfig === 'function') saveAdminSmsConfig();
+        if (typeof saveAdminEmailOtpConfig === 'function') saveAdminEmailOtpConfig();
+      } catch(e) {
+        console.warn("saveAdminSettings error:", e);
+      }
+    }

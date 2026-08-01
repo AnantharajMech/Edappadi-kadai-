@@ -1,0 +1,2072 @@
+
+    function validateAndSanitizeSessions(targetRole = null) {
+      debugLog("[Session Validate] Auditing active sessions. Target role:", targetRole);
+
+      const adminSession = getData('ek_admin_session', null);
+      const custSession = getData('ek_customer_session', null);
+      const deliverySession = getData('ek_delivery_session', null);
+
+      const hasAdmin = !!(adminSession && adminSession.loggedIn);
+      const hasCust = !!(custSession && custSession.loggedIn);
+      const hasDelivery = !!(deliverySession && deliverySession.loggedIn);
+
+      let activeRole = null;
+      if (hasAdmin) activeRole = 'admin';
+      else if (hasDelivery) activeRole = 'delivery';
+      else if (hasCust) activeRole = 'customer';
+
+      if (targetRole && activeRole && targetRole !== activeRole) {
+        debugLog(`[Session Validate] Switching role from ${activeRole} to ${targetRole}. Terminating previous session...`);
+        if (activeRole === 'admin') {
+          removeData('ek_admin_session');
+          removeData('ek_admin_remember_me');
+        } else if (activeRole === 'delivery') {
+          removeData('ek_delivery_session');
+          removeData('ek_delivery_remember_me');
+        } else if (activeRole === 'customer') {
+          removeData('ek_customer_session');
+          sessionStorage.removeItem('ek_customer_session_temp');
+          removeData('ek_customer_remember_me');
+        }
+
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          firebase.auth().signOut().catch(e => console.error("[Session Validate] Error signing out on role switch:", e));
+        }
+        activeRole = null;
+      }
+
+      if (activeRole) {
+        if (activeRole !== 'admin') removeData('ek_admin_session');
+        if (activeRole !== 'delivery') removeData('ek_delivery_session');
+        if (activeRole !== 'customer') {
+          removeData('ek_customer_session');
+          sessionStorage.removeItem('ek_customer_session_temp');
+        }
+      } else {
+        removeData('ek_admin_session');
+        removeData('ek_delivery_session');
+        removeData('ek_customer_session');
+        sessionStorage.removeItem('ek_customer_session_temp');
+      }
+    }
+
+    function enforceRememberMeValidationOnStartup() {
+      debugLog("[Remember Me Startup Check] Session persistence active. Local sessions will remain logged in across app restarts until explicit Logout.");
+    }
+
+    const prefillLoginCredentials = () => {
+      try {
+        const idInput = document.getElementById('login-identifier');
+        const remCheckbox = document.getElementById('login-remember');
+        const passInput = document.getElementById('login-password');
+
+        if (currentLoginMode === 'admin') {
+          const selector = document.getElementById('admin-selector');
+          const remembered = getData('ek_remembered_admin_credentials', null);
+          const isRemembered = getData('ek_admin_remember_me') === true;
+          if (remembered && remembered.remember) {
+            if (selector) selector.value = remembered.identifier || "";
+            if (remCheckbox) remCheckbox.checked = true;
+          } else {
+            if (remCheckbox) remCheckbox.checked = false;
+          }
+          if (passInput) passInput.value = "";
+        } else if (currentLoginMode === 'delivery') {
+          const selector = document.getElementById('delivery-selector');
+          const remembered = getData('ek_remembered_delivery_credentials', null);
+          const isRemembered = getData('ek_delivery_remember_me') === true;
+          if (remembered && remembered.remember) {
+            if (selector) selector.value = remembered.identifier || "";
+            if (remCheckbox) remCheckbox.checked = true;
+          } else {
+            if (remCheckbox) remCheckbox.checked = false;
+          }
+          if (passInput) passInput.value = "";
+        } else {
+          const remembered = getData('ek_remembered_credentials', null);
+          const isRemembered = getData('ek_customer_remember_me') === true;
+          if (remembered && remembered.remember) {
+            if (idInput && !idInput.value) idInput.value = remembered.identifier || "";
+            if (remCheckbox) remCheckbox.checked = true;
+          } else {
+            if (idInput) idInput.value = "";
+            if (remCheckbox) remCheckbox.checked = false;
+          }
+          if (passInput) passInput.value = "";
+        }
+
+        renderQuickTestLogins();
+      } catch (e) {
+        console.error("Error prefilling credentials: ", e);
+      }
+    };
+
+    const ENABLE_DEMO_SEED_DATA = true;
+    const DEMO_PRODUCTS = [
+      {
+        id: "mutton_tender",
+        category: "meat",
+        englishName: "Tender Goat Mutton",
+        tamilName: "சுடச்சுட ஆட்டுக்கறி",
+        pricePerKg: 780,
+        sellingUnit: "kg",
+        stockKg: 15,
+        imageUrl: "https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=400",
+        isSpecial: true,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "chicken_country",
+        category: "meat",
+        englishName: "Fresh Country Chicken",
+        tamilName: "சுவையான நாட்டுக்கோழி",
+        pricePerKg: 420,
+        sellingUnit: "kg",
+        stockKg: 20,
+        imageUrl: "https://images.unsplash.com/photo-1587593810167-a84920ea0781?w=400",
+        isSpecial: true,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "chicken_broiler",
+        category: "meat",
+        englishName: "Broiler Chicken Biryani Cut",
+        tamilName: "பிராய்லர் சிக்கன்",
+        pricePerKg: 240,
+        sellingUnit: "kg",
+        stockKg: 45,
+        imageUrl: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "eggs_white",
+        category: "dairy",
+        englishName: "Fresh White Eggs",
+        tamilName: "பண்ணை முட்டை",
+        pricePerKg: 6,
+        sellingUnit: "piece",
+        stockKg: 120,
+        imageUrl: "https://images.unsplash.com/photo-1506976785307-8732e854ad03?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "fish_vanjaram",
+        category: "fish",
+        englishName: "Premium Vanjaram Fish Slice",
+        tamilName: "வஞ்சரம் மீன் துண்டுகள்",
+        pricePerKg: 950,
+        sellingUnit: "kg",
+        stockKg: 10,
+        imageUrl: "https://images.unsplash.com/photo-1534604973900-c43ab4c2e0ab?w=400",
+        isSpecial: true,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "tomato_country",
+        category: "veg",
+        englishName: "Fresh Country Tomato",
+        tamilName: "நாட்டுத் தக்காளி",
+        pricePerKg: 35,
+        sellingUnit: "kg",
+        stockKg: 50,
+        imageUrl: "https://images.unsplash.com/photo-1595855759920-86582396756a?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "onion_big",
+        category: "veg",
+        englishName: "Sujatha Big Onion",
+        tamilName: "பெரிய வெங்காயம்",
+        pricePerKg: 40,
+        sellingUnit: "kg",
+        stockKg: 60,
+        imageUrl: "https://images.unsplash.com/photo-1508747703725-719ae257c84a?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "coriander_leaves",
+        category: "veg",
+        englishName: "Coriander Leaves (Bunch)",
+        tamilName: "கொத்தமல்லி தழை",
+        pricePerKg: 10,
+        sellingUnit: "bunch",
+        stockKg: 30,
+        imageUrl: "https://images.unsplash.com/photo-1540307086572-5099cd37c1a8?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "dairy_cow_ghee",
+        category: "dairy",
+        englishName: "Pure Cow Ghee",
+        tamilName: "சுத்தமான பசு நெய்",
+        pricePerKg: 650,
+        sellingUnit: "kg",
+        stockKg: 20,
+        imageUrl: "https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "dairy_paneer",
+        category: "dairy",
+        englishName: "Fresh Paneer",
+        tamilName: "பிரெஷ் பன்னீர்",
+        pricePerKg: 350,
+        sellingUnit: "kg",
+        stockKg: 15,
+        imageUrl: "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "dairy_fresh_milk",
+        category: "dairy",
+        englishName: "Fresh Cow Milk (Packet)",
+        tamilName: "பசுவின் பால் பாக்கெட்",
+        pricePerKg: 30,
+        sellingUnit: "packet",
+        stockKg: 80,
+        imageUrl: "https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "grocery_coconut_oil",
+        category: "groceries",
+        englishName: "Cold Pressed Coconut Oil",
+        tamilName: "செக்கு தேங்காய் எண்ணெய்",
+        pricePerKg: 260,
+        sellingUnit: "kg",
+        stockKg: 20,
+        imageUrl: "https://images.unsplash.com/photo-1540307086572-5099cd37c1a8?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    const DEMO_CUSTOMER = {
+      id: 'cust_seed',
+      name: 'Rajenthiran',
+      phone: '0000000000',
+      email: 'raj@domain.com',
+      password: 'DISABLED_DEMO',
+      address: 'Kavandampatti, Idappadi, Salem, Tamil Nadu',
+      loyaltyPoints: 120,
+      tier: 'bronze',
+      joinedAt: new Date().toISOString(),
+      defaultCut: 'Small Pieces',
+      whatsappNotify: true,
+      preferredLang: 'en'
+    };
+
+    const DEFAULT_SETTINGS = {
+      updatedAt: "1970-01-01T00:00:00.000Z",
+      _isAdminModified: false,
+      shopOpen: true,
+      deliveryCharge: 40,
+      minOrderWeight: 50,
+      minOrderAmount: 0,
+      merchantUpiId: "8778148899@ptyes",
+      slidingBanners: [
+        { id: 'b_1', image: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800', titleTa: "நாட்டு ஆட்டுக்கறி பிரஷ்ஷாக!", titleEn: "Premium Fresh Mutton Cuts", subTa: "இடப்பாடி நகரத்தில் உங்களின் இல்லத்திற்கே நேரடியாக!", subEn: "Direct organic local meat delivered to your home." },
+        { id: 'b_2', image: 'https://images.unsplash.com/photo-1587593810167-a84920ea0781?w=800', titleTa: "தரமான நாட்டுக்கோழி!", titleEn: "Farm Fresh Chicken Varieties", subTa: "சுத்தமான முறையில் கட் செய்து வழங்கப்படும்!", subEn: "Cleanly cut & prepared perfectly for your tasty health." },
+        { id: 'b_3', image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800', titleTa: "இயற்கை காய்கறிகள் & கீரைகள்!", titleEn: "100% Organic Village Greens", subTa: "பிரஷ்ஷான கிராமத்து இயற்கை விவசாய விளைச்சல்!", subEn: "Freshly harvested organic local farm yields." }
+      ],
+      upiSettings: {
+        upiEnabled: true,
+        currency: 'INR',
+        accounts: [
+          {
+            id: 'primary',
+            label: 'Primary UPI',
+            upiId: '8778148899@ptyes',
+            merchantName: 'Edappadi Kadai',
+            displayName: 'Anantharaj Primary',
+            note: 'Order {id} - Edappadi Kadai',
+            isActive: true
+          },
+          {
+            id: 'backup1',
+            label: 'Backup UPI 1',
+            upiId: 'einsteinananth24-4@okicici',
+            merchantName: 'Edappadi Kadai',
+            displayName: 'Anantharaj Backup 1',
+            note: 'Order {id} - Edappadi Kadai',
+            isActive: true
+          },
+          {
+            id: 'backup2',
+            label: 'Backup UPI 2',
+            upiId: '',
+            merchantName: 'Edappadi Kadai',
+            displayName: 'Anantharaj Backup 2',
+            note: 'Order {id} - Edappadi Kadai',
+            isActive: false
+          }
+        ]
+      },
+      announcement: "Festival Special Weekend discount active! Express door delivery within 30 minutes in Edappadi town.",
+      bannerImage: "",
+      useDynamicDistancePricing: true,
+      deliveryKmMultiplier: 12,
+      deliveryBasePrice: 20,
+      deliveryZones: [
+        { id: 'zone_1', nameEn: 'Local Town', nameTa: 'உள்ளூர் நகரம்', maxKm: 3, charge: 20 },
+        { id: 'zone_2', nameEn: 'Suburbs Near', nameTa: 'அருகிலுள்ள புறநகர்', maxKm: 6, charge: 45 },
+        { id: 'zone_3', nameEn: 'Suburbs Far', nameTa: 'தொலைதூர புறநகர்', maxKm: 10, charge: 75 },
+        { id: 'zone_4', nameEn: 'Outer Boundary', nameTa: 'வெளிப்புற எல்லை', maxKm: 15, charge: 110 }
+      ],
+      smsProvider: 'fast2sms',
+      smsApiKey: '',
+      smsTwilioSid: '',
+      smsTwilioToken: '',
+      smsTwilioFrom: '',
+      smsCustomUrl: ''
+    };
+
+    function initializeOrFixUpiSettings() {
+      const settings = getData('ek_settings', null) || { ...DEFAULT_SETTINGS };
+      let updated = false;
+
+      // Force upiSettings structure if missing or if accounts are not properly configured
+      if (!settings.upiSettings) {
+        settings.upiSettings = {
+          upiEnabled: true,
+          currency: 'INR',
+          accounts: [
+            {
+              id: 'primary',
+              label: 'Primary UPI',
+              upiId: '8778148899@ptyes',
+              merchantName: 'Edappadi Kadai',
+              displayName: 'Anantharaj Primary',
+              note: 'Order {id} - Edappadi Kadai',
+              isActive: true
+            },
+            {
+              id: 'backup1',
+              label: 'Backup UPI 1',
+              upiId: 'einsteinananth24-4@okicici',
+              merchantName: 'Edappadi Kadai',
+              displayName: 'Anantharaj Backup 1',
+              note: 'Order {id} - Edappadi Kadai',
+              isActive: true
+            },
+            {
+              id: 'backup2',
+              label: 'Backup UPI 2',
+              upiId: '',
+              merchantName: 'Edappadi Kadai',
+              displayName: 'Anantharaj Backup 2',
+              note: 'Order {id} - Edappadi Kadai',
+              isActive: false
+            }
+          ]
+        };
+        settings.merchantUpiId = '8778148899@ptyes';
+        updated = true;
+      } else {
+        // Ensure the accounts array exists
+        if (!settings.upiSettings.accounts || !Array.isArray(settings.upiSettings.accounts) || settings.upiSettings.accounts.length === 0) {
+          settings.upiSettings.accounts = [
+            {
+              id: 'primary',
+              label: 'Primary UPI',
+              upiId: '8778148899@ptyes',
+              merchantName: 'Edappadi Kadai',
+              displayName: 'Anantharaj Primary',
+              note: 'Order {id} - Edappadi Kadai',
+              isActive: true
+            },
+            {
+              id: 'backup1',
+              label: 'Backup UPI 1',
+              upiId: 'einsteinananth24-4@okicici',
+              merchantName: 'Edappadi Kadai',
+              displayName: 'Anantharaj Backup 1',
+              note: 'Order {id} - Edappadi Kadai',
+              isActive: true
+            },
+            {
+              id: 'backup2',
+              label: 'Backup UPI 2',
+              upiId: '',
+              merchantName: 'Edappadi Kadai',
+              displayName: 'Anantharaj Backup 2',
+              note: 'Order {id} - Edappadi Kadai',
+              isActive: false
+            }
+          ];
+          settings.merchantUpiId = '8778148899@ptyes';
+          updated = true;
+        } else {
+          // If accounts exist, check and correct the UPI IDs to the ones requested by the user
+          const primary = settings.upiSettings.accounts.find(a => a.id === 'primary');
+          const backup1 = settings.upiSettings.accounts.find(a => a.id === 'backup1');
+          
+          if (primary && primary.upiId !== '8778148899@ptyes') {
+            primary.upiId = '8778148899@ptyes';
+            primary.isActive = true;
+            settings.merchantUpiId = '8778148899@ptyes';
+            updated = true;
+          }
+          if (backup1 && backup1.upiId !== 'einsteinananth24-4@okicici') {
+            backup1.upiId = 'einsteinananth24-4@okicici';
+            backup1.isActive = true;
+            updated = true;
+          }
+        }
+      }
+
+      if (updated) {
+        saveData('ek_settings', settings);
+        if (typeof db !== 'undefined' && db) {
+          db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings))
+            .then(() => debugLog("[UPI Self-Heal] Successfully synced corrected UPI settings to Firestore"))
+            .catch(err => console.error("[UPI Self-Heal] Sync error:", err));
+        }
+      }
+    }
+
+    function purgeAllDemoData() {
+      debugLog("[Slate Purge] purgeAllDemoData bypassed for safety. No collections are wiped.");
+    }
+
+    function purgeLegacyDemoProductsFromFirestore() {
+      debugLog("[Slate Purge] purgeLegacyDemoProductsFromFirestore bypassed for safety.");
+    }
+
+    function seedDatabase() {
+      try {
+        purgeAllDemoData();
+      } catch(ex) {
+        console.error("purgeAllDemoData failed: ", ex);
+      }
+      const hasFirestoreConnection = (typeof db !== 'undefined' && db);
+      const isAdmin = (typeof getAdminSession === 'function' && !!getAdminSession()) || !!getData('ek_admin_session');
+      let existingProds = getData('ek_products');
+      let existingCats = getData('ek_categories');
+      const isDbInitialized = getData('ek_db_initialized') === true;
+      debugLog(`[DEBUG seedDatabase] existingProds count: ${Array.isArray(existingProds) ? existingProds.length : 'non-array'}, existingCats count: ${Array.isArray(existingCats) ? existingCats.length : 'non-array'}, isDbInitialized: ${isDbInitialized}`);
+      if (!isDbInitialized && (!Array.isArray(existingProds) || existingProds === null)) {
+        if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+          const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
+          const seededProducts = DEMO_PRODUCTS
+            .filter(p => !deletedProdIds.includes(p.id))
+            .map(p => ({
+              ...p,
+              updatedAt: p.createdAt || new Date().toISOString()
+            }));
+          saveData('ek_products', seededProducts);
+          seededProducts.forEach(p => {
+            logProductWriteAudit('seed', p.id, 'seedDatabase');
+          });
+        } else {
+          saveData('ek_products', []);
+        }
+      }
+      if (!isDbInitialized && (!Array.isArray(existingCats) || existingCats === null)) {
+        if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
+          saveData('ek_categories', DEFAULT_CATEGORIES.map(c => ({ ...c, isAvailable: true })));
+        } else {
+          saveData('ek_categories', []);
+        }
+      }
+      saveData('ek_db_initialized', true);
+      debugLog(`[DEBUG seedDatabase] finished. final ek_products count: ${getData('ek_products')?.length}, final ek_categories count: ${getData('ek_categories')?.length}`);
+      let existingUsers = getData('ek_users');
+      if (!Array.isArray(existingUsers) || existingUsers.length === 0) {
+        saveData('ek_users', []);
+      }
+      if (getData('ek_settings', null) === null) {
+        saveData('ek_settings', DEFAULT_SETTINGS);
+      }
+      try {
+        initializeOrFixUpiSettings();
+      } catch (e) {
+        console.error("initializeOrFixUpiSettings failed: ", e);
+      }
+      let existingDeliv = getData('ek_delivery_persons');
+      if (!Array.isArray(existingDeliv)) {
+        saveData('ek_delivery_persons', []);
+      }
+      let existingOrders = getData('ek_orders');
+      if (!Array.isArray(existingOrders) || existingOrders.length === 0) {
+        saveData('ek_orders', []);
+      }
+    }
+
+    let currentLang = 'en';
+    try {
+      localStorage.setItem('ek_lang', 'en');
+      if (typeof AndroidStorage !== 'undefined') {
+        try {
+          AndroidStorage.saveData('ek_lang', 'en');
+        } catch (e) {}
+      }
+      currentLang = 'en';
+    } catch (e) {}
+    let currentScreen = 'screen-splash';
+    let secureGeneratedOTP = null;
+    let screenHistory = [];
+    let isNavigatingBack = false;
+    let isFirebaseAuthRestoring = true;
+    let activeCategory = 'all';
+    let activeProduct = null;
+    let selectedWeight = 500; // default 500g
+    let selectedCutStyle = 'Small Pieces';
+    let cart = getData('ek_cart', []);
+    let appliedCouponCode = null;
+    let selectedDeliverySlot = 'Now';
+    let selectedPaymentMethod = 'Cash on Delivery';
+    let currentDeliveryFilter = 'assigned';
+
+    const STRINGS = {
+      en: {
+        appName: "EDAPPADI KADAI",
+        tagline: "Fresh Meat & Vegetables, Delivered Fast",
+        login: "Login",
+        register: "Register Now →",
+        createAccountBtn: "Create Account ✓",
+        home: "Home",
+        cart: "Cart",
+        track: "Track",
+        profile: "Profile",
+        lyo_ai: "Lyo AI",
+        phone: "Email or Phone Number",
+        password: "Password",
+        rememberMe: "Remember Me",
+        adminLoginHere: "Admin Login",
+        aboutDev: "Developer Info",
+        createAccount: "Create Account",
+        phonePlaceholder: "Enter your registered phone or email",
+        passPlaceholder: "••••••",
+        name: "Full Name *",
+        namePlaceholder: "For example: Rajenthiran",
+        phoneLabel: "Phone Number (10 digits) *",
+        phoneInputPlaceholder: "8778148899",
+        email: "Email ID (Optional)",
+        emailPlaceholder: "email@example.com",
+        address: "Delivery Address *",
+        addrPlaceholder: "Kavandampatti, Idappadi, Salem, pincode...",
+        confirmPassword: "Confirm Password *",
+        subscribeWA: "Subscribe to WhatsApp updates",
+        existingAccount: "Already have an account? Login Here",
+        favoriteProducts: "Favorite Products",
+        orderStatistics: "Order Statistics",
+        orders: "Orders",
+        forgotPassword: "Forgot Password?",
+        offers: "Offers",
+        shareLink: "🔗 Share Link"
+      },
+      ta: {
+        appName: "எடப்பாடி கடை",
+        tagline: "தரமான இறைச்சி & காய்கறி — இல்லத்திற்கே விரைவான விநியோகம்",
+        login: "உள்நுழைவு",
+        register: "இப்போதே பதிவு செய்க →",
+        createAccountBtn: "கணக்கை உருவாக்கு ✓",
+        home: "முகப்பு",
+        cart: "கூடை",
+        track: "கண்காணி",
+        profile: "சுயவிவரம்",
+        lyo_ai: "Lyo AI",
+        phone: "கைபேசி அல்லது மின்னஞ்சல்",
+        password: "கடவுச்சொல்",
+        rememberMe: "என்னை நினைவில் வை",
+        adminLoginHere: "நிர்வாகி உள்நுழைவு",
+        aboutDev: "டெவலப்பர் விவரம்",
+        createAccount: "கணக்கை உருவாக்கு",
+        forgotPassword: "கடவுச்சொல்லை மறந்துவிட்டீர்களா?",
+        phonePlaceholder: "பதிவுசெய்யப்பட்ட கைபேசி அல்லது மின்னஞ்சல்",
+        passPlaceholder: "••••••",
+        name: "முழு பெயர் *",
+        namePlaceholder: "விளக்கம்: இராஜேந்திரன்",
+        phoneLabel: "கைபேசி எண் (10 இலக்கங்கள்) *",
+        phoneInputPlaceholder: "8778148899",
+        email: "மின்னஞ்சல் முகவரி (விரும்பினால்)",
+        emailPlaceholder: "மின்னஞ்சல் முகவரி",
+        address: "விநியோக முகவரி *",
+        addrPlaceholder: "கவுண்டம்பட்டி, எடப்பாடி, சேலம், பின்கோடு...",
+        confirmPassword: "கடவுச்சொல் உறுதி *",
+        subscribeWA: "வாட்ஸ்அப் அறிவிப்புகளைப் பெறுக",
+        existingAccount: "ஏற்கனவே கணக்கு உள்ளதா? உள்நுழைக",
+        favoriteProducts: "விருப்பமான இறைச்சி வகைகள்",
+        orderStatistics: "ஆர்டர் பகுப்பாய்வு",
+        orders: "ஆர்டர்கள்",
+        offers: "சலுகைகள்",
+        shareLink: "🔗 லிங்கை பகிர்க"
+      }
+    };
+
+    function t(key) {
+      return (STRINGS[currentLang] && STRINGS[currentLang][key]) || key;
+    }
+
+    function applyTranslations() {
+      const isTa = currentLang === 'ta';
+      document.body.classList.toggle('tamil-mode', isTa);
+
+      document.querySelectorAll('[data-translate]').forEach(el => {
+        const key = el.getAttribute('data-translate');
+        if (STRINGS[currentLang] && STRINGS[currentLang][key]) {
+          el.innerText = STRINGS[currentLang][key];
+        }
+      });
+
+      document.querySelectorAll('[data-translate-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-translate-placeholder');
+        if (STRINGS[currentLang] && STRINGS[currentLang][key]) {
+          el.setAttribute('placeholder', STRINGS[currentLang][key]);
+        }
+      });
+
+      const appHeading = document.querySelector('#screen-splash h1');
+      if (appHeading) appHeading.innerText = isTa ? "எடப்பாடி கடை" : "EDAPPADI KADAI";
+
+      const splashTag = document.querySelector('#screen-splash p');
+      if (splashTag) splashTag.innerText = isTa ? "தரமான இறைச்சி & காய்கறி — இல்லத்திற்கே விரைவான விநியோகம்" : "Fresh Meat & Vegetables, Delivered Fast";
+
+      const loginH2 = document.querySelector('#screen-login h2');
+      if (loginH2) loginH2.innerText = isTa ? "எடப்பாடி கடை" : "Edappadi Kadai";
+
+      const loginP = document.querySelector('#screen-login p');
+      if (loginP && !loginP.closest('.card')) loginP.innerText = isTa ? "தரமான இறைச்சி மற்றும் காய்கறிகள் அனைத்தும் இல்லத்திற்கே!" : "Premium Quality Meat & Veg Delivery";
+
+      const tabSpans = document.querySelectorAll('#app-bottom-nav span[data-translate]');
+      tabSpans.forEach(span => {
+        const key = span.getAttribute('data-translate');
+        span.innerText = t(key);
+      });
+
+      const pLang = document.getElementById('langLabelProfile');
+      if (pLang) pLang.innerText = isTa ? "English" : "தமிழ்";
+
+      if (currentScreen === 'screen-home') {
+        try { renderHomeScreen(); } catch(e) { console.error('renderHomeScreen in applyTranslations failed:', e); }
+      } else if (currentScreen === 'screen-cart') {
+        try { renderCartScreen(); } catch(e) { console.error('renderCartScreen failed:', e); }
+      } else if (currentScreen === 'screen-track') {
+        try { renderTrackerScreen(); } catch(e) { console.error('renderTrackerScreen failed:', e); }
+      } else if (currentScreen === 'screen-profile') {
+        try { renderProfileScreen(); } catch(e) { console.error('renderProfileScreen failed:', e); }
+      }
+      try {
+        syncCollapsePreferences();
+      } catch (e) {
+        console.error("syncCollapsePreferences error", e);
+      }
+    }
+
+    function getCloudFunction(name) {
+      if (typeof firebase === 'undefined' || !firebase.functions) {
+        return null;
+      }
+      try {
+        return firebase.app().functions('asia-south1').httpsCallable(name);
+      } catch (e) {
+        try {
+          return firebase.functions('asia-south1').httpsCallable(name);
+        } catch (e2) {
+          try {
+            return firebase.functions().httpsCallable(name);
+          } catch (e3) {
+            return null;
+          }
+        }
+      }
+    }
+
+    async function reverseGeocodeWithRetry(lat, lng, retries = 3, delay = 1500) {
+      const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
+      if (!geocodeFn) {
+        return { displayName: "Selected Delivery Location, Edappadi, Salem, Tamil Nadu" };
+      }
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await geocodeFn({ lat: lat, lng: lng });
+          if (res && res.data && res.data.displayName) {
+            return res.data;
+          }
+        } catch (e) {
+          console.warn(`Geocoding retry ${i + 1} failed:`, e);
+          if (i === retries - 1) {
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+      return { displayName: "Selected Delivery Location, Edappadi, Salem, Tamil Nadu" };
+    }
+
+    function mapErrorMessage(message) {
+      if (!message) return "Something went wrong. Please try again.";
+      console.error("[Toast Error System] Original error message before mapping:", message);
+      let lower = String(message).toLowerCase();
+
+      if (lower.includes("insufficient permission") ||
+          lower.includes("insufficient permissions") ||
+          lower.includes("permission-denied") ||
+          lower.includes("permission denied")) {
+        return "Access denied. Please try again or contact admin.";
+      }
+
+      if (lower.includes("wrong password") ||
+          lower.includes("wrong-password") ||
+          lower.includes("invalid credential") ||
+          lower.includes("invalid-credential") ||
+          lower.includes("invalid password") ||
+          lower.includes("auth/wrong-password")) {
+        return "Incorrect password. Please try again.";
+      }
+
+      if (lower.includes("network error") ||
+          lower.includes("network-error") ||
+          lower.includes("offline") ||
+          lower.includes("failed to fetch") ||
+          lower.includes("network connection") ||
+          lower.includes("network issue") ||
+          lower.includes("unavailable") ||
+          lower.includes("timeout") ||
+          lower.includes("timed out") ||
+          lower.includes("retry limit exceeded")) {
+        return "Network issue. Check your internet connection.";
+      }
+
+      if (
+        lower.includes("firebase") ||
+        lower.includes("firestore") ||
+        lower.includes("database") ||
+        lower.includes("storage") ||
+        lower.includes("auth/") ||
+        lower.includes("api_key") ||
+        lower.includes("api key") ||
+        lower.includes("document") ||
+        lower.includes("collection") ||
+        lower.includes("path/") ||
+        lower.includes("stack trace") ||
+        lower.includes("stacktrace") ||
+        lower.includes("exception") ||
+        lower.includes("unhandled") ||
+        lower.includes("@") ||
+        lower.includes("http") ||
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(lower) ||
+        /auth\/[a-z0-9-]+/.test(lower)
+      ) {
+        return "Something went wrong. Please try again.";
+      }
+
+      return message;
+    }
+
+    function toggleSectionCollapse(sectionId) {
+      const container = document.getElementById(sectionId + '-collapse-container');
+      const arrow = document.getElementById(sectionId + '-collapse-arrow') || document.getElementById('admin-' + sectionId + '-collapse-arrow');
+      if (!container) return;
+
+      const isCollapsed = container.style.maxHeight === '0px' || container.style.maxHeight === '';
+
+      if (isCollapsed) {
+        if (sectionId === 'categories' && typeof renderAdminCategoriesList === 'function') {
+          renderAdminCategoriesList(true);
+        } else if (sectionId === 'carousel' && typeof renderAdminBannerList === 'function') {
+          renderAdminBannerList(true);
+        } else if (sectionId === 'upi-config' && typeof renderAdminUpiSettings === 'function') {
+          if (typeof renderAdminUpiSettings === 'function') renderAdminUpiSettings(true);
+        }
+
+        container.style.maxHeight = container.scrollHeight + 'px';
+        if (arrow) arrow.style.transform = 'rotate(180deg)';
+        sessionStorage.setItem('collapse_' + sectionId, 'expanded');
+
+        setTimeout(() => {
+          if (container.style.maxHeight !== '0px') {
+            container.style.maxHeight = 'none';
+          }
+        }, 300);
+      } else {
+        container.style.maxHeight = container.scrollHeight + 'px';
+        container.offsetHeight;
+
+        container.style.maxHeight = '0px';
+        if (arrow) arrow.style.transform = 'rotate(0deg)';
+        sessionStorage.setItem('collapse_' + sectionId, 'collapsed');
+
+        setTimeout(() => {
+          if (container.style.maxHeight === '0px') {
+            if (sectionId === 'categories') {
+              const el = document.getElementById('admin-categories-list');
+              if (el) el.innerHTML = '';
+            } else if (sectionId === 'carousel') {
+              const el = document.getElementById('admin-banner-list');
+              if (el) el.innerHTML = '';
+            } else if (sectionId === 'upi-config') {
+              const el = document.getElementById('upi-accounts-container');
+              if (el) el.innerHTML = '';
+            }
+          }
+        }, 300);
+      }
+    }
+
+    function initSectionCollapse(sectionId, defaultState = 'collapsed') {
+      const container = document.getElementById(sectionId + '-collapse-container');
+      const arrow = document.getElementById(sectionId + '-collapse-arrow') || document.getElementById('admin-' + sectionId + '-collapse-arrow');
+      if (!container) return;
+
+      const savedState = sessionStorage.getItem('collapse_' + sectionId) || defaultState;
+
+      if (savedState === 'expanded') {
+        if (sectionId === 'categories' && typeof renderAdminCategoriesList === 'function') {
+          renderAdminCategoriesList(true);
+        } else if (sectionId === 'carousel' && typeof renderAdminBannerList === 'function') {
+          renderAdminBannerList(true);
+        } else if (sectionId === 'upi-config' && typeof renderAdminUpiSettings === 'function') {
+          if (typeof renderAdminUpiSettings === 'function') renderAdminUpiSettings(true);
+        }
+        container.style.maxHeight = 'none';
+        if (arrow) arrow.style.transform = 'rotate(180deg)';
+      } else {
+        container.style.maxHeight = '0px';
+        if (arrow) arrow.style.transform = 'rotate(0deg)';
+        if (sectionId === 'categories') {
+          const el = document.getElementById('admin-categories-list');
+          if (el) el.innerHTML = '';
+        } else if (sectionId === 'carousel') {
+          const el = document.getElementById('admin-banner-list');
+          if (el) el.innerHTML = '';
+        } else if (sectionId === 'upi-config') {
+          const el = document.getElementById('upi-accounts-container');
+          if (el) el.innerHTML = '';
+        }
+      }
+    }
+
+    let toastQueue = [];
+    let isToastShowing = false;
+    let toastShowTime = 0;
+    let lastToastMessage = "";
+    let lastToastTime = 0;
+    let toastTimeout = null;
+
+    function showToast(message, type = 'success') {
+      if (type === 'error') {
+        message = mapErrorMessage(message);
+      }
+
+      if (message === lastToastMessage && Date.now() - lastToastTime < 3000) {
+        debugLog("[Toast System] Suppressed duplicate toast:", message);
+        return;
+      }
+
+      toastQueue.push({ message, type });
+      processToastQueue();
+    }
+
+    function processToastQueue() {
+      if (isToastShowing || toastQueue.length === 0) return;
+
+      isToastShowing = true;
+      const currentToast = toastQueue.shift();
+
+      const container = document.getElementById('toast-container');
+      const body = document.getElementById('toast-body');
+      if (!container || !body) {
+        isToastShowing = false;
+        return;
+      }
+
+      let badge = 'ℹ️';
+      let cssClass = 't-info';
+
+      if (currentToast.type === 'success') { badge = '✓'; cssClass = 't-success'; }
+      else if (currentToast.type === 'error') { badge = '❌'; cssClass = 't-error'; }
+      else if (currentToast.type === 'warning') { badge = '⚠️'; cssClass = 't-warning'; }
+
+      body.className = `toast-body ${cssClass}`;
+      body.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; pointer-events: none;">
+          <span style="font-size:15px; font-weight:700; line-height: 1; flex-shrink: 0; pointer-events: none;">${badge}</span>
+          <span class="toast-text" style="font-size: 12.5px; font-weight: 600; line-height: 1.4; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; pointer-events: none;">${currentToast.message}</span>
+        </div>
+        <button class="toast-close" style="background: none; border: none; color: rgba(255,255,255,0.75); font-size: 16px; font-weight: bold; cursor: pointer; padding: 4px 8px; margin-left: 8px; flex-shrink: 0; pointer-events: auto; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background 0.2s, color 0.2s; box-sizing: border-box;" onclick="event.stopPropagation(); event.preventDefault(); dismissToast();" ontouchstart="event.stopPropagation(); dismissToast();" onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#fff';" onmouseout="this.style.background='none'; this.style.color='rgba(255,255,255,0.75)';">✕</button>
+      `;
+
+      lastToastMessage = currentToast.message;
+      lastToastTime = Date.now();
+      toastShowTime = Date.now();
+
+      container.classList.add('show');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        dismissToast();
+      }, 3500);
+    }
+
+    function dismissToast() {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      container.classList.remove('show');
+      if (toastTimeout) clearTimeout(toastTimeout);
+
+      setTimeout(() => {
+        isToastShowing = false;
+        processToastQueue();
+      }, 300);
+    }
+
+    function showCustomConfirm(title, message, onConfirm, onCancel, okText, cancelText) {
+      let modal = document.getElementById('custom-confirm-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'custom-confirm-modal';
+        modal.className = 'modal-backdrop';
+        modal.style.cssText = 'position: fixed; inset: 0; z-index: 999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 20px; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);';
+        modal.innerHTML = `
+          <div class="bottom-sheet" style="width: 100%; max-width:340px; border-radius:24px; border:1px solid var(--border-color, #262626); background:var(--bg-card, #121212); padding:24px; box-shadow:0 12px 40px rgba(0,0,0,0.6); text-align:center; transform:scale(0.85); transition:transform 0.22s cubic-bezier(0.18, 0.89, 0.32, 1.28); margin:auto; display:flex; flex-direction:column; align-items:center;">
+            <div style="font-size:42px; margin-bottom:14px; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.05));" id="confirm-modal-icon">⚠️</div>
+            <h3 style="color:var(--text-primary, #ffffff); font-size:16px; margin-bottom:8px; font-weight:800; font-family:'Poppins', 'Hind Madurai', sans-serif;" id="confirm-modal-title">Confirm Action</h3>
+            <p style="color:var(--text-secondary, #9e9e9e); font-size:12.5px; margin-bottom:24px; line-height:1.6; word-break:break-word; max-width:100%; font-family:'Poppins', 'Hind Madurai', sans-serif;" id="confirm-modal-message"></p>
+            <div style="display:flex; gap:12px; justify-content:center; width:100%;">
+              <button class="btn btn-secondary" style="flex:1; padding:10px 14px; font-size:12px; font-weight:bold; border-radius:14px; height:42px; background:#262626; color:#e0e0e0; border:1px solid rgba(255,255,255,0.1); cursor:pointer;" id="confirm-modal-cancel-btn">CLOSE</button>
+              <button class="btn" style="flex:1; padding:10px 14px; font-size:12px; font-weight:800; border-radius:14px; height:42px; background:#ef4444; color:#ffffff; border:none; box-shadow:0 4px 12px rgba(239,68,68,0.3); cursor:pointer;" id="confirm-modal-ok-btn">DELETE</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      }
+
+      const sheet = modal.querySelector('.bottom-sheet');
+      if (sheet) {
+        if (message.includes('WILL BE DELETED')) {
+          sheet.style.maxWidth = '420px';
+        } else {
+          sheet.style.maxWidth = '340px';
+        }
+      }
+
+      const titleEl = document.getElementById('confirm-modal-title');
+      const msgEl = document.getElementById('confirm-modal-message');
+      const iconEl = document.getElementById('confirm-modal-icon');
+      const cancelBtn = document.getElementById('confirm-modal-cancel-btn');
+      const okBtn = document.getElementById('confirm-modal-ok-btn');
+
+      if (titleEl) titleEl.innerHTML = title;
+      if (msgEl) msgEl.innerHTML = message;
+
+      const titleLower = (title || "").toLowerCase();
+      const isLogout = titleLower.includes("logout") || title.includes("வெளியேறு");
+      const isDangerous = isLogout || titleLower.includes("delete") || titleLower.includes("remove") || title.includes("நீக்க") || title.includes("ஒழி") || titleLower.includes("cancel") || title.includes("ரத்து");
+
+      if (isLogout) {
+        if (iconEl) iconEl.innerText = '🚪';
+        if (okBtn) {
+          okBtn.style.background = '#ef4444';
+          okBtn.style.color = '#ffffff';
+          okBtn.style.borderColor = '#ef4444';
+          okBtn.innerText = okText || ((typeof currentLang !== 'undefined' && currentLang === 'ta') ? 'வெளியேறு' : 'Logout');
+        }
+      } else if (isDangerous) {
+        if (iconEl) iconEl.innerText = '🗑️';
+        if (okBtn) {
+          okBtn.style.background = '#ef4444';
+          okBtn.style.color = '#ffffff';
+          okBtn.style.borderColor = '#ef4444';
+          okBtn.innerText = okText || ((typeof currentLang !== 'undefined' && currentLang === 'ta') ? 'நீக்கு' : 'DELETE');
+        }
+      } else {
+        if (iconEl) iconEl.innerText = '⚠️';
+        if (okBtn) {
+          okBtn.style.background = 'var(--accent-orange, #f59e0b)';
+          okBtn.style.color = '#ffffff';
+          okBtn.style.borderColor = 'var(--accent-orange, #f59e0b)';
+          okBtn.innerText = okText || ((typeof currentLang !== 'undefined' && currentLang === 'ta') ? 'உறுதிசெய்' : 'CONFIRM');
+        }
+      }
+      if (cancelBtn) cancelBtn.innerText = cancelText || ((typeof currentLang !== 'undefined' && currentLang === 'ta') ? 'ரத்துசெய்' : 'CANCEL');
+
+      const closeModal = () => {
+        modal.classList.remove('active');
+        if (sheet) sheet.style.transform = 'scale(0.85)';
+        setTimeout(() => {
+          modal.style.setProperty('display', 'none', 'important');
+        }, 150);
+      };
+
+      cancelBtn.onclick = function(e) {
+        if (e) e.stopPropagation();
+        closeModal();
+        if (onCancel) onCancel();
+      };
+
+      modal.onclick = function(e) {
+        if (e.target === modal) {
+          closeModal();
+          if (onCancel) onCancel();
+        }
+      };
+
+      okBtn.onclick = function(e) {
+        if (e) e.stopPropagation();
+        okBtn.onclick = null;
+        closeModal();
+        if (onConfirm) onConfirm();
+      };
+
+      modal.style.setProperty('display', 'flex', 'important');
+      modal.classList.add('active');
+      if (sheet) sheet.style.transform = 'scale(1)';
+    }
+
+    function showCustomAlert(title, message, onOk) {
+      let modal = document.getElementById('custom-alert-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'custom-alert-modal';
+        modal.className = 'modal-backdrop';
+        modal.style.zIndex = '99999';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+        modal.style.padding = '20px';
+        modal.innerHTML = `
+          <div class="bottom-sheet" style="width: 100%; max-width:340px; border-radius:24px; border:1px solid var(--border-color); background:var(--bg-card); padding:24px; box-shadow:0 10px 30px rgba(0,0,0,0.06); text-align:center; transform:scale(0.85); transition:all 0.22s cubic-bezier(0.18, 0.89, 0.32, 1.28); margin:auto; display:flex; flex-direction:column; align-items:center;">
+            <div style="font-size:42px; margin-bottom:14px; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.05));" id="alert-modal-icon">ℹ️</div>
+            <h3 style="color:var(--text-primary); font-size:16px; margin-bottom:8px; font-weight:800; font-family:'Poppins', 'Hind Madurai', sans-serif;" id="alert-modal-title">Info</h3>
+            <p style="color:var(--text-secondary); font-size:12.5px; margin-bottom:24px; line-height:1.6; word-break:break-word; max-width:100%; font-family:'Poppins', 'Hind Madurai', sans-serif;" id="alert-modal-message"></p>
+            <div style="display:flex; justify-content:center; width:100%;">
+              <button class="btn" style="width:100%; padding:10px 14px; font-size:12px; font-weight:800; border-radius:14px; height:42px; background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color:#ffffff; border:none; box-shadow:0 4px 12px rgba(245,158,11,0.18);" id="alert-modal-ok-btn">சரி / OK</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      }
+
+      const titleEl = document.getElementById('alert-modal-title');
+      const msgEl = document.getElementById('alert-modal-message');
+      const iconEl = document.getElementById('alert-modal-icon');
+      const okBtn = document.getElementById('alert-modal-ok-btn');
+
+      titleEl.innerHTML = title;
+      msgEl.innerHTML = message;
+
+      const lowerTitle = String(title).toLowerCase();
+      const lowerMessage = String(message).toLowerCase();
+
+      if (lowerTitle.includes("error") || lowerTitle.includes("fail") || lowerTitle.includes("பிரச்சினை") || lowerTitle.includes("தவறு") || lowerMessage.includes("failed") || lowerMessage.includes("insufficient") || lowerMessage.includes("permission")) {
+        iconEl.innerText = '❌';
+        okBtn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+        okBtn.style.color = '#ffffff';
+      } else if (lowerTitle.includes("success") || lowerTitle.includes("வெற்றி") || lowerTitle.includes("வாழ்த்துக்கள்") || lowerMessage.includes("success") || lowerMessage.includes("வெற்றிகரமாக")) {
+        iconEl.innerText = '🎉';
+        okBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+        okBtn.style.color = '#ffffff';
+      } else {
+        iconEl.innerText = 'ℹ️';
+        okBtn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+        okBtn.style.color = '#ffffff';
+      }
+
+      const closeModal = () => {
+        modal.classList.remove('active');
+        const sheet = modal.querySelector('.bottom-sheet');
+        if (sheet) sheet.style.transform = 'scale(0.85)';
+        setTimeout(() => { modal.style.display = 'none'; }, 200);
+      };
+
+      okBtn.onclick = function() {
+        closeModal();
+        if (onOk) onOk();
+      };
+
+      modal.style.display = 'flex';
+      setTimeout(() => {
+        modal.classList.add('active');
+        const sheet = modal.querySelector('.bottom-sheet');
+        if (sheet) sheet.style.transform = 'scale(1)';
+      }, 15);
+    }
+
+    window.alert = function(msg) {
+      showCustomAlert("அறிவிப்பு / Notification", msg);
+    };
+
+    function showAdminSuccessModal(title, message) {
+      let modal = document.getElementById('admin-success-action-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'admin-success-action-modal';
+        modal.className = 'modal-backdrop';
+        modal.style.zIndex = '999999';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+        modal.style.padding = '20px';
+        modal.style.background = 'rgba(0,0,0,0.35)';
+        modal.style.backdropFilter = 'blur(8px)';
+        modal.innerHTML = `
+          <div class="bottom-sheet" style="width: 100%; max-width:340px; border-radius:24px; border:1px solid var(--border-color); background:var(--bg-card); padding:24px; box-shadow:0 10px 30px rgba(0,0,0,0.06); text-align:center; transform:scale(0.85); transition:all 0.22s cubic-bezier(0.18, 0.89, 0.32, 1.28); margin:auto; display:flex; flex-direction:column; align-items:center; gap:12px;">
+            <div style="width: 56px; height: 56px; background: rgba(16, 185, 129, 0.08); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; border: 2.2px solid #10b981; filter: drop-shadow(0 4px 10px rgba(16,185,129,0.15));">
+              <svg viewBox="0 0 52 52" style="width: 30px; height: 30px; stroke-linecap: round; stroke-linejoin: round; display: block;">
+                <circle cx="26" cy="26" r="23" fill="none" stroke="#10b981" stroke-width="4" />
+                <path fill="none" stroke="#10b981" stroke-width="5" d="M14 27 l8 8 l16 -16" />
+              </svg>
+            </div>
+            <h3 style="color:var(--text-primary); font-size:16px; margin:2px 0; font-weight:800; font-family:'Poppins', 'Hind Madurai', sans-serif;" id="admin-success-title">வெற்றிகரமாகச் செய்யப்பட்டது!</h3>
+            <p style="color:var(--text-secondary); font-size:13px; margin:0 0 12px 0; line-height:1.6; word-break:break-word; max-width:100%; font-family:'Poppins', 'Hind Madurai', sans-serif;" id="admin-success-message"></p>
+            <div style="width:100%;">
+              <button class="btn btn-primary" style="width:100%; padding:10px 14px; font-size:13px; font-weight:800; border-radius:14px; height:42px; background:linear-gradient(135deg, var(--accent-green) 0%, #059669 100%); color:#ffffff; border:none; box-shadow:0 4px 12px rgba(16,185,129,0.18);" id="admin-success-ok-btn">சரி / OK 👍</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      }
+
+      const titleEl = document.getElementById('admin-success-title');
+      const msgEl = document.getElementById('admin-success-message');
+      const okBtn = document.getElementById('admin-success-ok-btn');
+
+      titleEl.innerHTML = title;
+      msgEl.innerHTML = message;
+
+      const closeModal = () => {
+        modal.classList.remove('active');
+        const sheet = modal.querySelector('.bottom-sheet');
+        if (sheet) sheet.style.transform = 'scale(0.85)';
+        setTimeout(() => { modal.style.display = 'none'; }, 200);
+      };
+
+      okBtn.onclick = function() {
+        closeModal();
+      };
+
+      modal.style.display = 'flex';
+      setTimeout(() => {
+        modal.classList.add('active');
+        const sheet = modal.querySelector('.bottom-sheet');
+        if (sheet) sheet.style.transform = 'scale(1)';
+      }, 15);
+    }
+
+    function compressAndScaleImage(file, maxWidth, maxHeight, quality, callback) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          callback(dataUrl);
+        };
+        img.onerror = function() {
+          console.error("Failed to load image for compression");
+          callback(e.target.result);
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = function() {
+        showToast("Error reading file", "error");
+      };
+      reader.readAsDataURL(file);
+    }
+
+    let tempBase64Image = null;
+    let tempBase64Thumb = null;
+    let tempProductFile = null;
+    let activeUploadTask = null;
+
+    function dataURLtoBlob(dataurl) {
+      try {
+        const arr = dataurl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new Blob([u8arr], { type: mime });
+      } catch (err) {
+        console.error("[Storage Debug] Error converting data URL to Blob:", err);
+        return null;
+      }
+    }
+
+    async function deleteStorageImageByUrl(url) {
+      if (!url || typeof url !== 'string') return;
+      const isFirebaseStorage = url.includes('firebasestorage.googleapis.com') || url.includes('edappadi-kadai.appspot.com') || url.includes('edappadi-kadai.firebasestorage.app');
+      if (!isFirebaseStorage) return;
+
+      try {
+        debugLog("[Storage Debug] Attempting to delete old Storage image:", url);
+        const storage = firebase.storage();
+        const ref = storage.refFromURL(url);
+        await ref.delete();
+        debugLog("[Storage Debug] Old Storage image deleted successfully:", url);
+      } catch (err) {
+        console.warn("[Storage Debug] Failed to delete old image (might not exist or permission denied):", err);
+      }
+    }
+
+    function cancelActiveUpload() {
+      if (activeUploadTask) {
+        try {
+          activeUploadTask.cancel();
+          debugLog("[Storage Debug] Active upload task canceled by user.");
+          showToast("Image upload was canceled. / படம் பதிவேற்றுவது ரத்து செய்யப்பட்டது.", "info");
+        } catch (e) {
+          console.error("[Storage Debug] Error canceling upload task:", e);
+        }
+        activeUploadTask = null;
+      }
+    }
+
+    function validateSelectedFile(file) {
+      if (!file) return { valid: false, error: "தயவுசெய்து ஒரு படத்தை தேர்ந்தெடுக்கவும் / Please select a file." };
+
+      const allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
+      const fileName = (file.name || '').toLowerCase();
+      const dotIndex = fileName.lastIndexOf('.');
+      const fileExt = dotIndex !== -1 ? fileName.substring(dotIndex + 1) : '';
+
+      const isSupportedExt = allowedExts.includes(fileExt);
+      const isSupportedMime = file.type && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type.toLowerCase());
+
+      if (!isSupportedExt && !isSupportedMime) {
+        return { valid: false, error: "தேர்வு செய்யப்படாத வடிவம்! JPG, JPEG, PNG அல்லது WEBP படங்களை மட்டுமே பயன்படுத்த முடியும். / Selected image format is not supported. Please use JPG, JPEG, PNG, or WEBP." };
+      }
+
+      return { valid: true };
+    }
+
+    function getSafeFileName(fileName) {
+      if (!fileName) return "image.jpg";
+      const dotIndex = fileName.lastIndexOf('.');
+      const namePart = dotIndex !== -1 ? fileName.substring(0, dotIndex) : fileName;
+      const extPart = dotIndex !== -1 ? fileName.substring(dotIndex) : ".jpg";
+
+      const safeName = namePart.replace(/[^a-zA-Z0-9-_]/g, "_");
+      return safeName + extPart;
+    }
+
+    function getStoragePath(vendorId, productId, originalFileName) {
+      const timestamp = Date.now();
+      const safeName = getSafeFileName(originalFileName);
+      return `products/${vendorId}/${productId}/${timestamp}_${safeName}`;
+    }
+
+    async function uploadProductImageToStorage(productId, file, compressedBase64) {
+      if (typeof firebase === 'undefined' || !firebase.storage) {
+        console.warn("[Storage Fallback] Firebase Storage not available. Using compressed base64 directly.");
+        return compressedBase64;
+      }
+
+      const activeAdmin = getAdminSession();
+      const vendorId = (activeAdmin && (activeAdmin.uid || activeAdmin.id || activeAdmin.phone)) || "edappadi_kadai";
+
+      debugLog("[Storage Debug] Image upload started for vendor:", vendorId, "productId:", productId);
+
+      const storage = firebase.storage();
+
+      try {
+        if (typeof storage.setMaxUploadRetryTime === 'function') {
+          storage.setMaxUploadRetryTime(10000); // 10s max upload retry for fast failover
+        } else {
+          storage.maxUploadRetryTime = 10000;
+        }
+        if (typeof storage.setMaxOperationRetryTime === 'function') {
+          storage.setMaxOperationRetryTime(10000); // 10s max operation retry
+        } else {
+          storage.maxOperationRetryTime = 10000;
+        }
+      } catch (timeoutConfErr) {
+        console.warn("[Storage Debug] Failed to set native retry limits, using default:", timeoutConfErr);
+      }
+
+      const uploadPath = getStoragePath(vendorId, productId, file.name);
+      debugLog("✓ Upload Started for productId:", productId, "fileName:", file.name);
+      debugLog("[Storage Debug] Storage upload path:", uploadPath);
+
+      const imageRef = storage.ref().child(uploadPath);
+
+      const metadata = {
+        contentType: file.type || 'image/jpeg',
+        customMetadata: {
+          'originalName': file.name,
+          'productId': productId,
+          'vendorId': vendorId,
+          'uploadedAt': new Date().toISOString()
+        }
+      };
+
+      const blob = dataURLtoBlob(compressedBase64);
+      if (!blob) {
+        console.warn("[Storage Fallback] Blob conversion failed. Falling back to compressed base64.");
+        return compressedBase64;
+      }
+
+      let progressTimer = null;
+      let progressStarted = false;
+      let uploadTimeout = null;
+
+      const uploadPromise = new Promise((resolve, reject) => {
+        try {
+          const uploadTask = imageRef.put(blob, metadata);
+          activeUploadTask = uploadTask;
+
+          progressTimer = setTimeout(() => {
+            if (!progressStarted) {
+              console.warn("[Storage Debug] Upload progress did not start (stuck at 0% for 3 seconds). Canceling and falling back...");
+              if (activeUploadTask) {
+                try { activeUploadTask.cancel(); } catch (e) {}
+                activeUploadTask = null;
+              }
+              reject(new Error("UPLOAD_STUCK_AT_0"));
+            }
+          }, 3000); // 3-second quick failover if stuck at 0%
+
+          uploadTimeout = setTimeout(() => {
+            console.warn("[Storage Debug] Upload timed out after 10s. Canceling and falling back...");
+            if (activeUploadTask) {
+              try { activeUploadTask.cancel(); } catch (e) {}
+              activeUploadTask = null;
+            }
+            if (progressTimer) clearTimeout(progressTimer);
+            reject(new Error("UPLOAD_TIMEOUT"));
+          }, 10000); // 10-second overall failover
+
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              debugLog('[Storage Debug] Upload progress:', progress + '%');
+
+              if (progress > 0) {
+                progressStarted = true;
+                if (progressTimer) {
+                  clearTimeout(progressTimer);
+                  progressTimer = null;
+                }
+              }
+
+              const addBtn = document.getElementById('prod-submit-btn');
+              if (addBtn && addBtn.disabled) {
+                addBtn.innerText = `படம் பதிவேற்றம்: ${progress}% / Uploading ${progress}%... ⏳`;
+              }
+              const editBtn = document.querySelector('#admin-edit-product-form button[type="submit"]');
+              if (editBtn && editBtn.disabled) {
+                editBtn.innerHTML = `படம் பதிவேற்றம்: ${progress}% / Uploading ${progress}%... ⏳`;
+              }
+            },
+            (error) => {
+              console.error('[Storage Debug] Upload callback error:', error);
+              if (progressTimer) clearTimeout(progressTimer);
+              if (uploadTimeout) clearTimeout(uploadTimeout);
+              activeUploadTask = null;
+              reject(error);
+            },
+            () => {
+              debugLog('✓ Upload Completed');
+              if (progressTimer) clearTimeout(progressTimer);
+              if (uploadTimeout) clearTimeout(uploadTimeout);
+              activeUploadTask = null;
+              imageRef.getDownloadURL()
+                .then((downloadUrl) => {
+                  const freshUrl = ensureCacheBustingUrl(downloadUrl);
+                  debugLog("✓ Download URL Received:", freshUrl);
+                  resolve(freshUrl);
+                })
+                .catch((urlErr) => {
+                  reject(urlErr);
+                });
+            }
+          );
+        } catch (initErr) {
+          if (progressTimer) clearTimeout(progressTimer);
+          if (uploadTimeout) clearTimeout(uploadTimeout);
+          activeUploadTask = null;
+          reject(initErr);
+        }
+      });
+
+      try {
+        const downloadUrl = await uploadPromise;
+
+        if (!downloadUrl || typeof downloadUrl !== 'string' || !downloadUrl.startsWith('https://')) {
+          throw new Error("INVALID_DOWNLOAD_URL");
+        }
+
+        return downloadUrl;
+      } catch (error) {
+        console.error('[Storage Debug] Error/Timeout in uploadProductImageToStorage, activating graceful fallback:', error);
+
+        let errCode = error.code || "storage/unknown";
+        let errMsg = error.message || error.toString();
+
+        const lowerMsg = errMsg.toLowerCase();
+        const lowerCode = errCode.toLowerCase();
+
+        if (lowerCode.includes("unauthorized") || lowerMsg.includes("unauthorized") || lowerMsg.includes("permission denied")) {
+          errCode = "storage/unauthorized";
+        } else if (lowerCode.includes("canceled") || lowerMsg.includes("canceled") || lowerMsg.includes("cancel")) {
+          errCode = "storage/canceled";
+        } else if (lowerCode.includes("bucket-not-found") || lowerMsg.includes("bucket")) {
+          errCode = "storage/bucket-not-found";
+        } else if (lowerCode.includes("quota") || lowerMsg.includes("quota") || lowerMsg.includes("billing")) {
+          errCode = "storage/quota-exceeded";
+        } else if (lowerCode.includes("retry") || lowerMsg.includes("timeout") || lowerMsg.includes("timed out")) {
+          errCode = "storage/retry-limit-exceeded";
+        }
+
+        console.warn(`[Storage Fallback] Failover active. Code: ${errCode}. Using base64 optimization fallback.`);
+        showToast("படம் வெற்றிகரமாக தயார் செய்யப்பட்டு ஆஃப்லைன் முறையில் சேமிக்கப்பட்டது! / Image prepared & saved offline successfully!", "info");
+        return compressedBase64;
+      }
+    }
+
+    function convertBase64Image(event) {
+      const file = event.target.files[0];
+
+      if (!file) {
+        tempProductFile = null;
+        tempBase64Image = null;
+        return;
+      }
+
+      const validation = validateSelectedFile(file);
+      if (!validation.valid) {
+        showToast(validation.error, "error");
+        event.target.value = '';
+        tempProductFile = null;
+        tempBase64Image = null;
+        return;
+      }
+
+      tempProductFile = file;
+
+      const preferUrlCheck = document.getElementById('add-prod-use-url');
+      if (preferUrlCheck) preferUrlCheck.checked = false;
+
+      showToast("Optimizing product image for high dynamic quality...", "info");
+      compressAndScaleImage(file, 850, 850, 0.88, function(compressedUrl) {
+        tempBase64Image = compressedUrl;
+        compressAndScaleImage(file, 300, 300, 0.75, function(compressedThumb) {
+          tempBase64Thumb = compressedThumb;
+        });
+        debugLog("✓ Image Selected:", file.name, "MIME:", file.type, "Size:", file.size);
+
+        const previewImg = document.getElementById('add-prod-preview-img');
+        const previewContainer = document.getElementById('add-prod-preview-container');
+        if (previewImg && previewContainer) {
+          previewImg.src = compressedUrl;
+          previewContainer.style.display = 'block';
+        }
+
+        showToast("படம் வெற்றிகரமாகத் தேர்ந்தெடுக்கப்பட்டது! ✓ / Image selected and optimized! ✓", "success");
+      });
+    }
+
+    function updateUrlPreview() {
+      const url = document.getElementById('add-prod-url').value.trim();
+      const previewImg = document.getElementById('add-prod-preview-img');
+      const previewContainer = document.getElementById('add-prod-preview-container');
+      const useUrlCheck = document.getElementById('add-prod-use-url');
+
+      if (previewImg && previewContainer) {
+        if (url && (!tempBase64Image || (useUrlCheck && useUrlCheck.checked))) {
+          previewImg.src = url;
+          previewContainer.style.display = 'block';
+        } else if (tempBase64Image) {
+          previewImg.src = tempBase64Image;
+          previewContainer.style.display = 'block';
+        } else {
+          previewContainer.style.display = 'none';
+        }
+      }
+    }
+
+    function convertEditBase64Image(event) {
+      const file = event.target.files[0];
+
+      if (!file) {
+        tempProductFile = null;
+        tempBase64Image = null;
+        return;
+      }
+
+      const validation = validateSelectedFile(file);
+      if (!validation.valid) {
+        showToast(validation.error, "error");
+        event.target.value = '';
+        tempProductFile = null;
+        tempBase64Image = null;
+        return;
+      }
+
+      tempProductFile = file;
+      editProductPhotoDeleted = false;
+
+      const preferUrlCheck = document.getElementById('edit-prod-use-url');
+      if (preferUrlCheck) preferUrlCheck.checked = false;
+
+      showToast("Optimizing product image for high dynamic quality...", "info");
+      compressAndScaleImage(file, 850, 850, 0.88, function(compressedUrl) {
+        tempBase64Image = compressedUrl;
+        compressAndScaleImage(file, 300, 300, 0.75, function(compressedThumb) {
+          tempBase64Thumb = compressedThumb;
+        });
+        debugLog("✓ Image Selected:", file.name, "MIME:", file.type, "Size:", file.size);
+
+        const previewImg = document.getElementById('edit-prod-preview-img');
+        const previewContainer = document.getElementById('edit-prod-preview-container');
+        if (previewImg && previewContainer) {
+          previewImg.src = compressedUrl;
+          previewContainer.style.display = 'block';
+        }
+
+        showToast("படம் வெற்றிகரமாகத் தேர்ந்தெடுக்கப்பட்டது! ✓ / Image selected and optimized! ✓", "success");
+      });
+    }
+
+    function updateEditUrlPreview() {
+      const url = document.getElementById('edit-prod-url').value.trim();
+      const previewImg = document.getElementById('edit-prod-preview-img');
+      const previewContainer = document.getElementById('edit-prod-preview-container');
+      const useUrlCheck = document.getElementById('edit-prod-use-url');
+
+      if (previewImg && previewContainer) {
+        if (url && (!tempBase64Image || (useUrlCheck && useUrlCheck.checked))) {
+          editProductPhotoDeleted = false;
+          previewImg.src = url;
+          previewContainer.style.display = 'block';
+        } else if (tempBase64Image) {
+          editProductPhotoDeleted = false;
+          previewImg.src = tempBase64Image;
+          previewContainer.style.display = 'block';
+        } else {
+          if (editProductPhotoDeleted) {
+            previewContainer.style.display = 'none';
+          } else {
+            const productId = editingProductId || document.getElementById('edit-prod-id')?.value;
+            const products = getData('ek_products');
+            const p = products.find(prod => prod.id === productId);
+            if (p && p.imageUrl) {
+              previewImg.src = p.imageUrl;
+              previewContainer.style.display = 'block';
+            } else {
+              previewContainer.style.display = 'none';
+            }
+          }
+        }
+      }
+    }
+
+    function deleteAddProductPhoto() {
+      tempBase64Image = null;
+      tempProductFile = null;
+
+      const fileInput = document.getElementById('add-prod-file');
+      if (fileInput) fileInput.value = '';
+
+      const urlInput = document.getElementById('add-prod-url');
+      if (urlInput) urlInput.value = '';
+
+      const useUrlCheck = document.getElementById('add-prod-use-url');
+      if (useUrlCheck) useUrlCheck.checked = false;
+
+      const previewContainer = document.getElementById('add-prod-preview-container');
+      if (previewContainer) previewContainer.style.display = 'none';
+
+      showToast("போட்டோ நீக்கப்பட்டது / Photo removed.", "success");
+    }
+
+    function deleteEditProductPhoto() {
+      editProductPhotoDeleted = true;
+      tempBase64Image = null;
+      tempProductFile = null;
+
+      const fileInput = document.getElementById('edit-prod-file');
+      if (fileInput) fileInput.value = '';
+
+      const urlInput = document.getElementById('edit-prod-url');
+      if (urlInput) urlInput.value = '';
+
+      const useUrlCheck = document.getElementById('edit-prod-use-url');
+      if (useUrlCheck) useUrlCheck.checked = false;
+
+      const previewContainer = document.getElementById('edit-prod-preview-container');
+      if (previewContainer) previewContainer.style.display = 'none';
+
+      showToast("போட்டோ நீக்கப்பட்டது. சேமிக்கும்போது இது மாற்றப்படும். / Photo removed. Save to apply.", "success");
+    }
+
+    function closeAdminEditProductModalDetail() {
+      cancelActiveUpload();
+      const modal = document.getElementById('admin-edit-product-modal');
+      if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+        modal.style.pointerEvents = 'none';
+      }
+      document.body.style.overflow = '';
+      editingProductId = null;
+      tempBase64Image = null;
+      tempProductFile = null;
+      editProductPhotoDeleted = false;
+    }
+
+    function closeAdminEditProductModal(event) {
+      if (event.target.id === 'admin-edit-product-modal') {
+        closeAdminEditProductModalDetail();
+      }
+    }
+
+    function openAdminAddProductModal() {
+      resetProductForm();
+      if (typeof populateProductCategoryOptions === 'function') {
+        populateProductCategoryOptions();
+      }
+      if (window.adminActiveCategory && window.adminActiveCategory !== 'all') {
+        const selectAdd = document.getElementById('add-prod-category');
+        if (selectAdd) {
+          selectAdd.value = window.adminActiveCategory;
+        }
+      }
+      const modal = document.getElementById('admin-add-product-modal');
+      if (modal) {
+        modal.classList.add('active');
+        modal.style.display = 'flex';
+        modal.style.pointerEvents = 'auto';
+      }
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeAdminAddProductModalDetail() {
+      cancelActiveUpload();
+      const modal = document.getElementById('admin-add-product-modal');
+      if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+        modal.style.pointerEvents = 'none';
+      }
+      document.body.style.overflow = '';
+      tempBase64Image = null;
+      tempProductFile = null;
+    }
+
+    function closeAdminAddProductModal(event) {
+      if (event.target.id === 'admin-add-product-modal') {
+        closeAdminAddProductModalDetail();
+      }
+    }
+
+    const LYO_TRANSIT_PHRASES_TA = [
+      "உணவுப் பட்டியலை லோட் செய்கிறது...",
+      "உங்கள் பாதுகாப்பான இணைப்பை உறுதி செய்கிறது...",
+      "புதிய எடப்பாடி கறி விலைகளைச் சரிபார்க்கிறது...",
+      "ஆர்டரைத் தயார் செய்யத் திட்டமிடுகிறது...",
+      "எடப்பாடி கடை உதவியாளர் தகவல்களைப் புதுப்பிக்கிறது...",
+      "லாயல்டி பாயிண்டுகளைப் புதுப்பிக்கிறது...",
+      "கடையின் இன்றைய சிறப்புத் தயாரிப்புகளைப் பார்க்கிறது...",
+      "டெலிவரி வழித்தடங்களை உகந்ததாக்குகிறது...",
+      "ஆஃப்லைன் தரவுத்தளத்தை ஒத்திசைக்கிறது..."
+    ];
+
+    const LYO_TRANSIT_PHRASES_EN = [
+      "Updating store listings...",
+      "Securing your fast connection...",
+      "Fetching freshest Edappadi prices...",
+      "Optimizing delivery routes...",
+      "Syncing secure offline cloud database...",
+      "Recalculating loyalty rewards...",
+      "Loading exclusive Edappadi store specials...",
+      "Assistant is processing data...",
+      "Syncing with Salem local server..."
+    ];
+
+    function showLyoTransitLoader(customText = null, durationMs = 450, onFinished = null) {
+      const overlay = document.getElementById('lyo-transit-overlay');
+      const subtitle = document.getElementById('lyo-transit-subtitle');
+      if (!overlay) return;
+
+      if (!customText) {
+        const isTamil = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+        const list = isTamil ? LYO_TRANSIT_PHRASES_TA : LYO_TRANSIT_PHRASES_EN;
+        customText = list[Math.floor(Math.random() * list.length)];
+      }
+
+      subtitle.innerText = customText;
+      overlay.classList.add('active');
+
+      const progBar = overlay.querySelector('.lyo-transit-progress-bar');
+      if (progBar) {
+        progBar.style.animation = 'none';
+        void progBar.offsetWidth; // trigger reflow
+        progBar.style.animation = `lyoProgressBarRun ${durationMs}ms ease-out forwards`;
+      }
+
+      if (durationMs) {
+        setTimeout(() => {
+          hideLyoTransitLoader();
+          if (onFinished) onFinished();
+        }, durationMs);
+      }
+    }
+
+    function hideLyoTransitLoader() {
+      const overlay = document.getElementById('lyo-transit-overlay');
+      if (overlay) {
+        overlay.classList.remove('active');
+      }
+      try {
+        const activeBackdrops = document.querySelectorAll('.modal-backdrop.active, .popup-overlay.active');
+        activeBackdrops.forEach(m => {
+          if (m && m.id !== 'success-order-modal' && m.id !== 'admin-order-success-modal' && m.id !== 'custom-confirm-modal' && m.id !== 'custom-alert-modal') {
+            m.classList.remove('active');
+            if (m.style && m.style.display !== 'none') m.style.display = 'none';
+          }
+        });
+      } catch(e) {}
+    }
+
+    function showLoadingModal(msg) {
+      showLyoTransitLoader(msg, 0);
+    }
+
+    function hideLoadingModal() {
+      hideLyoTransitLoader();
+    }
+
+    function showScreen(screenId) {
+      try {
+        if (typeof currentScreen !== 'undefined' && currentScreen === screenId) {
+          const activeEl = document.getElementById(screenId);
+          if (activeEl && activeEl.classList.contains('active')) {
+            return;
+          }
+        }
+
+        if (screenId !== 'screen-lyo-ai' && window.visualViewport && window.lyoAiViewportResizeListener) {
+          try {
+            window.visualViewport.removeEventListener('resize', window.lyoAiViewportResizeListener);
+          } catch(e) {}
+          window.lyoAiViewportResizeListener = null;
+          const composeBox = document.querySelector('#lyo-ai-compose-box');
+          if (composeBox) {
+            composeBox.style.transform = 'translateY(0)';
+          }
+        }
+
+        if (typeof dismissToast === 'function' && typeof toastShowTime !== 'undefined' && Date.now() - toastShowTime > 300) {
+          const container = document.getElementById('toast-container');
+          if (container && container.classList.contains('show')) {
+            dismissToast();
+          }
+        }
+
+        if (screenId === 'screen-admin') {
+          debugLog("[Route Guard] Intercepted navigation to screen-admin. Verifying local session...");
+          const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+          const hasAdminSession = !!(adminSession && adminSession.loggedIn);
+
+          if (!hasAdminSession) {
+            console.error("[Route Guard] Access DENIED: No active local admin session.");
+            showToast("அனுமதி மறுக்கப்பட்டது! நிர்வாகி உள்நுழையவும் / Access Denied. Please login as admin.", "error");
+            setTimeout(() => showScreen('screen-login'), 50);
+            return;
+          }
+
+          if (typeof firebase !== 'undefined' && firebase.auth) {
+            const user = firebase.auth().currentUser;
+            if (!user || user.isAnonymous) {
+              debugLog("[Route Guard] Operating under active local admin session.");
+            } else {
+              (async () => {
+                const finalUser = firebase.auth().currentUser;
+                if (!finalUser || finalUser.isAnonymous) {
+                  return;
+                }
+
+                window._verifiedAdminUids = window._verifiedAdminUids || new Set();
+                if (window._verifiedAdminUids.has(finalUser.uid)) {
+                  return;
+                }
+
+              try {
+                let docSnap = await db.collection('ek_admin_accounts').doc(finalUser.uid).get();
+                let adminData = null;
+                if (docSnap.exists) {
+                  adminData = docSnap.data();
+                } else {
+                  const adminEmail = finalUser.email;
+                  const phoneStr = adminEmail ? adminEmail.replace('admin_', '').split('@')[0] : '';
+                  const qSnap = await db.collection('ek_admin_accounts').where('email', '==', adminEmail).get();
+                  let foundDoc = null;
+                  if (!qSnap.empty) {
+                    foundDoc = qSnap.docs[0];
+                  } else if (phoneStr) {
+                    const qSnapPhone = await db.collection('ek_admin_accounts').where('phone', '==', phoneStr).get();
+                    if (!qSnapPhone.empty) {
+                      foundDoc = qSnapPhone.docs[0];
+                    }
+                  }
+
+                  if (foundDoc) {
+                    adminData = foundDoc.data();
+                    adminData.id = finalUser.uid;
+                    adminData.uid = finalUser.uid;
+                    await db.collection('ek_admin_accounts').doc(finalUser.uid).set(adminData);
+                    debugLog("[Route Guard Background] Self-healed UID mapping for admin:", finalUser.uid);
+                  } else {
+                    const matchedFallback = DEFAULT_FALLBACK_ADMINS.find(fa => fa.email === adminEmail || fa.phone === phoneStr);
+                    if (matchedFallback) {
+                      adminData = {
+                        ...matchedFallback,
+                        id: finalUser.uid,
+                        uid: finalUser.uid,
+                        active: true,
+                        createdAt: new Date().toISOString()
+                      };
+                      await db.collection('ek_admin_accounts').doc(finalUser.uid).set(adminData);
+                      debugLog("[Route Guard Background] Initialized fallback admin account in Firestore for UID:", finalUser.uid);
+                    }
+                  }
+                }
+
+                if (adminData) {
+                  if ((adminData.role !== 'admin' && adminData.role !== 'superadmin' && adminData.role !== 'ADMIN' && adminData.role !== 'SUPERADMIN') || adminData.active === false) {
+                    console.error("[Route Guard Background] Access DENIED: Admin account inactive or not admin/superadmin.");
+                    showToast("உரிமம் மறுக்கப்பட்டது! / Admin account inactive.", "error");
+                    showScreen('screen-login');
+                  } else {
+                    window._verifiedAdminUids = window._verifiedAdminUids || new Set();
+                    window._verifiedAdminUids.add(finalUser.uid);
+                    debugLog("[Route Guard Background] Admin credentials verified successfully ✓ UID:", finalUser.uid);
+                  }
+                } else {
+                  let activeCount = 0;
+                  try {
+                    const qSnap = await db.collection('ek_admin_accounts').get();
+                    qSnap.forEach(doc => {
+                      const data = doc.data();
+                      if (data && data.active !== false) {
+                        activeCount++;
+                      }
+                    });
+                  } catch (e) {
+                    console.warn("Could not query admin count in route guard:", e);
+                  }
+
+                  if (activeCount === 0) {
+                    debugLog("[Route Guard Background] Succeeded: Zero active admin accounts in Firestore. Checking and showing superadmin setup.");
+                    await checkAndShowSuperAdminSetup();
+                  } else {
+                    console.error(`[Route Guard Background] Access DENIED: No doc in 'ek_admin_accounts' for UID: ${finalUser.uid}`);
+                    showToast("அங்கீகாரம் இல்லாத கணக்கு! / Admin UID not in database.", "error");
+                    showScreen('screen-login');
+                  }
+                }
+              } catch (err) {
+                console.warn("[Route Guard Background] Firestore check bypassed due to network/offline status:", err);
+              }
+            })();
+          }
+        }
+      }
+
+        if (typeof currentScreen !== 'undefined' && currentScreen !== screenId && currentScreen !== 'screen-splash' && screenId !== 'screen-splash') {
+          // showLyoTransitLoader(null, 450); // Bypassed for instant tab navigation
+        }
+
+        if (!isNavigatingBack && typeof currentScreen !== 'undefined' && currentScreen !== screenId && currentScreen !== 'screen-splash') {
+          if (screenHistory.length === 0 || screenHistory[screenHistory.length - 1] !== currentScreen) {
+            screenHistory.push(currentScreen);
+          }
+        }
+
+        if (screenId !== 'screen-track') {
+          try { clearRiderAnimation(); } catch(e) { console.warn('clearRiderAnimation failed', e); }
+        }
+
+        if (screenId !== 'screen-track' && typeof trackerLeafletMap !== 'undefined' && trackerLeafletMap) {
+          try {
+            trackerLeafletMap.remove();
+          } catch(e) { console.warn(e); }
+          trackerLeafletMap = null;
+          if (typeof riderMarker !== 'undefined') riderMarker = null;
+          if (typeof storeMarker !== 'undefined') storeMarker = null;
+          if (typeof customerMarker !== 'undefined') customerMarker = null;
+        }
+        if (screenId !== 'screen-delivery') {
+          if (window.riderLiveCoordInterval) {
+            clearInterval(window.riderLiveCoordInterval);
+            window.riderLiveCoordInterval = null;
+          }
+          if (window.activeGpsSimulationInterval) {
+            clearInterval(window.activeGpsSimulationInterval);
+            window.activeGpsSimulationInterval = null;
+          }
+        }
+        if (screenId !== 'screen-admin' && typeof deliveryLeafletMap !== 'undefined' && deliveryLeafletMap) {
+          try {
+            deliveryLeafletMap.remove();
+          } catch(e) { console.warn(e); }
+          deliveryLeafletMap = null;
+          if (typeof deliveryRiderMarker !== 'undefined') deliveryRiderMarker = null;
+          if (typeof deliveryStoreMarker !== 'undefined') deliveryStoreMarker = null;
+          if (typeof deliveryCustomerMarker !== 'undefined') deliveryCustomerMarker = null;
+        }
+
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active', 'screen-transitioning'));
+        const target = document.getElementById(screenId);
+        if (target) {
+          target.scrollTop = 0; // RESET scroll to top of screen on view transition to ensure native behavior
+          target.scrollLeft = 0; // RESET horizontal scroll offset
+          const appContainer = document.querySelector('.app-container');
+          if (appContainer) appContainer.scrollLeft = 0;
+          document.body.scrollLeft = 0;
+          document.documentElement.scrollLeft = 0;
+          target.classList.add('active', 'screen-transitioning');
+          currentScreen = screenId;
+
+          setTimeout(() => {
+            target.classList.remove('screen-transitioning');
+          }, 25);
+        } else {
+          console.error(`[showScreen] Target screen "${screenId}" not found in DOM!`);
+        }
+
+        const bottomNav = document.getElementById('app-bottom-nav');
+        if (bottomNav) {
+          if (['screen-splash', 'screen-onboarding', 'screen-login', 'screen-register', 'screen-admin', 'screen-delivery'].includes(screenId)) {
+            bottomNav.style.display = 'none';
+          } else {
+            bottomNav.style.display = 'flex';
+          }
+        }
+
+        try {
+          if (screenId === 'screen-home') {
+            renderHomeScreen();
+            const settings = getSettings();
+            if (settings.leaveMode && !sessionStorage.getItem('leave_popup_shown')) {
+              sessionStorage.setItem('leave_popup_shown', 'true');
+              showCustomAlert(
+                currentLang === 'ta' ? "🌴 விடுமுறை அறிவிப்பு" : "🌴 Holiday / Leave Notice",
+                settings.leaveNotice || (currentLang === 'ta' ? "மன்னிக்கவும்! கடை தற்காலிகமாக விடுமுறையில் உள்ளது. ஆர்டர் செய்ய இயலாது." : "Sorry, the shop is currently closed on holiday. Ordering is temporarily paused.")
+              );
+            }
+          } else if (screenId === 'screen-login') {
+            try { enterCustomerLogin(); } catch(e) {}
+            prefillLoginCredentials();
+          } else if (screenId === 'screen-register') {
+            const storedRef = sessionStorage.getItem('ek_referred_by_code');
+            if (storedRef && document.getElementById('reg-referral')) {
+              document.getElementById('reg-referral').value = storedRef;
+            }
+          } else if (screenId === 'screen-cart') {
+            renderCartScreen();
+          } else if (screenId === 'screen-track') {
+            renderTrackerScreen();
+          } else if (screenId === 'screen-profile') {
+            renderProfileScreen();
+          } else if (screenId === 'screen-admin') {
+            renderAdminDashboard();
+            initSectionCollapse('categories', 'collapsed');
+            initSectionCollapse('carousel', 'collapsed');
+            initSectionCollapse('upi-config', 'collapsed');
+          } else if (screenId === 'screen-delivery') {
+            renderDeliveryScreen();
+          } else if (screenId === 'screen-lyo-ai') {
+            try {
+              if (typeof initLyoAiChat === 'function') initLyoAiChat();
+              setTimeout(() => {
+                const lyoInput = document.getElementById('lyo-ai-input');
+                if (lyoInput) {
+                  const msgStream = document.getElementById('lyo-ai-messages');
+                  if (msgStream) {
+                    msgStream.scrollTop = msgStream.scrollHeight;
+                  }
+                }
+              }, 100);
+
+              if (window.visualViewport && !window.lyoAiViewportResizeListener) {
+                window.lyoAiViewportResizeListener = function() {
+                  const composeBox = document.querySelector('#lyo-ai-compose-box');
+                  if (composeBox) {
+                    const keyboardHeight = window.innerHeight - window.visualViewport.height;
+                    composeBox.style.transform = keyboardHeight > 100 ? `translateY(-${keyboardHeight}px)` : 'translateY(0)';
+                  }
+                };
+                window.visualViewport.addEventListener('resize', window.lyoAiViewportResizeListener);
+              }
+            } catch (lyoErr) {
+              console.warn('[showScreen] Lyo AI render retry scheduled:', lyoErr);
+              setTimeout(() => {
+                try {
+                  if (typeof initLyoAiChat === 'function') initLyoAiChat();
+                } catch(rErr) {
+                  console.warn('[showScreen] Lyo AI retry warning:', rErr);
+                }
+              }, 200);
+            }
+          } else if (screenId === 'screen-offers') {
+            updateClaimBoxState();
+          }
+        } catch (renderErr) {
+          console.error(`[showScreen] Render failed for "${screenId}":`, renderErr);
+          if (typeof showToast === 'function') {
+            showToast('⚠️ Display issue — pull to refresh', 'error');
+          }
+        }
+      } catch (criticalErr) {
+        console.error('[showScreen] CRITICAL failure:', criticalErr);
+      }
+    }

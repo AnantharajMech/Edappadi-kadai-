@@ -66,7 +66,7 @@ service cloud.firestore {
     // Orders: customers can create and read own, admin can do everything, riders can claim and update
     // Orders: anyone can read, create, update, or delete orders to prevent any checkout blockages
     match /ek_orders/{orderId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
     match /orders/{orderId} {
@@ -78,7 +78,7 @@ service cloud.firestore {
     match /ek_users/{userId} {
       allow get: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
       allow list: if isAdmin();
-      allow create: if true;
+      allow create: if isAuthenticated();
       allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
       allow delete: if isAdmin();
     }
@@ -100,7 +100,8 @@ service cloud.firestore {
 
     // Products: anyone can read, create, or update products/stock to prevent checkout transaction failures
     match /ek_products/{productId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     // Categories: anyone can read, only admin writes
@@ -164,9 +165,12 @@ service cloud.firestore {
     match /ek_settings/emailConfig {
       allow read, write: if isAdmin();
     }
+    match /ek_settings/smsConfig {
+      allow read, write: if isAdmin();
+    }
     // Settings: anyone can read non-sensitive configs, only admin writes
     match /ek_settings/{docId} {
-      allow read: if docId != 'emailConfig';
+      allow read: if docId != 'emailConfig' && docId != 'smsConfig';
       allow write: if isAdmin();
     }
 
