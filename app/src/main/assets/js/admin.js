@@ -242,34 +242,84 @@
       const validOrders = orders.filter(o => o && !deletedOrderIds.includes(o.id) && o.hiddenByAdmin !== true);
 
       const todayStr = new Date().toDateString();
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+
       const todayOrders = validOrders.filter(o => {
         const d = safeParseDate(o.createdAt);
         return d.toDateString() === todayStr;
       });
 
+      const pendingCount = validOrders.filter(o => isPendingOrderStatus(o.status)).length;
+      const confirmedCount = validOrders.filter(o => {
+        const st = String(o.status || '').toLowerCase();
+        return st === 'accepted' || st === 'confirmed' || st.includes('confirm') || st.includes('accept');
+      }).length;
+      const preparingCount = validOrders.filter(o => {
+        const st = String(o.status || '').toLowerCase();
+        return st.includes('prepar') || st.includes('kitchen') || st === 'ready_for_pickup';
+      }).length;
+      const outForDeliveryCount = validOrders.filter(o => {
+        const st = String(o.status || '').toLowerCase();
+        return st.includes('out') || st.includes('dispatch') || st === 'on_the_way';
+      }).length;
+      const deliveredCount = validOrders.filter(o => isDeliveredOrderStatus(o.status)).length;
+      const cancelledCount = validOrders.filter(o => {
+        const st = String(o.status || '').toLowerCase();
+        return st.includes('cancel') || st.includes('reject');
+      }).length;
+
       const totalRevenue = validOrders
         .filter(o => isDeliveredOrderStatus(o.status))
         .reduce((sum, o) => sum + Number(o.totalAmount || o.total || 0), 0);
 
-      const pendingCount = validOrders.filter(o => isPendingOrderStatus(o.status)).length;
+      const todayRevenue = todayOrders
+        .filter(o => isDeliveredOrderStatus(o.status))
+        .reduce((sum, o) => sum + Number(o.totalAmount || o.total || 0), 0);
 
-      const ordersStatEl = document.getElementById('admin-stat-orders');
-      if (ordersStatEl) {
-        ordersStatEl.innerText = validOrders.length;
-      }
+      const monthRevenue = validOrders
+        .filter(o => {
+          if (!isDeliveredOrderStatus(o.status)) return false;
+          const d = safeParseDate(o.createdAt);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        })
+        .reduce((sum, o) => sum + Number(o.totalAmount || o.total || 0), 0);
 
-      const revenueStatEl = document.getElementById('admin-stat-revenue');
-      if (revenueStatEl) {
-        revenueStatEl.innerText = `₹${totalRevenue.toLocaleString('en-IN')}`;
-      }
+      const users = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : [];
+      const activeCustomersCount = users.filter(u => u && u.role !== 'admin' && u.role !== 'RIDER').length || Math.max(1, new Set(validOrders.map(o => o.phone || o.userId)).size);
 
-      const pendingStatEl = document.getElementById('admin-stat-pending');
-      if (pendingStatEl) {
-        pendingStatEl.innerText = pendingCount;
-      }
+      const deliveryPartners = typeof getDataCached === 'function' ? getDataCached('ek_delivery_persons', []) : [];
+      const activeDeliveryPartnersCount = deliveryPartners.filter(d => d && d.active !== false).length;
+
+      const restaurants = typeof getDataCached === 'function' ? getDataCached('ek_restaurants', []) : [];
+      const activeRestaurantsCount = restaurants.length > 0 ? restaurants.filter(r => r.active !== false).length : 1;
+
+      const setElText = (id, txt) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = txt;
+      };
+
+      setElText('admin-stat-orders', validOrders.length);
+      setElText('admin-stat-today-orders', todayOrders.length);
+      setElText('admin-stat-pending', pendingCount);
+      setElText('admin-stat-confirmed', confirmedCount);
+      setElText('admin-stat-preparing', preparingCount);
+      setElText('admin-stat-out-for-delivery', outForDeliveryCount);
+      setElText('admin-stat-delivered', deliveredCount);
+      setElText('admin-stat-cancelled', cancelledCount);
+
+      setElText('admin-stat-revenue', `₹${Math.round(totalRevenue).toLocaleString('en-IN')}`);
+      setElText('admin-stat-today-revenue', `₹${Math.round(todayRevenue).toLocaleString('en-IN')}`);
+      setElText('admin-stat-month-revenue', `₹${Math.round(monthRevenue).toLocaleString('en-IN')}`);
+
+      setElText('admin-stat-customers', activeCustomersCount);
+      setElText('admin-stat-delivery-partners', activeDeliveryPartnersCount);
+      setElText('admin-stat-restaurants', activeRestaurantsCount);
 
       const pendCard = document.getElementById('pending-card-alert');
       if (pendCard) {
+        const pendingStatEl = document.getElementById('admin-stat-pending');
         if (pendingCount > 0) {
           pendCard.style.borderColor = "var(--accent-red)";
           if (pendingStatEl) pendingStatEl.style.color = "var(--accent-red)";
@@ -804,12 +854,29 @@
         const lowerFilter = adminStatusFilter.toLowerCase().trim();
         if (lowerFilter === 'pending') {
           filtered = filtered.filter(o => isPendingOrderStatus(o.status));
+        } else if (lowerFilter === 'accepted' || lowerFilter === 'confirmed') {
+          filtered = filtered.filter(o => {
+            const st = String(o.status || '').toLowerCase();
+            return st === 'accepted' || st === 'confirmed' || st.includes('accept') || st.includes('confirm');
+          });
+        } else if (lowerFilter === 'preparing') {
+          filtered = filtered.filter(o => {
+            const st = String(o.status || '').toLowerCase();
+            return st.includes('prepar') || st.includes('kitchen');
+          });
         } else if (lowerFilter === 'ready') {
           filtered = filtered.filter(o => isReadyOrderStatus(o.status));
+        } else if (lowerFilter === 'out_for_delivery' || lowerFilter === 'outfordelivery' || lowerFilter === 'dispatched') {
+          filtered = filtered.filter(o => {
+            const st = String(o.status || '').toLowerCase();
+            return st.includes('out') || st.includes('dispatch') || st.includes('way');
+          });
         } else if (lowerFilter === 'delivered') {
           filtered = filtered.filter(o => isDeliveredOrderStatus(o.status));
         } else if (lowerFilter === 'cancelled' || lowerFilter === 'canceled' || lowerFilter === 'rejected') {
           filtered = filtered.filter(o => isCancelledOrderStatus(o.status));
+        } else if (lowerFilter === 'refunded') {
+          filtered = filtered.filter(o => String(o.status || '').toLowerCase().includes('refund'));
         } else {
           filtered = filtered.filter(o => (o.status || '').toLowerCase().trim() === lowerFilter);
         }

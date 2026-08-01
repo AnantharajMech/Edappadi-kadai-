@@ -2957,14 +2957,16 @@ function renderHomeScreen(forceReRender = false) {
             elConfirmBtn.disabled = true;
             elConfirmBtn.style.background = 'linear-gradient(135deg, #374151 0%, #1f2937 100%)';
             elConfirmBtn.style.color = '#9ca3af';
+            elConfirmBtn.style.boxShadow = 'none';
             elConfirmBtn.style.cursor = 'not-allowed';
             elConfirmBtn.innerHTML = `<span>Add Address First</span> <span style="font-size: 15px;">📍</span>`;
           } else {
             elConfirmBtn.disabled = false;
-            elConfirmBtn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
-            elConfirmBtn.style.color = '#000000';
+            elConfirmBtn.style.background = 'linear-gradient(135deg, #16C47F 0%, #0F9D58 100%)';
+            elConfirmBtn.style.color = '#ffffff';
+            elConfirmBtn.style.boxShadow = '0 4px 12px rgba(22, 196, 127, 0.3)';
             elConfirmBtn.style.cursor = 'pointer';
-            elConfirmBtn.innerHTML = `<span>Place Order</span> <span style="font-size: 15px; font-weight: 800;">→</span>`;
+            elConfirmBtn.innerHTML = `<span>Place Order</span> <span style="font-size: 15px; font-weight: 700; margin-left: 2px;">→</span>`;
           }
         }
       }

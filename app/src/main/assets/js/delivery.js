@@ -15,8 +15,14 @@
 
     function autoGrowLyoInput(textarea) {
       if (!textarea) return;
-      textarea.style.height = "auto";
-      textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
+      textarea.style.height = "24px";
+      const scrollH = textarea.scrollHeight;
+      textarea.style.height = Math.min(Math.max(24, scrollH), 160) + "px";
+      if (scrollH > 160) {
+        textarea.style.overflowY = "auto";
+      } else {
+        textarea.style.overflowY = "hidden";
+      }
     }
 
     function formatLyoMsgTime(date) {

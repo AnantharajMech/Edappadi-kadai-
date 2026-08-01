@@ -1366,8 +1366,14 @@ function getActiveLyoProposalMsg() {
 
     function autoGrowLyoInput(el) {
       if (!el) return;
-      el.style.height = "auto";
-      el.style.height = Math.min(el.scrollHeight, 120) + "px";
+      el.style.height = "24px";
+      const scrollH = el.scrollHeight;
+      el.style.height = Math.min(Math.max(24, scrollH), 160) + "px";
+      if (scrollH > 160) {
+        el.style.overflowY = "auto";
+      } else {
+        el.style.overflowY = "hidden";
+      }
     }
 
     function sendQuickLyoQuery(queryText) {
