@@ -2219,7 +2219,9 @@ function updateRiderLiveLocation() {
             }
 
             showToast(currentLang === 'ta' ? "ஆர்டர் வரலாறு நீக்கப்பட்டது ✓" : "Order hidden from history!", "success");
+            invalidateDataCache('ek_orders');
             renderAdminDashboard();
+            try { if (typeof renderAdminOrders === 'function') renderAdminOrders(); } catch(e) {}
           }
         }
       );
@@ -2242,8 +2244,30 @@ function updateRiderLiveLocation() {
       return parseFloat(d.toFixed(2));
     }
 
+    function getDeliveryZones() {
+      let zones = typeof getData === 'function' ? getData('ek_delivery_zones', null) : null;
+      if (!zones || !Array.isArray(zones) || zones.length === 0) {
+        const settings = typeof getData === 'function' ? getData('ek_settings', typeof DEFAULT_SETTINGS !== 'undefined' ? DEFAULT_SETTINGS : {}) : {};
+        if (settings && Array.isArray(settings.deliveryZones) && settings.deliveryZones.length > 0) {
+          zones = settings.deliveryZones;
+        } else if (typeof DEFAULT_SETTINGS !== 'undefined' && Array.isArray(DEFAULT_SETTINGS.deliveryZones)) {
+          zones = DEFAULT_SETTINGS.deliveryZones;
+        } else {
+          zones = [
+            { id: 'zone_1', nameEn: 'Local Town', nameTa: 'உள்ளூர் நகரம்', maxKm: 3, charge: 20 },
+            { id: 'zone_2', nameEn: 'Suburbs Near', nameTa: 'அருகிலுள்ள புறநகர்', maxKm: 6, charge: 45 },
+            { id: 'zone_3', nameEn: 'Suburbs Far', nameTa: 'தொலைதூர புறநகர்', maxKm: 10, charge: 75 },
+            { id: 'zone_4', nameEn: 'Outer Boundary', nameTa: 'வெளிப்புற எல்லை', maxKm: 15, charge: 110 }
+          ];
+        }
+      }
+      return zones;
+    }
+
     function getDynamicDeliveryCharge(subtotal, user) {
       const settings = getData('ek_settings', DEFAULT_SETTINGS);
+      const rainAdd = (settings.rainMode || settings.rainSurchargeEnabled) ? (parseFloat(settings.rainCharge) || parseFloat(settings.rainSurchargeFee) || 20) : 0;
+
       if (user && user.tier === 'gold') {
         return { charge: 0, distance: 0, zoneName: 'Gold Member Free Delivery' }; // Gold tier always gets FREE delivery
       }
@@ -2257,45 +2281,60 @@ function updateRiderLiveLocation() {
         custLng = user.longitude;
       }
 
-      if (settings.useDynamicDistancePricing && custLat && custLng) {
-        const storeLat = 11.5815;
-        const storeLng = 77.8488;
-        const dist = calculateDistanceKm(storeLat, storeLng, custLat, custLng);
-        if (dist !== null) {
-          const zones = settings.deliveryZones || DEFAULT_SETTINGS.deliveryZones;
-          const sortedZones = [...zones].sort((a, b) => a.maxKm - b.maxKm);
+      if (settings.useDynamicDistancePricing) {
+        let dist = null;
+        if (custLat && custLng) {
+          const storeLat = 11.5815;
+          const storeLng = 77.8488;
+          dist = calculateDistanceKm(storeLat, storeLng, custLat, custLng);
+        }
 
+        const zones = getDeliveryZones();
+        const sortedZones = [...zones].sort((a, b) => parseFloat(a.maxKm) - parseFloat(b.maxKm));
+
+        if (dist !== null && dist !== undefined && !isNaN(dist)) {
           let matchedZone = null;
           for (const zone of sortedZones) {
-            if (dist <= zone.maxKm) {
+            if (dist <= parseFloat(zone.maxKm)) {
               matchedZone = zone;
               break;
             }
           }
 
           if (matchedZone) {
+            const zName = (matchedZone.nameTa || matchedZone.nameEn || matchedZone.name || 'GPS Zone') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '');
             return {
-              charge: parseFloat(matchedZone.charge) || 0,
+              charge: (parseFloat(matchedZone.charge) || 0) + rainAdd,
               distance: dist,
-              zoneName: matchedZone.nameEn || 'Active Zone'
+              zoneName: zName
             };
-          } else {
+          } else if (sortedZones.length > 0) {
             const lastZone = sortedZones[sortedZones.length - 1];
-            const basePrice = lastZone ? parseFloat(lastZone.charge) : (parseFloat(settings.deliveryBasePrice) || 20);
-            const extraKm = lastZone ? (dist - lastZone.maxKm) : dist;
+            const basePrice = parseFloat(lastZone.charge) || (parseFloat(settings.deliveryBasePrice) || 20);
+            const extraKm = dist - parseFloat(lastZone.maxKm);
             const mult = parseFloat(settings.deliveryKmMultiplier) || 12;
-            const computed = Math.round(basePrice + (extraKm * mult));
+            const computed = Math.round(basePrice + (extraKm * mult)) + rainAdd;
             return {
               charge: computed,
               distance: dist,
-              zoneName: 'Outer Limits'
+              zoneName: 'Outer Limits' + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '')
             };
           }
+        } else {
+          // If distance unavailable, use first zone charge as base rate
+          const firstZone = sortedZones[0];
+          const baseCharge = firstZone ? (parseFloat(firstZone.charge) || 20) + rainAdd : (parseFloat(settings.deliveryCharge) || 40) + rainAdd;
+          const zoneTitle = firstZone ? (firstZone.nameTa || firstZone.nameEn || 'Zone 1') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '') : 'Flat Rate';
+          return { charge: baseCharge, distance: null, zoneName: zoneTitle };
         }
       }
 
-      return { charge: settings.deliveryCharge || 40, distance: null, zoneName: 'Flat Rate' };
+      const baseCharge = (parseFloat(settings.deliveryCharge) || 40) + rainAdd;
+      return { charge: baseCharge, distance: null, zoneName: 'Flat Rate' + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '') };
     }
+
+    window.getDeliveryZones = getDeliveryZones;
+    window.getDynamicDeliveryCharge = getDynamicDeliveryCharge;
 
     function updateLyoDeliveryBanner() {
       try {

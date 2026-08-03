@@ -127,15 +127,28 @@
     function fallbackShare(text) {
       copyTicketToClipboard();
       setTimeout(() => {
-        const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
-        window.open(waUrl, '_blank');
-      }, 500);
+        openWhatsAppDirect('', text);
+      }, 400);
     }
 
     let currentAdminTab = 'tab-orders';
     let adminStatusFilter = 'all';
 
     let adminOrdersPageLimit = 25;
+    let expandedOrders = {};
+    window.expandedOrders = expandedOrders;
+
+    function toggleOrderDetails(orderId) {
+      if (!orderId) return;
+      if (!window.expandedOrders) window.expandedOrders = {};
+      window.expandedOrders[orderId] = !window.expandedOrders[orderId];
+      try {
+        if (typeof renderAdminOrders === 'function') renderAdminOrders();
+      } catch(e) {
+        console.error("toggleOrderDetails error:", e);
+      }
+    }
+    window.toggleOrderDetails = toggleOrderDetails;
 
     function isPendingOrderStatus(status) {
       const norm = (status || "").toLowerCase().trim();
@@ -233,6 +246,14 @@
       }
 
       debugLog("✓ UI Refreshed");
+      if (typeof setupCloudRealtimeListeners2 === 'function') {
+        try { setupCloudRealtimeListeners2(); } catch(e) {}
+      }
+      if (typeof fetchAdminOrdersLive === 'function' && !window._hasFetchedAdminLiveInitial) {
+        window._hasFetchedAdminLiveInitial = true;
+        try { fetchAdminOrdersLive(); } catch(e) {}
+      }
+
       let orders = getDataCached('ek_orders', []);
       if (!orders || orders.length === 0) {
         orders = getData('ek_orders', []);
@@ -265,26 +286,23 @@
         return st.includes('out') || st.includes('dispatch') || st === 'on_the_way';
       }).length;
       const deliveredCount = validOrders.filter(o => isDeliveredOrderStatus(o.status)).length;
-      const cancelledCount = validOrders.filter(o => {
-        const st = String(o.status || '').toLowerCase();
-        return st.includes('cancel') || st.includes('reject');
-      }).length;
+      const cancelledCount = validOrders.filter(o => isCancelledOrderStatus(o.status)).length;
 
       const totalRevenue = validOrders
-        .filter(o => isDeliveredOrderStatus(o.status))
-        .reduce((sum, o) => sum + Number(o.totalAmount || o.total || 0), 0);
+        .filter(o => !isCancelledOrderStatus(o.status))
+        .reduce((sum, o) => sum + Number(o.totalAmount || o.grandTotal || o.total || o.payableAmount || o.finalPayable || 0), 0);
 
       const todayRevenue = todayOrders
-        .filter(o => isDeliveredOrderStatus(o.status))
-        .reduce((sum, o) => sum + Number(o.totalAmount || o.total || 0), 0);
+        .filter(o => !isCancelledOrderStatus(o.status))
+        .reduce((sum, o) => sum + Number(o.totalAmount || o.grandTotal || o.total || o.payableAmount || o.finalPayable || 0), 0);
 
       const monthRevenue = validOrders
         .filter(o => {
-          if (!isDeliveredOrderStatus(o.status)) return false;
+          if (isCancelledOrderStatus(o.status)) return false;
           const d = safeParseDate(o.createdAt);
           return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
         })
-        .reduce((sum, o) => sum + Number(o.totalAmount || o.total || 0), 0);
+        .reduce((sum, o) => sum + Number(o.totalAmount || o.grandTotal || o.total || o.payableAmount || o.finalPayable || 0), 0);
 
       const users = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : [];
       const activeCustomersCount = users.filter(u => u && u.role !== 'admin' && u.role !== 'RIDER').length || Math.max(1, new Set(validOrders.map(o => o.phone || o.userId)).size);
@@ -382,12 +400,22 @@
       if (elDelBase) elDelBase.value = settings.deliveryBasePrice !== undefined ? settings.deliveryBasePrice : 20;
       const elDelKm = document.getElementById('setting-delivery-km-multiplier');
       if (elDelKm) elDelKm.value = settings.deliveryKmMultiplier !== undefined ? settings.deliveryKmMultiplier : 12;
+
+      const elRainMode = document.getElementById('setting-rain-mode');
+      if (elRainMode) elRainMode.checked = settings.rainMode || settings.rainSurchargeEnabled || false;
+
+      const elRainCharge = document.getElementById('setting-rain-charge');
+      if (elRainCharge) elRainCharge.value = settings.rainCharge !== undefined ? settings.rainCharge : (settings.rainSurchargeFee || 20);
+
       const elMinWt = document.getElementById('setting-min-weight');
-      if (elMinWt) elMinWt.value = settings.minOrderWeight;
+      if (elMinWt) elMinWt.value = settings.minOrderWeight || 50;
       const elMinAmt = document.getElementById('setting-min-amount');
       if (elMinAmt) elMinAmt.value = settings.minOrderAmount !== undefined ? settings.minOrderAmount : 0;
-      const elMerchantUpi = document.getElementById('setting-merchant-upi');
-      if (elMerchantUpi) elMerchantUpi.value = settings.merchantUpiId || 'einsteinananth24@okaxis';
+
+      if (typeof renderAdminUpiSettings === 'function') {
+        try { renderAdminUpiSettings(); } catch(e) {}
+      }
+
       const elBdTxt = document.getElementById('admin-broadcast-text');
       if (elBdTxt) elBdTxt.value = settings.announcement || '';
 
@@ -483,8 +511,18 @@
           if (el) el.style.display = 'block';
           try { renderAdminAccountsSettings(); } catch(err) { console.error("renderAdminAccountsSettings error:", err); }
           try {
+            if (typeof initSectionCollapse === 'function') {
+              initSectionCollapse('categories', 'collapsed');
+              initSectionCollapse('carousel', 'collapsed');
+              initSectionCollapse('upi-config', 'collapsed');
+            }
+          } catch(e) {}
+          try {
             if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList();
           } catch(err) { console.error("renderAdminCategoriesList error:", err); }
+          try {
+            if (typeof renderAdminBannerList === 'function') renderAdminBannerList();
+          } catch(err) { console.error("renderAdminBannerList error:", err); }
           setTimeout(() => {
             try { initAdminZonesMap(); } catch(err) { console.error("initAdminZonesMap error:", err); }
           }, 120);
@@ -782,16 +820,73 @@
       adminStatusFilter = status;
       adminOrdersPageLimit = 25;
       document.querySelectorAll('#admin-tab-orders .filter-pills .pill').forEach(b => b.classList.remove('active'));
-      if (element) element.classList.add('active');
+      if (element) {
+        element.classList.add('active');
+      } else {
+        const targetPill = Array.from(document.querySelectorAll('#admin-tab-orders .filter-pills .pill')).find(p => {
+          const onclickAttr = p.getAttribute('onclick') || '';
+          return onclickAttr.includes(`'${status}'`) || onclickAttr.includes(`"${status}"`);
+        });
+        if (targetPill) targetPill.classList.add('active');
+      }
       renderAdminOrders();
     }
+
+    let _lastAdminOrderDoc = null;
+    let _isFetchingAdminOrderHistory = false;
+
+    async function fetchAdminOrderHistory(pageSize = 50, isLoadMore = false) {
+      if (typeof db === 'undefined' || !db) return;
+      if (_isFetchingAdminOrderHistory) return;
+      _isFetchingAdminOrderHistory = true;
+
+      try {
+        let q = db.collection('ek_orders').orderBy('createdAt', 'desc');
+        if (isLoadMore && _lastAdminOrderDoc) {
+          q = q.startAfter(_lastAdminOrderDoc);
+        }
+        q = q.limit(pageSize);
+
+        const snap = await q.get();
+        if (snap && !snap.empty) {
+          _lastAdminOrderDoc = snap.docs[snap.docs.length - 1];
+          const cloudOrders = [];
+          snap.forEach(doc => {
+            const d = doc.data();
+            if (d) {
+              cloudOrders.push({ ...d, id: doc.id || d.id });
+            }
+          });
+
+          if (cloudOrders.length > 0) {
+            const localOrders = getData('ek_orders', []) || [];
+            const mergedMap = new Map();
+            localOrders.forEach(o => { if (o && o.id) mergedMap.set(o.id, o); });
+            cloudOrders.forEach(o => mergedMap.set(o.id, o));
+            const mergedList = Array.from(mergedMap.values());
+            saveData('ek_orders', mergedList);
+            if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+
+            if (typeof renderAdminOrders === 'function') renderAdminOrders();
+            if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+          }
+        }
+      } catch(err) {
+        console.warn("[Admin Order History] Fetch failed:", err);
+      } finally {
+        _isFetchingAdminOrderHistory = false;
+      }
+    }
+    window.fetchAdminOrderHistory = fetchAdminOrderHistory;
 
     function loadMoreAdminOrders() {
       adminOrdersPageLimit += 25;
+      if (typeof fetchAdminOrderHistory === 'function') {
+        fetchAdminOrderHistory(50, true);
+      }
       renderAdminOrders();
     }
 
-    
     let isFetchingAdminOrders = false;
     async function fetchAdminOrdersLive(force = false) {
       if (isFetchingAdminOrders && !force) return;
@@ -809,7 +904,9 @@
             const cloudOrders = [];
             snap.forEach(doc => {
               const d = doc.data();
-              if (d && d.id) cloudOrders.push(d);
+              if (d) {
+                cloudOrders.push({ ...d, id: doc.id || d.id });
+              }
             });
             if (cloudOrders.length > 0) {
               const localOrders = getData("ek_orders", []);
@@ -866,17 +963,26 @@
           });
         } else if (lowerFilter === 'ready') {
           filtered = filtered.filter(o => isReadyOrderStatus(o.status));
-        } else if (lowerFilter === 'out_for_delivery' || lowerFilter === 'outfordelivery' || lowerFilter === 'dispatched') {
+        } else if (lowerFilter === 'out_for_delivery' || lowerFilter === 'outfordelivery' || lowerFilter === 'dispatched' || lowerFilter === 'delivering') {
           filtered = filtered.filter(o => {
             const st = String(o.status || '').toLowerCase();
-            return st.includes('out') || st.includes('dispatch') || st.includes('way');
+            return st.includes('out') || st.includes('dispatch') || st.includes('way') || st.includes('delivering');
           });
-        } else if (lowerFilter === 'delivered') {
+        } else if (lowerFilter === 'delivered' || lowerFilter === 'completed') {
           filtered = filtered.filter(o => isDeliveredOrderStatus(o.status));
         } else if (lowerFilter === 'cancelled' || lowerFilter === 'canceled' || lowerFilter === 'rejected') {
           filtered = filtered.filter(o => isCancelledOrderStatus(o.status));
         } else if (lowerFilter === 'refunded') {
           filtered = filtered.filter(o => String(o.status || '').toLowerCase().includes('refund'));
+        } else if (lowerFilter === 'preorder' || lowerFilter === 'preorders' || lowerFilter === 'scheduled') {
+          filtered = filtered.filter(o => {
+            const st = String(o.status || '').toLowerCase().trim();
+            return st.includes('preorder') || st.includes('pre_order') || st.includes('schedule') || o.isPreOrder === true;
+          });
+        } else if (lowerFilter === 'history' || lowerFilter === 'order_history' || lowerFilter === 'past_orders') {
+          filtered = filtered.filter(o => {
+            return isDeliveredOrderStatus(o.status) || isCancelledOrderStatus(o.status) || String(o.status || '').toLowerCase().includes('refund');
+          });
         } else {
           filtered = filtered.filter(o => (o.status || '').toLowerCase().trim() === lowerFilter);
         }
@@ -889,7 +995,11 @@
           const oCustName = (o.customerName || '').toLowerCase();
           const oPhone = (o.customerPhone || '').replace(/\D/g, '');
           const phoneMatches = cleanSearch ? oPhone.includes(cleanSearch) : false;
-          return oId.includes(search) || oCustName.includes(search) || phoneMatches || (o.customerPhone || '').includes(search);
+          const itemMatch = Array.isArray(o.items) && o.items.some(it => 
+            (it.englishName || '').toLowerCase().includes(search) || 
+            (it.tamilName || '').includes(search)
+          );
+          return oId.includes(search) || oCustName.includes(search) || phoneMatches || (o.customerPhone || '').includes(search) || itemMatch;
         });
       }
 
@@ -1202,7 +1312,7 @@ ${o.items.map((it, idx) => {
                 <a href="javascript:void(0)" onclick="openWhatsAppShareModal('${o.id}', '${o.customerPhone}', '${(o.customerName || '').replace(/'/g, "\\'")}', '${o.assignedExecutiveId || ''}', '${kotMsg}')" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(34, 197, 94, 0.08); border:1px solid rgba(34, 197, 94, 0.3); color:#22c55e; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">💚 ${currentLang === 'ta' ? 'சீட்டைப் பகிர்' : 'Share Slip'}</a>
 
                 <button class="btn" style="padding:8px; font-size:11px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#fff; border-radius:8px; cursor:pointer;" onclick="printCustomerInvoice('${o.id}')">📄 Print Bill</button>
-                <a href="javascript:void(0)" onclick="openWhatsAppDirect('${o.customerPhone}', decodeURIComponent('${waReadyMsg}'))" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.3); color:#3b82f6; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">📢 Ready Prompt</a>
+                <button class="btn" style="padding:8px; font-size:11px; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); color:#f59e0b; border-radius:8px; cursor:pointer; font-weight:700;" onclick="promptEditOrderDeliveryOrEta('${o.id}')">🚚 Fee / ETA</button>
               </div>
 
               <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; border-top: 1px solid var(--border-color); padding-top:8px;">
@@ -1230,10 +1340,8 @@ ${o.items.map((it, idx) => {
         `;
       }
 
-      if (list._lastRenderedHtml !== listHtml) {
-        list._lastRenderedHtml = listHtml;
-        list.innerHTML = listHtml;
-      }
+      list._lastRenderedHtml = listHtml;
+      list.innerHTML = listHtml;
     }
 
     function changeOrderStatus(id, nextStatus) {
@@ -1531,6 +1639,9 @@ ${o.items.map((it, idx) => {
         sendFcmPushNotification(orders[idx], oldStatus, orders[idx].status);
         if (exec) {
           sendFcmNotificationToRider(orders[idx], exec);
+          if (typeof sendFcmNotificationForRiderAssignment === 'function') {
+            sendFcmNotificationForRiderAssignment(orders[idx], exec);
+          }
         }
       } catch (fcmErr) {
         console.warn("FCM push notify skipped or exception:", fcmErr);
@@ -1710,9 +1821,7 @@ ${o.items.map((it, idx) => {
       let targetPhone = '';
 
       if (type === 'contact_selector') {
-        const encodedText = encodeURIComponent(msg);
-        const waUrl = `https://api.whatsapp.com/send?text=${encodedText}`;
-        window.location.href = waUrl;
+        openWhatsAppDirect('', msg);
         closeWhatsAppShareModalDetail();
         return;
       } else if (type === 'customer') {
@@ -1876,6 +1985,14 @@ ${o.items.map((it, idx) => {
           };
           orders.push(updatedOrderObject);
           saveData('ek_orders', orders);
+        }
+
+        try {
+          if (typeof sendFcmPushNotification === 'function') {
+            sendFcmPushNotification(updatedOrderObject, cloudOrder.status || 'pending', 'rejected', reasonText);
+          }
+        } catch (fcmErr) {
+          console.warn("FCM push notify failed on cancel:", fcmErr);
         }
 
         showToast(currentLang === 'ta' ? "நிர்வாகியால் ஆர்டர் வெற்றிகரமாக ரத்து செய்யப்பட்டது! 🛑" : "Order cancelled by Admin successfully! 🛑", "error");
@@ -2065,6 +2182,7 @@ ${o.items.map((it, idx) => {
       p.isActive = true;
       p.status = "active";
       p.isHidden = false;
+      if (p.isFreeDeliveryEligible === undefined) p.isFreeDeliveryEligible = false;
       updateProductAvailability(p);
     }
 
@@ -2085,6 +2203,7 @@ ${o.items.map((it, idx) => {
         const foodType = document.querySelector('input[name="add-prod-foodtype"]:checked')?.value || 'veg';
 
         const isSpecial = document.getElementById('add-prod-special')?.checked || false;
+        const isFreeDeliveryEligible = document.getElementById('add-prod-free-delivery')?.checked || false;
 
         const isScheduled = document.getElementById('add-prod-scheduled') ? document.getElementById('add-prod-scheduled').checked : false;
         const scheduleStart = isScheduled ? (document.getElementById('add-prod-schedule-start')?.value || '06:00') : '';
@@ -2171,6 +2290,7 @@ ${o.items.map((it, idx) => {
               shortDescription, foodType,
               imageUrl: finalImg,
               isSpecial,
+              isFreeDeliveryEligible,
               isScheduled, scheduleStart, scheduleEnd,
               availabilityStart: scheduleStart, availabilityEnd: scheduleEnd,
               forceOutOfStock,
@@ -2192,6 +2312,7 @@ ${o.items.map((it, idx) => {
             shortDescription, foodType,
             imageUrl: finalImg,
             isSpecial,
+            isFreeDeliveryEligible,
             isScheduled, scheduleStart, scheduleEnd,
             availabilityStart: scheduleStart, availabilityEnd: scheduleEnd,
             forceOutOfStock,
@@ -2224,6 +2345,12 @@ ${o.items.map((it, idx) => {
         }
 
         saveData('ek_products', products);
+        invalidateDataCache('ek_products');
+        window._lastProductsHash = '';
+        if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
+        if (typeof renderHomeScreenProducts === 'function') {
+          renderHomeScreenProducts(true);
+        }
 
         if (oldImageUrl && oldImageUrl !== finalImg) {
           deleteStorageImageByUrl(oldImageUrl);
@@ -2395,6 +2522,8 @@ ${o.items.map((it, idx) => {
       document.getElementById('edit-prod-url').value = (p.imageUrl && p.imageUrl.startsWith('data:')) ? '' : (p.imageUrl || '');
 
       document.getElementById('edit-prod-special').checked = p.isSpecial || false;
+      const editFreeDel = document.getElementById('edit-prod-free-delivery');
+      if (editFreeDel) editFreeDel.checked = Boolean(p.isFreeDeliveryEligible);
 
       const editShortDesc = document.getElementById('edit-prod-short-desc');
       if (editShortDesc) {
@@ -2461,6 +2590,9 @@ ${o.items.map((it, idx) => {
         previewContainer.style.display = 'none';
       }
 
+      const addFreeDel = document.getElementById('add-prod-free-delivery');
+      if (addFreeDel) addFreeDel.checked = false;
+
       toggleProductScheduleFields(false, 'add-prod');
 
       document.getElementById('prod-submit-btn').innerText = "Save Product ✓";
@@ -2488,6 +2620,7 @@ ${o.items.map((it, idx) => {
         const foodType = document.querySelector('input[name="edit-prod-foodtype"]:checked')?.value || 'veg';
 
         const isSpecial = document.getElementById('edit-prod-special')?.checked || false;
+        const isFreeDeliveryEligible = document.getElementById('edit-prod-free-delivery')?.checked || false;
 
         const isScheduled = document.getElementById('edit-prod-scheduled') ? document.getElementById('edit-prod-scheduled').checked : false;
         const scheduleStart = isScheduled ? (document.getElementById('edit-prod-schedule-start')?.value || '06:00') : '';
@@ -2570,6 +2703,7 @@ ${o.items.map((it, idx) => {
           shortDescription, foodType,
           imageUrl: finalImg,
           isSpecial,
+          isFreeDeliveryEligible,
           isScheduled, scheduleStart, scheduleEnd,
           availabilityStart: scheduleStart, availabilityEnd: scheduleEnd,
           forceOutOfStock,
@@ -2671,6 +2805,12 @@ ${o.items.map((it, idx) => {
           const filtered = products.filter(p => p.id !== id);
 
           saveData('ek_products', filtered);
+          invalidateDataCache('ek_products');
+          if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
+          window._lastProductsHash = '';
+          if (typeof renderHomeScreenProducts === 'function') {
+            renderHomeScreenProducts(true);
+          }
 
           if (typeof db !== 'undefined' && db) {
             showToast("Deleting product from cloud database...", "info");
@@ -3575,6 +3715,7 @@ ${o.items.map((it, idx) => {
 
     function loadAdminSettings() {
       try {
+        if (typeof renderAdminUpiSettings === 'function') renderAdminUpiSettings();
         if (typeof loadAdminSmsSettingsUI === 'function') loadAdminSmsSettingsUI();
         if (typeof renderAdminAccountsSettings === 'function') renderAdminAccountsSettings();
         if (typeof loadAdminLyoAiConfig === 'function') loadAdminLyoAiConfig();
@@ -3584,6 +3725,95 @@ ${o.items.map((it, idx) => {
       }
     }
 
+    function renderAdminUpiSettings(force = false) {
+      if (typeof initializeOrFixUpiSettings === 'function') {
+        try { initializeOrFixUpiSettings(); } catch(e) {}
+      }
+
+      const settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : {};
+      const upiSettings = settings.upiSettings || { upiEnabled: true, currency: 'INR', accounts: [] };
+
+      const elGlobalEnabled = document.getElementById('upi-global-enabled');
+      if (elGlobalEnabled) {
+        elGlobalEnabled.value = String(upiSettings.upiEnabled !== false);
+      }
+
+      const badgeEl = document.getElementById('admin-upi-status-badge');
+      if (badgeEl) {
+        if (upiSettings.upiEnabled !== false) {
+          badgeEl.innerText = 'Enabled';
+          badgeEl.style.background = 'rgba(16,185,129,0.1)';
+          badgeEl.style.borderColor = 'rgba(16,185,129,0.2)';
+          badgeEl.style.color = '#10b981';
+        } else {
+          badgeEl.innerText = 'Disabled';
+          badgeEl.style.background = 'rgba(239,68,68,0.1)';
+          badgeEl.style.borderColor = 'rgba(239,68,68,0.2)';
+          badgeEl.style.color = '#ef4444';
+        }
+      }
+
+      const container = document.getElementById('upi-accounts-container');
+      if (container) {
+        const accounts = upiSettings.accounts || [
+          { id: 'primary', label: 'Primary UPI', upiId: '8778148899@ptyes', merchantName: 'Edappadi Kadai', displayName: 'Anantharaj Primary', note: 'Order {id} - Edappadi Kadai', isActive: true },
+          { id: 'backup1', label: 'Backup UPI 1', upiId: 'einsteinananth24-4@okicici', merchantName: 'Edappadi Kadai', displayName: 'Backup UPI 1', note: 'Order {id} - Edappadi Kadai', isActive: true },
+          { id: 'backup2', label: 'Backup UPI 2', upiId: '', merchantName: 'Edappadi Kadai', displayName: 'Backup UPI 2', note: 'Order {id} - Edappadi Kadai', isActive: false }
+        ];
+
+        container.innerHTML = accounts.map(acc => {
+          const isPrimary = acc.id === 'primary';
+          const isBackup1 = acc.id === 'backup1';
+          const badgeText = isPrimary ? '🥇 Primary UPI Account / முதன்மை கணக்கு' : (isBackup1 ? '🥈 Failover Backup 1 / மாற்று கணக்கு 1' : '🥉 Failover Backup 2 / மாற்று கணக்கு 2');
+          const accentColor = isPrimary ? '#c084fc' : (isBackup1 ? '#38bdf8' : '#f59e0b');
+
+          return `
+            <div style="background: rgba(15,23,42,0.6); border: 1.5px solid ${accentColor}40; border-radius: 12px; padding: 14px; position: relative;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+                <span style="font-size: 12.5px; font-weight: 800; color: ${accentColor}; display: flex; align-items: center; gap: 6px;">
+                  ${badgeText}
+                </span>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; font-weight: 700; color: #e2e8f0;">
+                  <span>Active:</span>
+                  <input type="checkbox" id="upi-acc-${acc.id}-active" ${acc.isActive !== false ? 'checked' : ''} onchange="saveAdminUpiSettings()" style="width: 18px; height: 18px; accent-color: ${accentColor}; cursor: pointer;">
+                </label>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <label style="font-size: 11px; font-weight: 700; color: #94a3b8;">UPI VPA / ID (e.g. username@bank)</label>
+                  <input type="text" id="upi-acc-${acc.id}-upi-id" value="${(acc.upiId || '').replace(/"/g, '&quot;')}" placeholder="e.g. 8778148899@ptyes" class="form-control" style="font-size: 12.5px; height: 38px; font-weight: 700; background: #000; color: ${accentColor}; border: 1px solid ${accentColor}50;" onchange="saveAdminUpiSettings(); updateAdminUpiQrPreview();">
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <label style="font-size: 11px; font-weight: 700; color: #94a3b8;">Merchant Name / வணிகர் பெயர்</label>
+                  <input type="text" id="upi-acc-${acc.id}-merchant-name" value="${(acc.merchantName || 'Edappadi Kadai').replace(/"/g, '&quot;')}" placeholder="e.g. Edappadi Kadai" class="form-control" style="font-size: 12px; height: 38px; background: #000;" onchange="saveAdminUpiSettings(); updateAdminUpiQrPreview();">
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <label style="font-size: 10.5px; color: #64748b;">Display Label / லேபிள்</label>
+                  <input type="text" id="upi-acc-${acc.id}-display-name" value="${(acc.displayName || '').replace(/"/g, '&quot;')}" placeholder="Display Name" class="form-control" style="font-size: 11.5px; height: 36px; background: #0f172a;" onchange="saveAdminUpiSettings()">
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <label style="font-size: 10.5px; color: #64748b;">Txn Note Template ({id})</label>
+                  <input type="text" id="upi-acc-${acc.id}-note" value="${(acc.note || 'Order {id} - Edappadi Kadai').replace(/"/g, '&quot;')}" placeholder="Order {id} - Edappadi Kadai" class="form-control" style="font-size: 11.5px; height: 36px; background: #0f172a;" onchange="saveAdminUpiSettings()">
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      const elUpiQrUrl = document.getElementById('setting-upi-qr-url');
+      if (elUpiQrUrl) elUpiQrUrl.value = settings.upiQrUrl || '';
+
+      if (typeof updateAdminUpiQrPreview === 'function') {
+        try { updateAdminUpiQrPreview(); } catch(e) {}
+      }
+    }
+    window.renderAdminUpiSettings = renderAdminUpiSettings;
+
     function saveAdminSettings() {
       try {
         if (typeof saveAdminSmsConfig === 'function') saveAdminSmsConfig();
@@ -3592,3 +3822,523 @@ ${o.items.map((it, idx) => {
         console.warn("saveAdminSettings error:", e);
       }
     }
+
+    function promptEditOrderDeliveryOrEta(orderId) {
+      const orders = getDataCached('ek_orders', []);
+      const o = orders.find(item => item && item.id === orderId);
+      if (!o) {
+        showToast("Order not found", "error");
+        return;
+      }
+      const currentFee = o.deliveryFee !== undefined ? o.deliveryFee : (o.deliveryCharge !== undefined ? o.deliveryCharge : 0);
+      const currentEta = o.estimatedTime || o.eta || o.prepTime || 30;
+
+      const newFeeInput = prompt(currentLang === 'ta' ? `புதிய டெலிவரி கட்டணத்தை உள்ளிடவும் (தற்போது: ₹${currentFee}):` : `Enter new delivery charge in ₹ (current: ₹${currentFee}):`, currentFee);
+      if (newFeeInput === null) return;
+      const newFee = parseFloat(newFeeInput);
+      if (isNaN(newFee) || newFee < 0) {
+        showToast("Invalid delivery fee entered", "error");
+        return;
+      }
+
+      const newEtaInput = prompt(currentLang === 'ta' ? `எதிர்பார்க்கப்படும் நேரத்தை நிமிடங்களில் உள்ளிடவும் (தற்போது: ${currentEta} நிமிடம்):` : `Enter new ETA in minutes (current: ${currentEta} mins):`, currentEta);
+      if (newEtaInput === null) return;
+      const newEta = parseInt(newEtaInput);
+      if (isNaN(newEta) || newEta < 0) {
+        showToast("Invalid ETA entered", "error");
+        return;
+      }
+
+      updateOrderDeliveryFeeOrEta(orderId, newFee, newEta);
+    }
+
+    async function updateOrderDeliveryFeeOrEta(orderId, newDeliveryCharge, newEtaMinutes) {
+      try {
+        const orders = getData('ek_orders', []);
+        const idx = orders.findIndex(o => o && o.id === orderId);
+        if (idx === -1) {
+          showToast("Order not found", "error");
+          return;
+        }
+
+        const o = orders[idx];
+        const oldFee = o.deliveryFee !== undefined ? o.deliveryFee : (o.deliveryCharge !== undefined ? o.deliveryCharge : 0);
+        const oldEta = o.estimatedTime || o.eta || 30;
+
+        o.deliveryFee = newDeliveryCharge;
+        o.deliveryCharge = newDeliveryCharge;
+        o.estimatedTime = newEtaMinutes;
+        o.eta = newEtaMinutes;
+        o.updatedAt = new Date().toISOString();
+
+        saveData('ek_orders', orders);
+
+        if (typeof db !== 'undefined' && db) {
+          await db.collection('ek_orders').doc(orderId).set({
+            deliveryFee: newDeliveryCharge,
+            deliveryCharge: newDeliveryCharge,
+            estimatedTime: newEtaMinutes,
+            eta: newEtaMinutes,
+            updatedAt: new Date().toISOString()
+          }, { merge: true }).catch(err => console.warn("Firestore order fee/eta update error:", err));
+        }
+
+        showToast(currentLang === 'ta' ? "டெலிவரி கட்டணம் & நேரம் புதுப்பிக்கப்பட்டது! 🚚" : "Delivery fee & ETA updated successfully! 🚚", "success");
+
+        try {
+          if (typeof sendFcmNotificationForDeliveryOrEtaChange === 'function') {
+            sendFcmNotificationForDeliveryOrEtaChange(o, oldFee, newDeliveryCharge, oldEta, newEtaMinutes);
+          }
+        } catch (fcmErr) {
+          console.warn("FCM delivery/eta notification error:", fcmErr);
+        }
+
+        if (typeof renderAdminDashboard === 'function') {
+          renderAdminDashboard();
+        }
+      } catch (err) {
+        console.error("Failed to update order delivery fee / ETA:", err);
+        showToast("Failed to update: " + err.message, "error");
+      }
+    }
+
+    window.promptEditOrderDeliveryOrEta = promptEditOrderDeliveryOrEta;
+    window.updateOrderDeliveryFeeOrEta = updateOrderDeliveryFeeOrEta;
+
+    // --- ZONE-BASED DELIVERY PRICING MANAGEMENT ---
+    function updateDeliveryModeUI() {
+      const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
+      const dynDelEl = document.getElementById("setting-dynamic-delivery");
+      const isDynamic = dynDelEl ? dynDelEl.checked : (settings.useDynamicDistancePricing !== undefined ? settings.useDynamicDistancePricing : true);
+
+      const flatGroup = document.getElementById("group-delivery-flat-config");
+      const dynGroup = document.getElementById("group-delivery-dynamic-config");
+      const btnFlat = document.getElementById("btn-delivery-mode-flat");
+      const btnDyn = document.getElementById("btn-delivery-mode-dynamic");
+
+      if (flatGroup) flatGroup.style.display = isDynamic ? 'none' : 'block';
+      if (dynGroup) dynGroup.style.display = isDynamic ? 'block' : 'none';
+
+      if (btnFlat && btnDyn) {
+        if (isDynamic) {
+          btnFlat.style.background = 'transparent';
+          btnFlat.style.color = 'var(--text-secondary)';
+          btnDyn.style.background = 'var(--accent-orange)';
+          btnDyn.style.color = '#000';
+        } else {
+          btnFlat.style.background = 'var(--accent-orange)';
+          btnFlat.style.color = '#000';
+          btnDyn.style.background = 'transparent';
+          btnDyn.style.color = 'var(--text-secondary)';
+        }
+      }
+    }
+
+    function toggleDeliveryMode(mode) {
+      const dynDelEl = document.getElementById("setting-dynamic-delivery");
+      if (dynDelEl) {
+        if (mode === 'flat') {
+          dynDelEl.checked = false;
+        } else if (mode === 'dynamic') {
+          dynDelEl.checked = true;
+        } else {
+          dynDelEl.checked = !dynDelEl.checked;
+        }
+      }
+
+      updateDeliveryModeUI();
+      if (typeof saveAdminSettings === 'function') {
+        saveAdminSettings();
+      }
+
+      const isDyn = dynDelEl ? dynDelEl.checked : false;
+      if (isDyn) {
+        renderAdminZonesTable();
+        initAdminZonesMap();
+      }
+    }
+
+    function renderAdminZonesTable() {
+      const container = document.getElementById('admin-zones-table');
+      if (!container) return;
+
+      const getZonesFn = typeof getDeliveryZones === 'function' ? getDeliveryZones : function() {
+        return getData('ek_delivery_zones', getData('ek_settings')?.deliveryZones || []);
+      };
+      const zones = getZonesFn();
+
+      if (!zones || !Array.isArray(zones) || zones.length === 0) {
+        container.innerHTML = `<div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 11px; background: rgba(0,0,0,0.2); border-radius: 8px;">எந்த மண்டலமும் அமைக்கப்படவில்லை. கீழே உள்ள படிவத்தைப் பயன்படுத்தி புதிய மண்டலத்தைச் சேர்க்கவும்.</div>`;
+        return;
+      }
+
+      const sortedZones = [...zones].sort((a, b) => parseFloat(a.maxKm) - parseFloat(b.maxKm));
+
+      container.innerHTML = sortedZones.map((z, idx) => {
+        const prevMaxKm = idx > 0 ? sortedZones[idx - 1].maxKm : 0;
+        const nameTa = z.nameTa || z.nameEn || z.name || 'Zone ' + (idx + 1);
+        const nameEn = z.nameEn || z.name || '';
+        const maxKm = parseFloat(z.maxKm) || 0;
+        const charge = parseFloat(z.charge) || 0;
+
+        return `
+          <div class="zone-item-card" style="background: rgba(15,23,42,0.6); border: 1.2px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <div style="min-width: 0; flex: 1;">
+                <div style="font-weight: 850; font-size: 13px; color: #ffffff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span>📍 ${nameTa}</span>
+                  ${nameEn && nameEn !== nameTa ? `<span style="font-weight: 500; font-size: 11px; color: var(--text-secondary);">(${nameEn})</span>` : ''}
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                  தூரம்: ${prevMaxKm} - ${maxKm} கி.மீ
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+                <span style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 11px;">
+                  ${maxKm} Km Limit
+                </span>
+                <span style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 3px 8px; border-radius: 6px; font-weight: 850; font-size: 12px;">
+                  ₹${charge}
+                </span>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 6px; justify-content: flex-end; width: 100%;">
+              <button type="button" class="btn" style="padding: 4px 10px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,0.06); color: #fff; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;" onclick="toggleZoneEditForm('${z.id}')">
+                <span>⚙️ Edit / திருத்து</span>
+              </button>
+              <button type="button" class="btn" style="padding: 4px 10px; font-size: 11px; font-weight: 700; background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;" onclick="deleteDeliveryZone('${z.id}')">
+                <span>🗑️ Delete</span>
+              </button>
+            </div>
+
+            <div id="edit-zone-form-${z.id}" style="display: none; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px; margin-top: 2px; flex-direction: column; gap: 6px; width: 100%;">
+              <div style="display: flex; gap: 4px;">
+                <input type="text" id="edit-zone-en-${z.id}" value="${nameEn.replace(/"/g, '&quot;')}" placeholder="Name (English)" class="form-control" style="flex: 1; font-size: 11px; height: 32px; background: #000;">
+                <input type="text" id="edit-zone-ta-${z.id}" value="${nameTa.replace(/"/g, '&quot;')}" placeholder="Name (Tamil)" class="form-control" style="flex: 1; font-size: 11px; height: 32px; background: #000;">
+              </div>
+              <div style="display: flex; gap: 4px;">
+                <input type="number" id="edit-zone-max-${z.id}" value="${maxKm}" placeholder="Max Km Limit" class="form-control" style="flex: 1; font-size: 11px; height: 32px; background: #000;" step="0.1">
+                <input type="number" id="edit-zone-charge-${z.id}" value="${charge}" placeholder="Charge (₹)" class="form-control" style="flex: 1; font-size: 11px; height: 32px; background: #000;">
+              </div>
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <button type="button" class="btn btn-primary" style="flex: 1; height: 32px; font-size: 11px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff;" onclick="saveEditedDeliveryZone('${z.id}')">
+                  💾 Save / சேமி
+                </button>
+                <button type="button" class="btn" style="flex: 1; height: 32px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,0.06); color: #ccc; border: 1px solid rgba(255,255,255,0.12);" onclick="toggleZoneEditForm('${z.id}')">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function toggleZoneEditForm(zoneId) {
+      const formEl = document.getElementById(`edit-zone-form-${zoneId}`);
+      if (formEl) {
+        const isHidden = formEl.style.display === 'none' || !formEl.style.display;
+        formEl.style.display = isHidden ? 'flex' : 'none';
+      }
+    }
+
+    async function handleAddDeliveryZone(e) {
+      if (e) e.preventDefault();
+
+      const nameEl = document.getElementById('new-zone-name');
+      const maxEl = document.getElementById('new-zone-max');
+      const chargeEl = document.getElementById('new-zone-charge');
+
+      if (!nameEl || !maxEl || !chargeEl) return;
+
+      const name = nameEl.value.trim();
+      const maxKm = parseFloat(maxEl.value);
+      const charge = parseFloat(chargeEl.value);
+
+      if (!name) {
+        if (typeof showToast === 'function') showToast("மண்டல பெயர் குறிப்பிடவும்! / Enter zone name", "warning");
+        return;
+      }
+      if (isNaN(maxKm) || maxKm <= 0) {
+        if (typeof showToast === 'function') showToast("சரியான தூர எல்லையைக் குறிப்பிடவும் (Km limit)! / Invalid Km limit", "warning");
+        return;
+      }
+      if (isNaN(charge) || charge < 0) {
+        if (typeof showToast === 'function') showToast("சரியான கட்டணத்தைக் குறிப்பிடவும்! / Invalid charge", "warning");
+        return;
+      }
+
+      const newZone = {
+        id: 'zone_' + Date.now(),
+        nameEn: name,
+        nameTa: name,
+        maxKm: maxKm,
+        charge: charge,
+        updatedAt: new Date().toISOString()
+      };
+
+      const getZonesFn = typeof getDeliveryZones === 'function' ? getDeliveryZones : function() { return getData('ek_delivery_zones', []); };
+      const currentZones = getZonesFn();
+      const updatedZones = [...currentZones, newZone].sort((a, b) => parseFloat(a.maxKm) - parseFloat(b.maxKm));
+
+      saveData('ek_delivery_zones', updatedZones);
+
+      const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
+      settings.deliveryZones = updatedZones;
+      saveData('ek_settings', settings);
+
+      if (typeof db !== 'undefined' && db) {
+        try {
+          await db.collection('ek_delivery_zones').doc(newZone.id).set(cleanFirestoreData(newZone));
+          await db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true });
+          await db.collection('ek_settings').doc('global').set(cleanFirestoreData(settings), { merge: true });
+        } catch (err) {
+          console.warn("Firestore delivery zone write notice:", err);
+        }
+      }
+
+      nameEl.value = '';
+      maxEl.value = '';
+      chargeEl.value = '';
+
+      renderAdminZonesTable();
+      initAdminZonesMap();
+
+      if (typeof showToast === 'function') showToast("புதிய விநியோக மண்டலம் சேர்க்கப்பட்டது! ✨", "success");
+    }
+
+    async function saveEditedDeliveryZone(zoneId) {
+      const enEl = document.getElementById(`edit-zone-en-${zoneId}`);
+      const taEl = document.getElementById(`edit-zone-ta-${zoneId}`);
+      const maxEl = document.getElementById(`edit-zone-max-${zoneId}`);
+      const chargeEl = document.getElementById(`edit-zone-charge-${zoneId}`);
+
+      if (!enEl || !maxEl || !chargeEl) return;
+
+      const nameEn = enEl.value.trim();
+      const nameTa = taEl ? taEl.value.trim() : nameEn;
+      const maxKm = parseFloat(maxEl.value);
+      const charge = parseFloat(chargeEl.value);
+
+      if (!nameEn && !nameTa) {
+        if (typeof showToast === 'function') showToast("மண்டல பெயர் குறிப்பிடவும்!", "warning");
+        return;
+      }
+      if (isNaN(maxKm) || maxKm <= 0) {
+        if (typeof showToast === 'function') showToast("சரியான தூர எல்லையைக் குறிப்பிடவும்!", "warning");
+        return;
+      }
+      if (isNaN(charge) || charge < 0) {
+        if (typeof showToast === 'function') showToast("சரியான கட்டணத்தைக் குறிப்பிடவும்!", "warning");
+        return;
+      }
+
+      const getZonesFn = typeof getDeliveryZones === 'function' ? getDeliveryZones : function() { return getData('ek_delivery_zones', []); };
+      const zones = getZonesFn();
+      const idx = zones.findIndex(z => z.id === zoneId);
+      if (idx !== -1) {
+        zones[idx] = {
+          ...zones[idx],
+          nameEn: nameEn || nameTa,
+          nameTa: nameTa || nameEn,
+          maxKm: maxKm,
+          charge: charge,
+          updatedAt: new Date().toISOString()
+        };
+
+        zones.sort((a, b) => parseFloat(a.maxKm) - parseFloat(b.maxKm));
+
+        saveData('ek_delivery_zones', zones);
+
+        const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
+        settings.deliveryZones = zones;
+        saveData('ek_settings', settings);
+
+        if (typeof db !== 'undefined' && db) {
+          try {
+            await db.collection('ek_delivery_zones').doc(zoneId).set(cleanFirestoreData(zones[idx]));
+            await db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true });
+            await db.collection('ek_settings').doc('global').set(cleanFirestoreData(settings), { merge: true });
+          } catch (err) {
+            console.warn("Firestore zone edit write notice:", err);
+          }
+        }
+
+        renderAdminZonesTable();
+        initAdminZonesMap();
+
+        if (typeof showToast === 'function') showToast("மண்டல தகவல்கள் புதுப்பிக்கப்பட்டன! 💾", "success");
+      }
+    }
+
+    async function deleteDeliveryZone(zoneId) {
+      if (!confirm("இந்த மண்டலத்தை நிச்சயமாக நீக்க விரும்புகிறீர்களா?")) return;
+
+      const getZonesFn = typeof getDeliveryZones === 'function' ? getDeliveryZones : function() { return getData('ek_delivery_zones', []); };
+      const zones = getZonesFn().filter(z => z.id !== zoneId);
+
+      saveData('ek_delivery_zones', zones);
+
+      const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
+      settings.deliveryZones = zones;
+      saveData('ek_settings', settings);
+
+      if (typeof db !== 'undefined' && db) {
+        try {
+          await db.collection('ek_delivery_zones').doc(zoneId).delete();
+          await db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true });
+          await db.collection('ek_settings').doc('global').set(cleanFirestoreData(settings), { merge: true });
+        } catch (err) {
+          console.warn("Firestore zone delete notice:", err);
+        }
+      }
+
+      renderAdminZonesTable();
+      initAdminZonesMap();
+
+      if (typeof showToast === 'function') showToast("மண்டலம் நீக்கப்பட்டது 🗑️", "info");
+    }
+
+    async function applyDeliveryZoneTemplate(templateName) {
+      const selectEl = document.getElementById('select-delivery-templates');
+      const chosen = templateName || (selectEl ? selectEl.value : '');
+
+      if (!chosen) {
+        if (typeof showToast === 'function') showToast("தயவுசெய்து ஒரு டெம்ப்ளேட்டைத் தேர்ந்தெடுக்கவும்! / Select a template", "warning");
+        return;
+      }
+
+      let templateZones = [];
+      if (chosen === 'compact') {
+        templateZones = [
+          { id: 'zone_compact_1', nameEn: 'Edappadi Core & Bus Stand', nameTa: 'எடப்பாடி மையம் & பஸ் ஸ்டாண்ட்', maxKm: 2.5, charge: 20 },
+          { id: 'zone_compact_2', nameEn: 'Bypass & Poolampatti Road', nameTa: 'பைபாஸ் & பூலாம்பட்டி ரோடு', maxKm: 5.0, charge: 40 },
+          { id: 'zone_compact_3', nameEn: 'Sankari Road & Outskirts', nameTa: 'சங்ககிரி ரோடு & வெளிப்புறம்', maxKm: 12.0, charge: 80 }
+        ];
+      } else if (chosen === 'standard') {
+        templateZones = [
+          { id: 'zone_std_1', nameEn: 'Inner Wards Circle', nameTa: 'உள் வார்டு வட்டம்', maxKm: 3.0, charge: 25 },
+          { id: 'zone_std_2', nameEn: 'Outer Ring & Suburbs', nameTa: 'வெளி வளையம் & புறநகர்', maxKm: 7.0, charge: 50 },
+          { id: 'zone_std_3', nameEn: 'Extended Rural Wards', nameTa: 'விரிவாக்கப்பட்ட கிராமப்புற வார்டுகள்', maxKm: 15.0, charge: 90 }
+        ];
+      } else if (chosen === 'metro') {
+        templateZones = [
+          { id: 'zone_metro_1', nameEn: 'City Limits', nameTa: 'நகர எல்லை', maxKm: 4.0, charge: 30 },
+          { id: 'zone_metro_2', nameEn: 'Suburban Hubs', nameTa: 'புறநகர் மையங்கள்', maxKm: 8.0, charge: 60 },
+          { id: 'zone_metro_3', nameEn: 'Regional Highway Belt', nameTa: 'பிராந்திய நெடுஞ்சாலை பகுதி', maxKm: 20.0, charge: 120 }
+        ];
+      }
+
+      if (templateZones.length === 0) return;
+
+      saveData('ek_delivery_zones', templateZones);
+
+      const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
+      settings.deliveryZones = templateZones;
+      saveData('ek_settings', settings);
+
+      if (typeof db !== 'undefined' && db) {
+        try {
+          for (const z of templateZones) {
+            await db.collection('ek_delivery_zones').doc(z.id).set(cleanFirestoreData(z));
+          }
+          await db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true });
+          await db.collection('ek_settings').doc('global').set(cleanFirestoreData(settings), { merge: true });
+        } catch (err) {
+          console.warn("Firestore template application notice:", err);
+        }
+      }
+
+      renderAdminZonesTable();
+      initAdminZonesMap();
+
+      if (typeof showToast === 'function') showToast(`டெம்ப்ளேட் (${chosen.toUpperCase()}) வெற்றிகரமாகப் பயன்படுத்தப்பட்டது! ⚡`, "success");
+    }
+
+    function initAdminZonesMap(resetCenter = false) {
+      const mapContainer = document.getElementById('admin-zones-leaflet-map');
+      if (!mapContainer) return;
+
+      if (typeof L === 'undefined') {
+        mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-size: 11px;">📍 எடப்பாடி விநியோக பகுதி வரைபடம் தயார்</div>';
+        return;
+      }
+
+      try {
+        if (window._adminZonesMapInstance) {
+          try { window._adminZonesMapInstance.remove(); } catch(e) {}
+          window._adminZonesMapInstance = null;
+        }
+        if (mapContainer._leaflet_id) {
+          try { mapContainer._leaflet_id = null; } catch(e) {}
+        }
+
+        const storeLat = 11.5815;
+        const storeLng = 77.8488;
+
+        const map = L.map('admin-zones-leaflet-map').setView([storeLat, storeLng], 12);
+        window._adminZonesMapInstance = map;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 18,
+          attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        L.marker([storeLat, storeLng]).addTo(map)
+          .bindPopup('<b style="color:#000;">🏪 எடப்பாடி கடை மையக் கிளை</b><br><span style="color:#333; font-size:11px;">Edappadi Kadai Central Store Hub</span>');
+
+        const getZonesFn = typeof getDeliveryZones === 'function' ? getDeliveryZones : function() { return getData('ek_delivery_zones', []); };
+        const zones = getZonesFn();
+        const sortedZones = [...zones].sort((a, b) => parseFloat(b.maxKm) - parseFloat(a.maxKm));
+        const colors = ['#ec4899', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6'];
+
+        sortedZones.forEach((z, i) => {
+          const radiusMeters = parseFloat(z.maxKm) * 1000;
+          const color = colors[i % colors.length];
+          L.circle([storeLat, storeLng], {
+            radius: radiusMeters,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.12,
+            weight: 2
+          }).addTo(map).bindPopup(`<b style="color:#000;">${z.nameTa || z.nameEn}</b><br><span style="color:#333; font-size:11px;">வரம்பு: ${z.maxKm} Km | கட்டணம்: ₹${z.charge}</span>`);
+        });
+
+        setTimeout(() => {
+          if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
+            window._adminZonesMapInstance.invalidateSize();
+          }
+        }, 150);
+
+        setTimeout(() => {
+          if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
+            window._adminZonesMapInstance.invalidateSize();
+          }
+        }, 400);
+
+      } catch(mapErr) {
+        console.error("initAdminZonesMap error:", mapErr);
+        mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-size: 11px;">📍 எடப்பாடி விநியோக பகுதி வரைபடம் தயார்</div>';
+      }
+    }
+
+    function renderAdminDeliveryZones() {
+      updateDeliveryModeUI();
+      renderAdminZonesTable();
+      setTimeout(() => {
+        initAdminZonesMap();
+      }, 100);
+    }
+
+    window.updateDeliveryModeUI = updateDeliveryModeUI;
+    window.toggleDeliveryMode = toggleDeliveryMode;
+    window.renderAdminZonesTable = renderAdminZonesTable;
+    window.toggleZoneEditForm = toggleZoneEditForm;
+    window.handleAddDeliveryZone = handleAddDeliveryZone;
+    window.saveEditedDeliveryZone = saveEditedDeliveryZone;
+    window.deleteDeliveryZone = deleteDeliveryZone;
+    window.applyDeliveryZoneTemplate = applyDeliveryZoneTemplate;
+    window.initAdminZonesMap = initAdminZonesMap;
+    window.renderAdminDeliveryZones = renderAdminDeliveryZones;
+    window.fetchAdminOrdersLive = fetchAdminOrdersLive;

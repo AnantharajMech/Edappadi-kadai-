@@ -445,9 +445,12 @@
 
       // 2. Selected Customer
       if (item.targetAudience === 'selected' && item.targetUserId) {
-        let usersList = getData('ek_users', []);
-        const targetUser = usersList.find(u => u && (u.id === item.targetUserId || u.phone === item.targetUserId));
-        const targetToken = targetUser ? (targetUser.fcmToken || targetUser.realFcmToken) : item.targetUserId;
+        let targetToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(item.targetUserId) : null;
+        if (!targetToken) {
+          let usersList = getData('ek_users', []);
+          const targetUser = usersList.find(u => u && (u.id === item.targetUserId || u.phone === item.targetUserId));
+          targetToken = targetUser ? (targetUser.fcmToken || targetUser.realFcmToken) : item.targetUserId;
+        }
         if (targetToken && typeof targetToken === 'string' && targetToken.trim()) {
           enqueuedCount = 1;
           if (typeof db !== 'undefined' && db) {
@@ -817,13 +820,13 @@
         const createdStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '';
 
         html += `
-          <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap;">
-              <h5 style="font-size: 13px; font-weight: 800; color: #f3f4f6; margin: 0;">${escapeHtml(item.title || '')}</h5>
+          <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
+              <h5 style="font-size: 13px; font-weight: 800; color: #f3f4f6; margin: 0; flex: 1; min-width: 140px; word-break: break-word; overflow-wrap: break-word; max-width: 100%;">${escapeHtml(item.title || '')}</h5>
               ${badgeHtml}
             </div>
 
-            <p style="font-size: 12px; color: #cbd5e1; margin: 0; line-height: 1.4; white-space: pre-wrap;">${escapeHtml(item.body || '')}</p>
+            <p style="font-size: 12px; color: #cbd5e1; margin: 0; line-height: 1.4; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; max-width: 100%;">${escapeHtml(item.body || '')}</p>
 
             <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 8px; margin-top: 2px; flex-wrap: wrap; gap: 6px;">
               <span style="font-size: 10px; color: var(--text-muted);">
@@ -1046,24 +1049,60 @@
       }
     }
 
-    function openCustomerDetail(userId) {
-      const users = getData('ek_users');
-      const u = users.find(user => user.id === userId);
-      if (!u) return;
+    let _customerSearchDebounceTimer = null;
+    function debouncedSearchCustomers() {
+      if (_customerSearchDebounceTimer) clearTimeout(_customerSearchDebounceTimer);
+      _customerSearchDebounceTimer = setTimeout(() => {
+        renderAdminCustomers();
+      }, 250);
+    }
+    window.debouncedSearchCustomers = debouncedSearchCustomers;
 
-      const orders = getData('ek_orders');
-      const myOrders = orders.filter(o => o.customerId === userId || o.userId === userId);
+    function openCustomerDetail(userId) {
+      const users = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : (getData('ek_users') || []);
+      const u = users.find(user => user && (user.id === userId || user.phone === userId));
+      if (!u) {
+        showToast("Customer profile not found!", "error");
+        return;
+      }
+
+      const orders = typeof getDataCached === 'function' ? getDataCached('ek_orders', []) : (getData('ek_orders') || []);
+      const myOrders = orders.filter(o => o && (o.customerId === u.id || o.userId === u.id || (u.phone && o.customerPhone === u.phone)));
       const spent = myOrders.reduce((sum, o) => sum + (o.totalAmount || o.price || 0), 0);
 
-      const uName = u.name || 'Anonymous';
+      const uName = u.name || 'Anonymous Customer';
       const uPhone = u.phone || 'N/A';
       const uEmail = u.email || 'N/A';
       const uAddress = u.address || 'N/A';
       const uTier = u.tier || 'bronze';
       const uPoints = u.loyaltyPoints || 0;
 
-      showCustomAlert("வாடிக்கையாளர் விவரங்கள் / Customer Details", `
-        <div style="text-align:left; font-size:12.5px; line-height:1.6; font-family:'Poppins', sans-serif;">
+      let historyHtml = '';
+      if (myOrders.length === 0) {
+        historyHtml = `<p style="font-size:11.5px; color:#94a3b8; font-style:italic; margin:8px 0 0 0;">No order history found for this customer.</p>`;
+      } else {
+        historyHtml = myOrders.map(o => {
+          const dateStr = o.createdAt ? new Date(o.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+          const itemsSummary = Array.isArray(o.items) ? o.items.map(it => `${it.tamilName || it.englishName || 'Item'} x${it.quantity}`).join(', ') : 'Order items';
+          const st = String(o.status || 'pending').toUpperCase();
+          return `
+            <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 10px; margin-top: 6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                <strong style="color:var(--accent-orange); font-family:monospace;">${o.id || ''}</strong>
+                <span style="font-size:10px; font-weight:700; background:rgba(59,130,246,0.15); color:#60a5fa; padding:1px 6px; border-radius:4px;">${st}</span>
+              </div>
+              <div style="font-size:11px; color:#e2e8f0; margin-top:3px; word-break:break-word;">${escapeHtml(itemsSummary)}</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:#94a3b8; margin-top:4px;">
+                <span>📅 ${dateStr}</span>
+                <strong style="color:#10b981; font-size:11px;">₹${o.totalAmount || o.price || 0}</strong>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      showCustomAlert("வாடிக்கையாளர் விவரங்கள் & ஆர்டர் வரலாறு / Customer Details & History", `
+        <div style="text-align:left; font-size:12.5px; line-height:1.6; font-family:'Poppins', sans-serif; max-height:70vh; overflow-y:auto; padding-right:4px;">
           <div style="font-size:15px; font-weight:800; border-bottom:1px dashed rgba(255,255,255,0.15); padding-bottom:8px; margin-bottom:12px; display:flex; align-items:center; gap:8px; color:var(--accent-orange);">
             👤 ${escapeHtml(uName)}
           </div>
@@ -1075,6 +1114,11 @@
           <p style="margin:4px 0;"><strong>Wallet Points:</strong> <span style="color:#10b981; font-weight:bold;">${Math.round(uPoints)} pts</span></p>
           <p style="margin:4px 0;"><strong>Concluded Orders:</strong> ${myOrders.length}</p>
           <p style="margin:4px 0;"><strong>Gross Turnout:</strong> <span style="color:var(--accent-orange); font-weight:bold;">₹${spent}</span></p>
+
+          <div style="margin-top:14px; border-top:1px dashed rgba(255,255,255,0.15); padding-top:10px;">
+            <h5 style="font-size:12px; font-weight:800; color:#fff; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.5px;">📦 ஆர்டர் வரலாறு / Order History (${myOrders.length})</h5>
+            ${historyHtml}
+          </div>
         </div>
       `);
     }
@@ -1139,7 +1183,9 @@
               sessionStorage.removeItem('ek_customer_session_temp');
             }
 
+            invalidateDataCache('ek_users');
             renderAdminCustomers();
+            if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
 
             showToast("Customer successfully deleted! ✓", "success");
 
@@ -1167,9 +1213,35 @@
       const search = searchInput ? searchInput.value.toLowerCase().trim() : '';
       const container = document.getElementById('admin-customer-list');
       if (!container) return;
+
+      if (typeof db !== 'undefined' && db && !window._fetchingAdminCustomers) {
+        window._fetchingAdminCustomers = true;
+        db.collection('ek_users').get().then(snap => {
+          window._fetchingAdminCustomers = false;
+          if (snap && !snap.empty) {
+            const cloudUsers = [];
+            snap.forEach(doc => {
+              cloudUsers.push({ id: doc.id, ...doc.data() });
+            });
+            if (cloudUsers.length > 0) {
+              saveData('ek_users', cloudUsers);
+              if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_users');
+              const searchInp = document.getElementById('customer-search-input');
+              const currentSearch = searchInp ? searchInp.value.trim() : '';
+              if (!currentSearch) {
+                renderAdminCustomers();
+              }
+            }
+          }
+        }).catch(err => {
+          window._fetchingAdminCustomers = false;
+          console.warn("[renderAdminCustomers] Cloud sync notice:", err);
+        });
+      }
+
       container.innerHTML = '';
 
-      const users = getDataCached('ek_users', []);
+      const users = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : (getData('ek_users') || []);
       let filtered = users;
       if (search) {
         const cleanSearch = search.replace(/\D/g, '');
@@ -1235,8 +1307,11 @@
             </div>
 
             <div style="display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-top:10px; border-top:1px dashed rgba(255,255,255,0.08); padding-top:8px;">
+              <button class="btn" style="background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.3); padding:4px 10px; font-size:11px; font-weight:700; border-radius:6px; cursor:pointer;" onclick="promptSendDirectAdminMessage('${uId}')">
+                💬 Direct Message
+              </button>
               <button class="btn" style="background:rgba(59,130,246,0.12); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); padding:4px 10px; font-size:11px; font-weight:700; border-radius:6px; cursor:pointer;" onclick="openCustomerDetail('${uId}')">
-                🔍 Customer Details
+                🔍 Details
               </button>
               <button class="btn" style="background:rgba(244,63,94,0.12); color:#f43f5e; border:1px solid rgba(244,63,94,0.3); padding:4px 10px; font-size:11px; font-weight:700; border-radius:6px; cursor:pointer;" onclick="deleteCustomerFromDb('${uId}')">
                 🗑️ Delete
@@ -1248,6 +1323,20 @@
       });
       container.innerHTML = customersHtml;
     }
+
+    function promptSendDirectAdminMessage(userId) {
+      const users = getDataCached('ek_users', []);
+      const u = users.find(x => x && x.id === userId);
+      const uName = u ? (u.name || u.phone || 'Customer') : 'Customer';
+
+      const msg = prompt(currentLang === 'ta' ? `${uName}-க்கு அனுப்ப வேண்டிய நேரடி செய்தியை உள்ளிடவும்:` : `Enter direct support message to send to ${uName}:`);
+      if (!msg || !msg.trim()) return;
+
+      if (typeof sendDirectAdminCustomerMessage === 'function') {
+        sendDirectAdminCustomerMessage(u || userId, msg);
+      }
+    }
+    window.promptSendDirectAdminMessage = promptSendDirectAdminMessage;
 
     let _lastReviewsData = null; // Keep a local cache in memory to avoid redundant re-fetching
 
@@ -1526,8 +1615,12 @@ STRICT PROTOCOLS:
       if (!trimmed) return null;
       if (trimmed.startsWith('AIza')) return 'gemini';
       if (trimmed.startsWith('sk-ant-')) return 'anthropic';
+      if (trimmed.startsWith('gsk_')) return 'groq';
+      if (trimmed.startsWith('sk-or-')) return 'openrouter';
+      if (trimmed.startsWith('ds-') || trimmed.includes('deepseek')) return 'deepseek';
+      if (trimmed.startsWith('hf_')) return 'huggingface';
       if (trimmed.startsWith('sk-')) return 'openai';
-      return null;
+      return 'openai'; // Fallback to OpenAI-compatible interface for custom keys
     }
 
     function getAiProviderConfig() {
@@ -1625,10 +1718,26 @@ STRICT PROTOCOLS:
         infoEl.style.display = 'block';
         infoEl.style.color = '#a855f7';
         infoEl.innerHTML = '🧠 Detected Provider: <strong>Anthropic (Claude)</strong>';
+      } else if (detected === 'groq') {
+        infoEl.style.display = 'block';
+        infoEl.style.color = '#f97316';
+        infoEl.innerHTML = '⚡ Detected Provider: <strong>Groq (Llama 3.3 / Fast AI)</strong>';
+      } else if (detected === 'openrouter') {
+        infoEl.style.display = 'block';
+        infoEl.style.color = '#6366f1';
+        infoEl.innerHTML = '🌐 Detected Provider: <strong>OpenRouter Multi-Model</strong>';
+      } else if (detected === 'deepseek') {
+        infoEl.style.display = 'block';
+        infoEl.style.color = '#06b6d4';
+        infoEl.innerHTML = '🔮 Detected Provider: <strong>DeepSeek AI</strong>';
+      } else if (detected === 'huggingface') {
+        infoEl.style.display = 'block';
+        infoEl.style.color = '#eab308';
+        infoEl.innerHTML = '🤗 Detected Provider: <strong>HuggingFace Inference</strong>';
       } else {
         infoEl.style.display = 'block';
-        infoEl.style.color = '#ef4444';
-        infoEl.innerHTML = '⚠️ Key format not recognized. Key must start with AIza... (Gemini), sk-ant-... (Claude), or sk-... (OpenAI)';
+        infoEl.style.color = '#10b981';
+        infoEl.innerHTML = '⚙️ Detected Provider: <strong>Custom AI API (OpenAI Compatible)</strong>';
       }
     }
 

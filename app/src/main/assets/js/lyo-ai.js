@@ -125,18 +125,36 @@
     }
 
     async function callAIProvider(systemInstructions, conversationContents, queryText, customConfig = null) {
-      let { provider, apiKey, model } = customConfig || getAiProviderConfig();
+      let config = customConfig || getAiProviderConfig();
+      let provider = config.provider || 'gemini';
+      let apiKey = (config.apiKey || '').trim();
+      let model = (config.model || '').trim();
 
-      if (!apiKey || !apiKey.trim()) {
-        apiKey = getBuiltinGeminiApiKey();
-        provider = 'gemini';
+      // Attempt primary call with selected provider
+      if (apiKey) {
+        try {
+          return await executeSingleAiCall(provider, apiKey, model, systemInstructions, conversationContents);
+        } catch (primaryErr) {
+          console.warn(`[AI Orchestrator] Primary provider (${provider}) failed: ${primaryErr.message}. Attempting fallback to Built-in Gemini...`);
+        }
       }
 
-      const cleanKey = apiKey.trim();
-      const cleanModel = (model || '').trim();
+      // Fallback: Built-in Gemini Key
+      const builtinKey = getBuiltinGeminiApiKey();
+      if (builtinKey && builtinKey !== apiKey) {
+        try {
+          return await executeSingleAiCall('gemini', builtinKey, '', systemInstructions, conversationContents);
+        } catch (fallbackErr) {
+          console.warn(`[AI Orchestrator] Builtin Gemini fallback failed: ${fallbackErr.message}`);
+        }
+      }
 
-      if (provider === 'openai') {
-        const targetModel = cleanModel || 'gpt-4o-mini';
+      throw new Error("AI_ORCHESTRATOR_ALL_PROVIDERS_FAILED");
+    }
+
+    async function executeSingleAiCall(provider, cleanKey, cleanModel, systemInstructions, conversationContents) {
+      if (provider === 'groq') {
+        const targetModel = cleanModel || 'llama-3.3-70b-versatile';
         const messages = [
           { role: 'system', content: systemInstructions },
           ...conversationContents.map(c => ({
@@ -144,28 +162,66 @@
             content: (c.parts && c.parts[0] ? c.parts[0].text : '')
           }))
         ];
-
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const res = await fetchWithTimeoutAndRetry('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${cleanKey}`
           },
-          body: JSON.stringify({
-            model: targetModel,
-            messages: messages
-          })
-        });
-
-        if (!response.ok) {
-          const errJson = await response.json().catch(() => ({}));
-          const errMsg = errJson.error?.message || response.statusText || response.status;
-          throw new Error(`AI_PROVIDER_CALL_FAILED: openai: ${errMsg}`);
-        }
-
-        const data = await response.json();
+          body: JSON.stringify({ model: targetModel, messages: messages })
+        }, 1, 7000);
+        if (!res.ok) throw new Error(`Groq status ${res.status}`);
+        const data = await res.json();
         const replyText = data?.choices?.[0]?.message?.content;
-        if (!replyText) throw new Error("AI_PROVIDER_CALL_FAILED: openai: Empty choices response");
+        if (!replyText) throw new Error("Empty Groq response");
+        return { text: replyText };
+
+      } else if (provider === 'openrouter') {
+        const targetModel = cleanModel || 'google/gemini-2.5-flash';
+        const messages = [
+          { role: 'system', content: systemInstructions },
+          ...conversationContents.map(c => ({
+            role: c.role === 'model' ? 'assistant' : 'user',
+            content: (c.parts && c.parts[0] ? c.parts[0].text : '')
+          }))
+        ];
+        const res = await fetchWithTimeoutAndRetry('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${cleanKey}`,
+            'HTTP-Referer': 'https://edappadikadai.com'
+          },
+          body: JSON.stringify({ model: targetModel, messages: messages })
+        }, 1, 7000);
+        if (!res.ok) throw new Error(`OpenRouter status ${res.status}`);
+        const data = await res.json();
+        const replyText = data?.choices?.[0]?.message?.content;
+        if (!replyText) throw new Error("Empty OpenRouter response");
+        return { text: replyText };
+
+      } else if (provider === 'openai' || provider === 'deepseek') {
+        const targetModel = cleanModel || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o-mini');
+        const endpoint = provider === 'deepseek' ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+        const messages = [
+          { role: 'system', content: systemInstructions },
+          ...conversationContents.map(c => ({
+            role: c.role === 'model' ? 'assistant' : 'user',
+            content: (c.parts && c.parts[0] ? c.parts[0].text : '')
+          }))
+        ];
+        const res = await fetchWithTimeoutAndRetry(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${cleanKey}`
+          },
+          body: JSON.stringify({ model: targetModel, messages: messages })
+        }, 1, 7000);
+        if (!res.ok) throw new Error(`${provider} status ${res.status}`);
+        const data = await res.json();
+        const replyText = data?.choices?.[0]?.message?.content;
+        if (!replyText) throw new Error(`Empty ${provider} response`);
         return { text: replyText };
 
       } else if (provider === 'anthropic') {
@@ -174,8 +230,7 @@
           role: c.role === 'model' ? 'assistant' : 'user',
           content: (c.parts && c.parts[0] ? c.parts[0].text : '')
         }));
-
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const res = await fetchWithTimeoutAndRetry('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
             'x-api-key': cleanKey,
@@ -189,56 +244,42 @@
             system: systemInstructions,
             messages: messages
           })
-        });
-
-        if (!response.ok) {
-          const errJson = await response.json().catch(() => ({}));
-          const errMsg = errJson.error?.message || response.statusText || response.status;
-          throw new Error(`AI_PROVIDER_CALL_FAILED: anthropic: ${errMsg}`);
-        }
-
-        const data = await response.json();
+        }, 1, 7000);
+        if (!res.ok) throw new Error(`Anthropic status ${res.status}`);
+        const data = await res.json();
         const replyText = data?.content?.[0]?.text;
-        if (!replyText) throw new Error("AI_PROVIDER_CALL_FAILED: anthropic: Empty content response");
+        if (!replyText) throw new Error("Empty Anthropic response");
         return { text: replyText };
 
       } else {
-        // Default: Gemini with fallback models and retry protection
+        // Default: Gemini
         const geminiModels = [cleanModel || 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest'];
-        let lastErrorMsg = "";
+        let lastError = "";
 
         for (const m of geminiModels) {
           try {
             const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${cleanKey}`;
-            const requestPayload = {
-              systemInstruction: {
-                parts: [{ text: systemInstructions }]
-              },
-              contents: conversationContents
-            };
-
-            const response = await fetchWithTimeoutAndRetry(endpoint, {
+            const res = await fetchWithTimeoutAndRetry(endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(requestPayload)
-            }, 1, 8000);
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemInstructions }] },
+                contents: conversationContents
+              })
+            }, 1, 7000);
 
-            if (response.ok) {
-              const data = await response.json();
+            if (res.ok) {
+              const data = await res.json();
               const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (replyText) {
-                return { text: replyText };
-              }
+              if (replyText) return { text: replyText };
             } else {
-              const errJson = await response.json().catch(() => ({}));
-              lastErrorMsg = errJson.error?.message || response.statusText || response.status;
+              lastError = `Gemini status ${res.status}`;
             }
           } catch (mErr) {
-            lastErrorMsg = mErr.message || String(mErr);
-            console.warn(`Gemini model ${m} failed in callAIProvider:`, mErr);
+            lastError = mErr.message;
           }
         }
-        throw new Error(`AI_PROVIDER_CALL_FAILED: gemini: ${lastErrorMsg || "All Gemini models failed"}`);
+        throw new Error(`Gemini call failed: ${lastError}`);
       }
     }
 
@@ -282,16 +323,16 @@
 
     // 1. Synonym Dictionary & Language Mappings (Tamil, English, Tanglish, Misspellings)
     const LYO_SYNONYMS = {
-      'tomato': ['tomato', 'தக்காளி', 'thakkali', 'takali', 'thakkali', 'tomatos', 'tomatoes'],
-      'mutton': ['mutton', 'ஆட்டுக்கறி', 'மட்டன்', 'muttan', 'goat', 'goat mutton', 'lamb'],
-      'chicken': ['chicken', 'சிக்கன்', 'கோழி', 'koli', 'broiler', 'nattu koli', 'country chicken', 'chiken', 'chickn'],
+      'head_curry': ['head curry', 'goat head', 'thalaikkari', 'ஆட்டுத்தலை', 'தலைக்கறி', 'ஆட்டு தலைக்கறி', 'தலை கறி', 'thalaikari', 'goat head curry', 'head meat', 'ஆட்டுத் தலைக்கறி', 'ஆட்டுத்தலை கறி', 'ஆட்டுத்தலைக்கறி'],
+      'potato': ['potato', 'potatoes', 'உருளைக்கிழங்கு', 'உருளை கிழங்கு', 'உருளை', 'urulaikilangu', 'urulai', 'potatos'],
+      'mutton': ['mutton', 'ஆட்டுக்கறி', 'மட்டன்', 'muttan', 'goat', 'goat mutton', 'lamb', 'ஆட்டு'],
+      'chicken': ['chicken', 'சிக்கன்', 'கோழி', 'koli', 'broiler', 'nattu koli', 'country chicken', 'chiken', 'chickn', 'கோழிக்கறி'],
       'egg': ['egg', 'eggs', 'முட்டை', 'muttai', 'egg packet', 'muttai tray'],
       'milk': ['milk', 'பால்', 'paal', 'milk packet', 'pal', 'paal packet'],
-      'onion': ['onion', 'onions', 'வெங்காயம்', 'vengayam', 'chinnavengayam', 'periyavengayam', 'vengaiyam'],
-      'chilli': ['chilli', 'chili', 'மிளகாய்', 'milagai', 'green chilli', 'red chilli'],
+      'onion': ['onion', 'onions', 'வெங்காயம்', 'vengayam', 'chinnavengayam', 'periyavengayam', 'vengaiyam', 'சின்ன வெங்காயம்', 'பெரிய வெங்காயம்'],
+      'chilli': ['chilli', 'chili', 'மிளகாய்', 'milagai', 'green chilli', 'red chilli', 'பச்சை மிளகாய்'],
       'coriander': ['coriander', 'கொத்தமல்லி', 'kothamalli', 'malli', 'koththamalli', 'coriander leaves'],
-      'potato': ['potato', 'potatoes', 'உருளைக்கிழங்கு', 'urulaikilangu', 'urulai'],
-      'oil': ['oil', 'எண்ணெய்', 'ennai', 'sunflower oil', 'gingelly oil', 'groundnut oil', 'coconut oil'],
+      'oil': ['oil', 'எண்ணெய்', 'ennai', 'sunflower oil', 'gingelly oil', 'groundnut oil', 'coconut oil', 'தேங்காய் எண்ணெய்'],
       'curd': ['curd', 'தயிர்', 'thayir', 'curd packet'],
       'fish': ['fish', 'மீன்', 'meen', 'vanjaram', 'nethili', 'katla', 'rohu'],
       'lemon': ['lemon', 'lemons', 'எலுமிச்சை', 'elumichai'],
@@ -302,6 +343,64 @@
       'rice': ['rice', 'அரிசி', 'arisi', 'ponni rice'],
       'dal': ['dal', 'பருப்பு', 'paruppu', 'toor dal', 'urad dal']
     };
+
+    function syncAiKnowledgeBase(customProducts = null) {
+      try {
+        const products = customProducts || (typeof getProductsList === 'function' ? getProductsList() : (typeof getData === 'function' ? getData('ek_products', []) : []));
+        const categories = typeof getCategoriesList === 'function' ? getCategoriesList() : (typeof getData === 'function' ? getData('ek_categories', []) : []);
+
+        const productDict = {};
+        const categoryDict = {};
+        const unitDict = {
+          weight: ['kg', 'kilo', 'kilos', 'கிலோ', 'g', 'gm', 'gram', 'grams', 'கிராம்', '250g', '500g', '750g', '1.5kg'],
+          volume: ['l', 'litre', 'litres', 'liter', 'liters', 'லிட்டர்', 'ltr', 'ml', 'milli', 'millilitre', 'மில்லி'],
+          count: ['pcs', 'piece', 'pieces', 'பீஸ்', 'பீசு', 'பீஸ்கள்', 'nos', 'no', 'packet', 'packets', 'pkt', 'doz', 'dozen', 'டஜன்', 'bundle', 'box', 'bottle']
+        };
+
+        (products || []).forEach(p => {
+          if (!p) return;
+          const pId = p.id || p.productId;
+          if (!pId) return;
+          const en = (p.englishName || '').trim();
+          const ta = (p.tamilName || '').trim();
+          productDict[pId] = {
+            id: pId,
+            englishName: en,
+            tamilName: ta,
+            category: p.category || 'General',
+            sellingPrice: Number(p.sellingPrice || p.price || 0),
+            unit: p.sellingUnit || p.unit || 'kg',
+            isAvailable: p.isAvailable !== false,
+            discount: p.discount || 0,
+            offerText: p.offerText || ''
+          };
+
+          const catName = p.category || 'General';
+          if (!categoryDict[catName]) categoryDict[catName] = [];
+          categoryDict[catName].push(pId);
+        });
+
+        const knowledgeBase = {
+          PRODUCT_DICTIONARY: productDict,
+          CATEGORY_DICTIONARY: categoryDict,
+          UNIT_DICTIONARY: unitDict,
+          SYNONYMS: LYO_SYNONYMS,
+          TOTAL_PRODUCTS: Object.keys(productDict).length,
+          TOTAL_CATEGORIES: Object.keys(categoryDict).length,
+          LAST_SYNC_TIME: new Date().toISOString()
+        };
+
+        window.LYO_OFFLINE_KNOWLEDGE = knowledgeBase;
+        if (typeof saveData === 'function') {
+          saveData('ek_ai_offline_knowledge', knowledgeBase);
+        }
+        return knowledgeBase;
+      } catch (err) {
+        console.warn('[AI Knowledge Base Sync] Error:', err);
+        return null;
+      }
+    }
+    window.syncAiKnowledgeBase = syncAiKnowledgeBase;
 
     // 2. Levenshtein Distance for Misspellings
     function getLevenshteinDistance(a, b) {
@@ -338,12 +437,19 @@
       return Math.max(0, 1.0 - (dist / maxLen));
     }
 
+    function normalizeLyoText(s) {
+      if (!s) return '';
+      return s.toLowerCase().replace(/[\u0BCD\u0BD7]/g, '').replace(/[^\w\u0B80-\u0BFF]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
     // 4. Product Matching Engine with Confidence Scoring (>95%, 70-95%, <70%)
     function matchProductWithConfidence(rawQuery, activeProducts) {
       if (!activeProducts || activeProducts.length === 0) {
         return { product: null, score: 0, candidates: [] };
       }
       const q = (rawQuery || '').toLowerCase().trim();
+      const qNorm = normalizeLyoText(q);
+
       let bestProd = null;
       let maxScore = 0;
       const scoredCandidates = [];
@@ -351,22 +457,48 @@
       activeProducts.forEach(p => {
         const nameEn = (p.englishName || '').toLowerCase();
         const nameTa = (p.tamilName || '').toLowerCase();
+        const nameEnNorm = normalizeLyoText(nameEn);
+        const nameTaNorm = normalizeLyoText(nameTa);
+
         let currentScore = 0;
 
-        // Exact match
-        if (q === nameEn || q === nameTa) {
+        // Exact or normalized match
+        if (q === nameEn || q === nameTa || qNorm === nameEnNorm || qNorm === nameTaNorm) {
           currentScore = 1.0;
-        } else if (q.includes(nameEn) || nameEn.includes(q) || q.includes(nameTa) || nameTa.includes(q)) {
-          currentScore = 0.92;
         } else {
-          // Synonym match
+          const qTokens = qNorm.split(' ').filter(w => w.length > 0);
+          const pTokens = (nameEnNorm + ' ' + nameTaNorm).split(' ').filter(w => w.length > 0);
+
+          // Check if any query token is an exact match to a product token
+          const exactTokenMatch = qTokens.some(qt => pTokens.includes(qt));
+          const wholeWordInQuery = pTokens.some(pt => pt.length > 2 && new RegExp('\\b' + pt + '\\b', 'i').test(q));
+          const wholeWordInProduct = qTokens.some(qt => qt.length > 2 && new RegExp('\\b' + qt + '\\b', 'i').test(nameEn + ' ' + nameTa));
+
+          if (exactTokenMatch || wholeWordInQuery || wholeWordInProduct) {
+            currentScore = 0.95;
+          } else {
+            // Token overlap (exact token equality or prefix match for words >= 4 chars)
+            const matchedTokens = qTokens.filter(t => pTokens.some(pt => pt === t || (t.length >= 4 && pt.startsWith(t))));
+            if (qTokens.length > 0 && matchedTokens.length > 0) {
+              currentScore = Math.max(currentScore, 0.70 + (matchedTokens.length / qTokens.length) * 0.25);
+            }
+          }
+        }
+
+          // Synonym match with strict word boundary safety
           let synonymMatched = false;
           for (const key in LYO_SYNONYMS) {
             const list = LYO_SYNONYMS[key];
-            const qHasSyn = list.some(syn => q.includes(syn));
-            const pHasSyn = list.some(syn => nameEn.includes(syn) || nameTa.includes(syn));
+            const qHasSyn = list.some(syn => {
+              const sn = normalizeLyoText(syn);
+              return sn && new RegExp('\\b' + sn + '\\b', 'i').test(qNorm);
+            });
+            const pHasSyn = list.some(syn => {
+              const sn = normalizeLyoText(syn);
+              return sn && new RegExp('\\b' + sn + '\\b', 'i').test(nameEnNorm + ' ' + nameTaNorm);
+            });
             if (qHasSyn && pHasSyn) {
-              currentScore = 0.98;
+              currentScore = Math.max(currentScore, 0.98);
               synonymMatched = true;
               break;
             }
@@ -375,9 +507,8 @@
           if (!synonymMatched) {
             const simEn = calculateSimilarityScore(q, nameEn);
             const simTa = calculateSimilarityScore(q, nameTa);
-            currentScore = Math.max(simEn, simTa);
+            currentScore = Math.max(currentScore, Math.max(simEn, simTa));
           }
-        }
 
         scoredCandidates.push({ product: p, score: currentScore });
         if (currentScore > maxScore) {
@@ -401,17 +532,43 @@
       let t = (itemText || '').toLowerCase().trim();
       if (!t) return null;
 
+      // Tamil number words to digits
+      const numMap = [
+        [/இருபது|irupathu/gi, '20'],
+        [/ஐம்பது|aimpathu/gi, '50'],
+        [/நூறு|nooru/gi, '100'],
+        [/இருநூறு/gi, '200'],
+        [/ஐந்நூறு/gi, '500'],
+        [/ஆயிரம்/gi, '1000'],
+        [/பத்து|pathu/gi, '10'],
+        [/இரண்டு|ரெண்டு|ரண்டு|rendu|randu/gi, '2'],
+        [/ஒன்று|ஒன்னு|onru|onnu/gi, '1'],
+        [/மூன்று|மூனு|moonru|moonu/gi, '3'],
+        [/நான்கு|நாலு|naangu|naalu/gi, '4'],
+        [/ஐந்து|அஞ்சு|ainthu|anju/gi, '5'],
+        [/ஆறு|aaru/gi, '6'],
+        [/ஏழு|aelu/gi, '7'],
+        [/எட்டு|ettu/gi, '8'],
+        [/ஒன்பது|onbathu/gi, '9']
+      ];
+      numMap.forEach(([rgx, val]) => {
+        t = t.replace(rgx, ' ' + val + ' ');
+      });
+      t = t.replace(/\s+/g, ' ').trim();
+
       let amountType = 'WEIGHT_KG';
       let rawQtyVal = 1;
       let unit = 'kg';
 
-      // Rupee Pattern: ₹200 Tomato, 20 rs, 50 rupees, 100ரூ, 250 ரூபாய்
-      const rupeeMatch = t.match(/(?:₹|rs\.?|rupees?|ரூபாய்|ரூ\.?)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupees?|ரூபாய்|ரூ\.?)/i);
+      // Rupee Pattern: 20 ரூபாய்க்கு, 20 ரூபாய், ₹20, 20 rs, 20 rupees
+      const rupeeRegex = /(?:₹|rs\.?|rupees?|ரூபாய்க்கு|ரூபாய்|ரூபா|ரூ\.?)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupees?|ரூபாய்க்கு|ரூபாய்|ரூபா|ரூ\.?)/i;
+      const rupeeMatch = t.match(rupeeRegex);
 
       if (rupeeMatch) {
         amountType = 'RUPEES';
         rawQtyVal = parseFloat(rupeeMatch[1] || rupeeMatch[2] || '0');
         t = t.replace(rupeeMatch[0], '').trim();
+        t = t.replace(/^க்கு\s*/i, '').trim();
       } else {
         // Fractions
         if (/(அரை|arai|half|1\/2)/i.test(t)) {
@@ -435,57 +592,67 @@
           unit = 'kg';
           t = t.replace(/(ஒன்றரை|1\.5|1\s*and\s*half|1\s*1\/2)\s*(kilo|kg|கிலோ)?/gi, '').trim();
         } else {
-          // Standard Numbers & Units
-          const qtyMatch = t.match(/(\d+(?:\.\d+)?)\s*([a-zA-Z஀-௿]+)?/i);
-          if (qtyMatch) {
-            const num = parseFloat(qtyMatch[1]);
-            const uStr = (qtyMatch[2] || '').toLowerCase();
+          // Piece / Count / Unit pattern
+          const pcsMatch = t.match(/(\d+(?:\.\d+)?)\s*(pcs|piece|pieces|பீஸ்|பீசு|பீஸ்கள்|nos|no|பாக்கெட்|pkt|packet|packets)/i) ||
+                           t.match(/(pcs|piece|pieces|பீஸ்|பீசு|பீஸ்கள்|nos|no|பாக்கெட்|pkt|packet|packets)\s*(\d+(?:\.\d+)?)/i);
+          if (pcsMatch) {
+            rawQtyVal = parseFloat(pcsMatch[1] || pcsMatch[2] || '1');
+            amountType = 'COUNT_PIECES';
+            unit = 'pcs';
+            t = t.replace(pcsMatch[0], '').trim();
+          } else {
+            // Standard Numbers & Units
+            const qtyMatch = t.match(/(\d+(?:\.\d+)?)\s*([a-zA-Z஀-௿]+)?/i) || t.match(/([a-zA-Z஀-௿]+)?\s*(\d+(?:\.\d+)?)/i);
+            if (qtyMatch) {
+              const num = parseFloat(qtyMatch[1] && !isNaN(qtyMatch[1]) ? qtyMatch[1] : (qtyMatch[2] || '1'));
+              const uStr = (qtyMatch[2] && isNaN(qtyMatch[2]) ? qtyMatch[2] : (qtyMatch[1] && isNaN(qtyMatch[1]) ? qtyMatch[1] : '')).toLowerCase().trim();
 
-            if (['g', 'gm', 'gram', 'grams', 'கிராம்'].includes(uStr)) {
-              amountType = 'WEIGHT_GRAMS';
-              rawQtyVal = num;
-              unit = 'g';
-            } else if (['kg', 'kilo', 'கிலோ', 'k'].includes(uStr)) {
-              amountType = 'WEIGHT_KG';
-              rawQtyVal = num;
-              unit = 'kg';
-            } else if (['l', 'litre', 'liter', 'லிட்டர்', 'ltr'].includes(uStr)) {
-              amountType = 'LIQUID_LITRE';
-              rawQtyVal = num;
-              unit = 'l';
-            } else if (['ml', 'milli', 'மில்லி'].includes(uStr)) {
-              amountType = 'LIQUID_ML';
-              rawQtyVal = num;
-              unit = 'ml';
-            } else if (['doz', 'dozen', 'டஜன்'].includes(uStr)) {
-              amountType = 'COUNT_DOZEN';
-              rawQtyVal = num;
-              unit = 'doz';
-            } else if (['pkt', 'packet', 'packets', 'பாக்கெட்'].includes(uStr)) {
-              amountType = 'COUNT_PACKETS';
-              rawQtyVal = num;
-              unit = 'pkt';
-            } else if (uStr) {
-              amountType = 'COUNT_PIECES';
-              rawQtyVal = num;
-              unit = 'pcs';
-            } else {
-              if (num >= 50) {
-                amountType = 'WEIGHT_GRAMS';
-                rawQtyVal = num;
-                unit = 'g';
+              const isG = ['g', 'gm', 'gram', 'grams', 'கிராம்'].includes(uStr);
+              const isKg = ['kg', 'kilo', 'kilos', 'கிலோ', 'k'].includes(uStr);
+              const isL = ['l', 'litre', 'litres', 'liter', 'liters', 'லிட்டர்', 'ltr', 'ltrs'].includes(uStr);
+              const isMl = ['ml', 'milli', 'millilitre', 'millilitres', 'மில்லி'].includes(uStr);
+              const isDoz = ['doz', 'dozen', 'dozens', 'டஜன்'].includes(uStr);
+              const isPkt = ['pkt', 'pkts', 'packet', 'packets', 'பாக்கெட்'].includes(uStr);
+              const isPcs = ['pcs', 'piece', 'pieces', 'பீஸ்', 'பீசு', 'பீஸ்கள்', 'nos', 'no'].includes(uStr);
+
+              if (isG) {
+                amountType = 'WEIGHT_GRAMS'; rawQtyVal = num; unit = 'g';
+                t = t.replace(qtyMatch[0], '').trim();
+              } else if (isKg) {
+                amountType = 'WEIGHT_KG'; rawQtyVal = num; unit = 'kg';
+                t = t.replace(qtyMatch[0], '').trim();
+              } else if (isL) {
+                amountType = 'LIQUID_LITRE'; rawQtyVal = num; unit = 'l';
+                t = t.replace(qtyMatch[0], '').trim();
+              } else if (isMl) {
+                amountType = 'LIQUID_ML'; rawQtyVal = num; unit = 'ml';
+                t = t.replace(qtyMatch[0], '').trim();
+              } else if (isDoz) {
+                amountType = 'COUNT_DOZEN'; rawQtyVal = num; unit = 'doz';
+                t = t.replace(qtyMatch[0], '').trim();
+              } else if (isPkt) {
+                amountType = 'COUNT_PACKETS'; rawQtyVal = num; unit = 'pkt';
+                t = t.replace(qtyMatch[0], '').trim();
+              } else if (isPcs) {
+                amountType = 'COUNT_PIECES'; rawQtyVal = num; unit = 'pcs';
+                t = t.replace(qtyMatch[0], '').trim();
               } else {
-                amountType = 'WEIGHT_KG';
+                // uStr is part of the product search term (e.g. 20 Eggs, 30 Tomatoes)
                 rawQtyVal = num;
-                unit = 'kg';
+                if (num >= 50) {
+                  amountType = 'WEIGHT_GRAMS'; unit = 'g';
+                } else {
+                  amountType = 'COUNT_PIECES'; unit = 'pcs';
+                }
+                const numberOnlyRegex = new RegExp('\\b' + num + '\\b', 'i');
+                t = t.replace(numberOnlyRegex, '').trim();
               }
             }
-            t = t.replace(qtyMatch[0], '').trim();
           }
         }
       }
 
-      t = t.replace(/[,.:;!?]/g, '').trim();
+      t = t.replace(/[,.:;!?]/g, '').replace(/^க்கு\s*/i, '').replace(/பீஸ்|பீசு|pieces|piece|pcs/gi, '').trim();
 
       return {
         productSearchTerm: t || itemText,
@@ -584,10 +751,21 @@
         itemTotal = Math.round(dozens * (unitPrice * 12 || unitPrice));
       } else {
         rawQty = parsedItem.rawQtyVal || 1;
-        const uLabel = parsedItem.unit || baseUnit || 'pcs';
-        displayQty = `${rawQty} ${uLabel}`;
-        selectorQty = `${rawQty} ${uLabel}`;
-        itemTotal = Math.round(rawQty * unitPrice);
+        if (baseUnit === 'kg' || baseUnit === 'g') {
+          const estimatedKg = Number((rawQty * 0.1).toFixed(2));
+          displayQty = `${rawQty} pcs (${estimatedKg} Kg)`;
+          selectorQty = `${rawQty} pcs`;
+          itemTotal = Math.round(estimatedKg * unitPrice);
+        } else if (baseUnit === 'l' || baseUnit === 'litre' || baseUnit === 'ml') {
+          displayQty = `${rawQty} L`;
+          selectorQty = `${rawQty} L`;
+          itemTotal = Math.round(rawQty * unitPrice);
+        } else {
+          const uLabel = parsedItem.unit || baseUnit || 'pcs';
+          displayQty = `${rawQty} ${uLabel}`;
+          selectorQty = `${rawQty} ${uLabel}`;
+          itemTotal = Math.round(rawQty * unitPrice);
+        }
       }
 
       return {
@@ -873,19 +1051,24 @@ function classifyUserIntentFallback(queryText, activeProducts = []) {
   }
 
   // 12. Explicit Shopping Request Detection
-  const qtyUnitPattern = /(\d+(\.\d+)?\s*(kg|g|gm|gram|grams|kilo|kilos|litre|l|ml|pcs|packet|packets|rupees|rs|ரூபாய்|கிலோ|கிராம்|முட்டை|பாக்கெட்|லிட்டர்)|(arai|kal|mukkai|half|quarter|1\/2|1\/4|3\/4))/i;
-  const shoppingVerbs = /^(add|buy|order|want|need|send|put|போடு|வாங்கு|வேணும்|வேண்டும்|சேர்)/i;
-  const containsQuantity = qtyUnitPattern.test(q);
-  const startsWithShoppingVerb = shoppingVerbs.test(q) || q.includes(" add ") || q.includes(" buy ") || q.includes(" order ");
+  const hasNumbersOrUnits = /(\d+|இருபது|பத்து|ஐம்பது|நூறு|இரண்டு|ரெண்டு|ரண்டு|ஒன்று|ஒன்னு|மூன்று|மூனு|நான்கு|நாலு|ஐந்து|அஞ்சு|ஆறு|ஏழு|எட்டு|ஒன்பது|kg|kilo|கிலோ|g|gm|gram|கிராம்|l|litre|லிட்டர்|ml|pcs|piece|pieces|பீஸ்|பீசு|பாக்கெட்|pkt|rupees|rs|ரூபாய்|ரூபாய்க்கு|ரூபா|₹)/i.test(q);
+  const shoppingVerbs = /(add|buy|order|want|need|send|put|போடு|வாங்கு|வேணும்|வேண்டும்|சேர்)/i.test(q);
 
-  if (containsQuantity || startsWithShoppingVerb) {
-    return { intent: "SHOPPING_REQUEST", confidence: 0.95 };
-  }
+  const matchesCatalog = (activeProducts || []).some(p => {
+    const en = (p.englishName || '').toLowerCase();
+    const ta = (p.tamilName || '').toLowerCase();
+    const cat = (p.category || '').toLowerCase();
+    const cleanQ = q.replace(/[0-9,\.:;!?]/g, '').trim();
+    if (!cleanQ) return false;
+    const tokens = cleanQ.split(/\s+/).filter(w => w.length > 1);
+    return tokens.some(tok => en.includes(tok) || ta.includes(tok) || cat.includes(tok) || q.includes(en) || q.includes(ta));
+  });
 
-  const catalogKeywords = ["chicken", "mutton", "tomato", "egg", "milk", "onion", "chilli", "potato", "oil", "curd", "fish", "rice", "dal", "தக்காளி", "மட்டன்", "சிக்கன்", "முட்டை", "பால்", "வெங்காயம்", "அரிசி"];
-  const isShortProductInput = catalogKeywords.some(k => q.includes(k)) && q.length < 30;
-  if (isShortProductInput) {
-    return { intent: "SHOPPING_REQUEST", confidence: 0.85 };
+  const foodKeywords = ['head curry', 'thalaikkari', 'தலைக்கறி', 'ஆட்டுத்தலை', 'ஆட்டு', 'கறி', 'curry', 'meat', 'potato', 'urulai', 'உருளைக்கிழங்கு', 'தக்காளி', 'வெங்காயம்', 'சிக்கன்', 'மட்டன்', 'முட்டை', 'பால்', 'நெய்', 'மீன்', 'ஈரல்', 'chicken', 'mutton', 'fish', 'egg', 'milk', 'tomato', 'onion', 'ghee', 'oil', 'paneer'];
+  const hasFoodKeyword = foodKeywords.some(k => q.includes(k));
+
+  if (hasNumbersOrUnits || shoppingVerbs || matchesCatalog || hasFoodKeyword) {
+    return { intent: "SHOPPING_REQUEST", confidence: 0.98 };
   }
 
   return { intent: "GENERAL_QUESTIONS", confidence: 0.80 };
@@ -1144,17 +1327,20 @@ function getActiveLyoProposalMsg() {
       }
     }
 
+    function persistLyoChatMessages() {
+      try {
+        if (typeof saveData === 'function' && Array.isArray(_lyoChatMessages)) {
+          saveData('ek_lyo_chat_messages', _lyoChatMessages);
+        }
+      } catch (e) {}
+    }
+
     function syncManualToLyoCart() {
       if (window._isSyncingCart) return;
       window._isSyncingCart = true;
       try {
         let activeMsg = getActiveLyoProposalMsg();
-        if (!cart || cart.length === 0) {
-          if (activeMsg) {
-            activeMsg.items = [];
-            activeMsg.text = 'Your AI shopping cart is currently empty.';
-          }
-        } else {
+        if (cart && cart.length > 0) {
           if (!activeMsg) {
             const proposalId = 'prop_' + Date.now();
             activeMsg = {
@@ -1175,6 +1361,7 @@ function getActiveLyoProposalMsg() {
           activeMsg.items = aiItems;
           activeMsg.text = `Sure! Updated items in your active AI shopping cart: 🎉 Total: ₹${subtotal}`;
         }
+        persistLyoChatMessages();
         renderLyoAiChat();
         updateLyoDraftCartBar();
       } finally {
@@ -1185,7 +1372,11 @@ function getActiveLyoProposalMsg() {
     function initLyoAiChat() {
       const msgContainer = document.getElementById('lyo-ai-messages');
       if (!msgContainer) return;
-      if (_lyoChatMessages.length === 0) {
+      
+      const savedMsgs = (typeof getData === 'function') ? getData('ek_lyo_chat_messages', null) : null;
+      if (Array.isArray(savedMsgs) && savedMsgs.length > 0) {
+        _lyoChatMessages = savedMsgs;
+      } else if (_lyoChatMessages.length === 0) {
         let existingCart = (typeof getData === 'function') ? getData('ek_cart', []) : (typeof cart !== 'undefined' ? cart : []);
         if (existingCart && existingCart.length > 0) {
           cart = existingCart;
@@ -1201,6 +1392,7 @@ function getActiveLyoProposalMsg() {
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
           ];
+          persistLyoChatMessages();
         }
       }
       renderLyoAiChat();
@@ -1241,7 +1433,7 @@ function getActiveLyoProposalMsg() {
           items.forEach(it => itemsSubtotal += (it.itemTotal || 0));
           const activeUser = (typeof getActiveUser === 'function') ? getActiveUser() : null;
           const financials = (typeof calculateOrderFinancials === 'function')
-            ? calculateOrderFinancials(itemsSubtotal, activeUser, '', false)
+            ? calculateOrderFinancials(itemsSubtotal, activeUser, '', false, items)
             : { subtotal: itemsSubtotal, deliveryFee: 15, grandTotal: itemsSubtotal + 15 };
           const delFee = financials.deliveryFee;
           const grandTotal = financials.grandTotal;
@@ -1254,13 +1446,19 @@ function getActiveLyoProposalMsg() {
             const liveP = allProds.find(p => p.id === (it.productId || it.id));
             const displayName = liveP
               ? (liveP.tamilName ? `${liveP.tamilName} (${liveP.englishName})` : liveP.englishName)
-              : (it.tamilName ? `${it.tamilName} (${it.name})` : it.name);
+              : (it.tamilName ? `${it.tamilName} (${it.name})` : (it.name || 'Product'));
             const displayQtyStr = it.displayQty || it.selectorQty || '1 Unit';
             const displayImg = getImageUrlWithCacheBuster(getProductThumbnailUrl(liveP || it.img || it), liveP ? liveP.updatedAt : null);
             const displayPrice = Number(it.itemTotal || it.price || 0);
+            const unitPriceVal = Number(it.price || it.unitPrice || liveP?.pricePerKg || liveP?.sellingPrice || liveP?.price || 40);
+            const unitLabel = String(it.unit || liveP?.sellingUnit || liveP?.unit || 'kg');
+            const itemIdVal = it.id || ('it_' + (it.productId || matchedProd?.id || Math.random().toString(36).substr(2,6)));
+            it.id = itemIdVal;
+            it.price = unitPriceVal;
+            it.unit = unitLabel;
 
             const extraActionHtml = `
-              <button type="button" onclick="addLyoCardItemToCart('${it.productId}', ${it.rawQty}, '${it.unit || 'kg'}')" style="height: 32px; padding: 0 10px; border-radius: 8px; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); color: #10b981; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; font-weight: 700; cursor: pointer;" title="Add to Cart">
+              <button type="button" onclick="addLyoCardItemToCart('${it.productId || it.id}', ${it.rawQty || 1}, '${unitLabel}')" style="height: 32px; padding: 0 10px; border-radius: 8px; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); color: #10b981; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; font-weight: 700; cursor: pointer;" title="Add to Cart">
                 <span style="font-size: 13px; display: inline-flex; align-items: center; justify-content: center;">🛒</span>
                 <span style="line-height: 1;">Add</span>
               </button>
@@ -1269,12 +1467,12 @@ function getActiveLyoProposalMsg() {
             itemsHtml += window.renderSharedCartItemCard({
               image: displayImg,
               title: displayName,
-              subtitle: `${displayQtyStr} • <span style="color: #64748b;">₹${it.price}/${it.unit || 'kg'}</span>`,
+              subtitle: `${displayQtyStr} • <span style="color: #64748b;">₹${unitPriceVal}/${unitLabel}</span>`,
               totalPrice: displayPrice,
-              qtyDisplay: it.selectorQty || '500 g',
-              onMinusClick: `changeLyoCardItemQty('${msg.proposalId}', '${it.id}', -1)`,
-              onPlusClick: `changeLyoCardItemQty('${msg.proposalId}', '${it.id}', 1)`,
-              onDeleteClick: `removeLyoCardItem('${msg.proposalId}', '${it.id}')`,
+              qtyDisplay: it.selectorQty || displayQtyStr,
+              onMinusClick: `changeLyoCardItemQty('${msg.proposalId}', '${itemIdVal}', -1)`,
+              onPlusClick: `changeLyoCardItemQty('${msg.proposalId}', '${itemIdVal}', 1)`,
+              onDeleteClick: `removeLyoCardItem('${msg.proposalId}', '${itemIdVal}')`,
               extraActionHtml: extraActionHtml
             });
           });
@@ -1366,10 +1564,16 @@ function getActiveLyoProposalMsg() {
 
     function autoGrowLyoInput(el) {
       if (!el) return;
+      if (!el.value || !el.value.trim()) {
+        el.style.height = "24px";
+        el.rows = 1;
+        el.style.overflowY = "hidden";
+        return;
+      }
       el.style.height = "24px";
       const scrollH = el.scrollHeight;
-      el.style.height = Math.min(Math.max(24, scrollH), 160) + "px";
-      if (scrollH > 160) {
+      el.style.height = Math.min(Math.max(24, scrollH), 120) + "px";
+      if (scrollH > 120) {
         el.style.overflowY = "auto";
       } else {
         el.style.overflowY = "hidden";
@@ -1450,6 +1654,7 @@ function getActiveLyoProposalMsg() {
       if (activeMsg) {
         activeMsg.items = [];
       }
+      persistLyoChatMessages();
       if (typeof updateLyoDraftCartBar === "function") updateLyoDraftCartBar();
       if (typeof updateCartBadge === "function") updateCartBadge();
       if (typeof updateCartUI === "function") updateCartUI();
@@ -1511,11 +1716,13 @@ function getActiveLyoProposalMsg() {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
       if (!msg) msg = (typeof getActiveLyoProposalMsg === "function") ? getActiveLyoProposalMsg() : null;
       if (!msg || !msg.items) return;
-      const it = msg.items.find(i => i.id === itemId);
+      const it = msg.items.find(i => i.id === itemId || i.productId === itemId);
       if (!it) return;
 
-      const unitPrice = Number(it.price || 40);
-      const unit = (it.unit || "kg").toLowerCase();
+      const allProds = (typeof getData === 'function') ? getData('ek_products', []) : [];
+      const liveP = allProds.find(p => p.id === (it.productId || it.id));
+      const unitPrice = Number(it.price || it.unitPrice || liveP?.pricePerKg || liveP?.sellingPrice || liveP?.price || 40);
+      const unit = (it.unit || liveP?.sellingUnit || liveP?.unit || "kg").toLowerCase();
       const isWeight = (unit === "kg" || unit === "g" || unit === "gram");
       const isLiquid = (unit === "litre" || unit === "l" || unit === "ml");
 
@@ -1545,6 +1752,7 @@ function getActiveLyoProposalMsg() {
         it.itemTotal = Math.round(newCount * unitPrice);
       }
 
+      saveData('ek_lyo_chat_messages', _lyoChatMessages);
       if (typeof syncLyoToManualCart === "function") syncLyoToManualCart();
       if (typeof renderLyoAiChat === "function") renderLyoAiChat();
       if (typeof updateLyoDraftCartBar === "function") updateLyoDraftCartBar();
@@ -1585,7 +1793,8 @@ function getActiveLyoProposalMsg() {
           pricePerKg: unitPrice,
           totalPrice: totalPrice,
           unit: prod.unit || unit || "kg",
-          imageUrl: prod.imageUrl || "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&auto=format&fit=crop"
+          imageUrl: prod.imageUrl || "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&auto=format&fit=crop",
+          isFreeDeliveryEligible: Boolean(prod.isFreeDeliveryEligible)
         });
       }
       if (typeof saveData === "function") saveData("ek_cart", cart);
@@ -1664,6 +1873,7 @@ function getActiveLyoProposalMsg() {
       if (msg) {
         msg.items = [];
       }
+      persistLyoChatMessages();
       if (typeof syncLyoToManualCart === "function") syncLyoToManualCart();
       if (typeof renderLyoAiChat === "function") renderLyoAiChat();
       if (typeof updateLyoDraftCartBar === "function") updateLyoDraftCartBar();
@@ -1741,6 +1951,8 @@ async function onLyoSendBtnClick() {
     const queryText = inputEl.value.trim();
     if (!queryText) return;
     inputEl.value = '';
+    inputEl.style.height = '24px';
+    inputEl.rows = 1;
     if (typeof autoGrowLyoInput === 'function') autoGrowLyoInput(inputEl);
 
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1857,21 +2069,41 @@ async function onLyoSendBtnClick() {
               existingItem.itemTotal = updatedDetails.itemTotal;
             }
           } else {
+            const prodPriceVal = Number(matchedProd.pricePerKg || matchedProd.sellingPrice || matchedProd.price || 40);
+            const prodUnitVal = String(matchedProd.sellingUnit || matchedProd.unit || calcInput.unit || 'kg');
+            const newCardItemId = 'it_' + matchedProd.id + '_' + Date.now();
             activeProposalMsg.items.push({
+              id: newCardItemId,
               productId: matchedProd.id,
               name: matchedProd.englishName || matchedProd.name,
               tamilName: matchedProd.tamilName || '',
               displayQty: details.displayQty,
               selectorQty: details.selectorQty,
               rawQty: details.rawQty,
-              unit: calcInput.unit || matchedProd.unit || 'kg',
+              unit: prodUnitVal,
               itemTotal: details.itemTotal,
-              unitPrice: Number(matchedProd.pricePerKg || matchedProd.sellingPrice || matchedProd.price || 40),
+              unitPrice: prodPriceVal,
+              price: prodPriceVal,
               imageUrl: matchedProd.imageUrl || matchedProd.image || ''
             });
           }
         }
       });
+
+      if (activeProposalMsg.items.length > 0) {
+        const itemSummaryList = activeProposalMsg.items.map(it => `• **${it.tamilName || it.name}** (${it.displayQty} - ₹${it.itemTotal})`).join('\n');
+        activeProposalMsg.text = `நன்றி! உங்கள் கட்டளைப்படி பொருட்கள் கார்ட்டில் சேர்க்கப்பட்டன! 🥩🛒\n\n${itemSummaryList}`;
+      } else {
+        _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== activeProposalMsg.id);
+        _lyoChatMessages.push({
+          id: 'msg_a_' + Date.now(),
+          role: 'assistant',
+          isProposal: false,
+          text: `மன்னிக்கவும், '${queryText}' குறித்த பொருட்கள் நமது கடையில் தற்போது இருப்பில் இல்லை. 🛒\n\nஎங்களிடம் ஆட்டுக்கறி, ஆட்டுத் தலைக்கறி, பிராய்லர் சிக்கன், நாட்டுக்கோழி, தக்காளி, உருளைக்கிழங்கு போன்ற பொருட்கள் உள்ளன.`,
+          time: nowStr,
+          items: []
+        });
+      }
 
       syncLyoToManualCart();
     } else {

@@ -137,8 +137,8 @@ class MainActivity : ComponentActivity() {
                 override fun onProviderDisabled(p: String) {}
             }
 
-            val isGpsEnabled = locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
-            val isNetworkEnabled = locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+            val isGpsEnabled = try { locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) } catch (e: Exception) { false }
+            val isNetworkEnabled = try { locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) } catch (e: Exception) { false }
             
             var registered = false
             // Prioritize GPS_PROVIDER. Avoid subscribing the same listener instance to multiple providers 
@@ -261,6 +261,7 @@ class MainActivity : ComponentActivity() {
                     if (responseText.isEmpty()) {
                         val sb = java.lang.StringBuilder()
                         for (key in bundle.keySet()) {
+                            @Suppress("DEPRECATION")
                             val value = bundle.get(key)
                             if (value != null) {
                                 sb.append(key).append("=").append(value).append("&")
@@ -511,6 +512,7 @@ class MainActivity : ComponentActivity() {
                                     settings.apply {
                                         javaScriptEnabled = true
                                         domStorageEnabled = true
+                                        @Suppress("DEPRECATION")
                                         databaseEnabled = true
                                         setGeolocationEnabled(true)
                                         allowFileAccess = true
@@ -932,7 +934,7 @@ class MainActivity : ComponentActivity() {
                 val latch = java.util.concurrent.CountDownLatch(1)
                 activity?.runOnUiThread {
                     try {
-                        if (activity == null || activity.isFinishing || activity.isDestroyed) {
+                        if (activity.isFinishing || activity.isDestroyed) {
                             return@runOnUiThread
                         }
                         if (!activity.hasWindowFocus()) {
@@ -1046,7 +1048,14 @@ class MainActivity : ComponentActivity() {
 
                 val providers = locationManager.getProviders(true)
                 for (provider in providers) {
-                    val l = locationManager.getLastKnownLocation(provider) ?: continue
+                    val l = try {
+                        locationManager.getLastKnownLocation(provider)
+                    } catch (se: SecurityException) {
+                        null
+                    } catch (e: Exception) {
+                        null
+                    } ?: continue
+
                     if (bestLocation == null) {
                         bestLocation = l
                     } else {
@@ -1064,7 +1073,14 @@ class MainActivity : ComponentActivity() {
                 if (bestLocation == null) {
                     val allProviders = locationManager.getProviders(false)
                     for (provider in allProviders) {
-                        val l = locationManager.getLastKnownLocation(provider) ?: continue
+                        val l = try {
+                            locationManager.getLastKnownLocation(provider)
+                        } catch (se: SecurityException) {
+                            null
+                        } catch (e: Exception) {
+                            null
+                        } ?: continue
+
                         if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
                             bestLocation = l
                         }

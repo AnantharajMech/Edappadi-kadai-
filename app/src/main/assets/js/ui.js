@@ -826,10 +826,26 @@
     window.formatIndianPhoneForWhatsApp = formatIndianPhoneForWhatsApp;
 
     function openWhatsAppDirect(phoneNum, text = '') {
-      const formattedPhone = formatIndianPhoneForWhatsApp(phoneNum);
-      const encodedText = encodeURIComponent(text);
-      const waUrl = `https://wa.me/${formattedPhone}${encodedText ? '?text=' + encodedText : ''}`;
-      window.location.href = waUrl;
+      const formattedPhone = phoneNum ? formatIndianPhoneForWhatsApp(phoneNum) : '';
+      const encodedText = encodeURIComponent(text || '');
+      let waUrl = '';
+      if (formattedPhone) {
+        waUrl = `https://wa.me/${formattedPhone}${encodedText ? '?text=' + encodedText : ''}`;
+      } else {
+        waUrl = `https://wa.me/?text=${encodedText}`;
+      }
+
+      try {
+        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.openUrl === 'function') {
+          AndroidStorage.openUrl(waUrl);
+        } else if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.shareIntent === 'function') {
+          AndroidStorage.shareIntent(text || 'Order Details', waUrl);
+        } else {
+          window.location.href = waUrl;
+        }
+      } catch (e) {
+        window.location.href = waUrl;
+      }
     }
 
     function openGoogleMapsNavigation(orderId = null) {
@@ -2183,23 +2199,37 @@
       }
     }
 
-    function sendFcmPushNotification(order, oldStatus, newStatus) {
+    function formatOrderItemsSummary(order) {
+      if (!order) return "";
+      let items = order.items;
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        if (order.itemsSummary) return order.itemsSummary;
+        return "";
+      }
+      const summaryList = items.map(item => {
+        const name = item.tamilName || item.nameTa || item.englishName || item.nameEn || item.name || item.productName || 'Item';
+        const qty = item.qty || item.quantity || (item.weightGrams ? (item.weightGrams >= 1000 ? `${(item.weightGrams/1000).toFixed(1)}kg` : `${item.weightGrams}g`) : '1');
+        return `${name} (${qty})`;
+      });
+      if (summaryList.length <= 2) {
+        return summaryList.join(', ');
+      } else {
+        return `${summaryList.slice(0, 2).join(', ')} +${summaryList.length - 2} more`;
+      }
+    }
+
+    window.formatOrderItemsSummary = formatOrderItemsSummary;
+
+    async function sendFcmPushNotification(order, oldStatus, newStatus, customReason) {
       try {
         if (!order) return;
-        const validFcmTransitions = {
-          'none': ['pending'],
-          'pending': ['ready','delivering','delivered','rejected'],
-          'ready': ['delivering','delivered','rejected'],
-          'delivering': ['delivered','rejected']
-        };
-        if (!validFcmTransitions[oldStatus] || !validFcmTransitions[oldStatus].includes(newStatus)) return;
 
-        let targetFcmToken = order.customerFcmToken;
+        let targetFcmToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(order) : order.customerFcmToken;
         if (!targetFcmToken) {
           const users = getData('ek_users', []);
-          const targetUser = users.find(u => u.id === order.customerId || u.phone === order.customerPhone);
-          if (targetUser && targetUser.fcmToken) {
-            targetFcmToken = targetUser.fcmToken;
+          const targetUser = users.find(u => u && (u.id === order.customerId || u.phone === order.customerPhone));
+          if (targetUser && (targetUser.fcmToken || targetUser.realFcmToken)) {
+            targetFcmToken = targetUser.fcmToken || targetUser.realFcmToken;
           }
         }
 
@@ -2208,113 +2238,104 @@
           return;
         }
 
-      let titleTa = "";
-      let titleEn = "";
-      let bodyTa = "";
-      let bodyEn = "";
+        const shortId = order.id ? order.id.slice(0, 8).toUpperCase() : 'N/A';
+        const itemsSummary = formatOrderItemsSummary(order);
+        const itemsStr = itemsSummary ? ` (${itemsSummary})` : '';
 
-      if (newStatus === 'pending') {
-        titleTa = "ஆர்டர் செய்யப்பட்டது! 🛒";
-        titleEn = "Order Placed Successfully! 🛒";
-        const shortId = order.id.slice(0, 8).toUpperCase();
-        bodyTa = `உங்கள் ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது! மொத்தம்: ரூ.${order.totalAmount || order.finalTotal}.\n[ஆர்டர் எண்: ${shortId}]`;
-        bodyEn = `Your order of Rs.${order.totalAmount || order.finalTotal} has been placed successfully. Thank you!\n[Order ID: ${shortId}]`;
+        let titleTa = "";
+        let titleEn = "";
+        let bodyTa = "";
+        let bodyEn = "";
 
-        setTimeout(() => {
-          try {
-            const admins = getData('ek_admin_accounts', []);
-            admins.forEach(adm => {
-              const adminToken = adm.fcmToken || adm.realFcmToken;
-              if (adminToken) {
-                const adminTitleTa = "புதிய ஆர்டர் வந்துள்ளது! 🔔";
-                const adminTitleEn = "New Order Received! 🔔";
-                const adminBodyTa = `வாடிக்கையாளர் ${order.customerName || order.customerPhone} ஒரு புதிய ஆர்டர் செய்துள்ளார்.\n[ஆர்டர் எண்: ${shortId}]`;
-                const adminBodyEn = `Customer ${order.customerName || order.customerPhone} placed a new order.\n[Order ID: ${shortId}]`;
+        const normStatus = String(newStatus || '').toLowerCase().trim();
 
-                const finalTitle = currentLang === 'ta' ? adminTitleTa : adminTitleEn;
-                const finalBody = currentLang === 'ta' ? adminBodyTa : adminBodyEn;
+        if (normStatus === 'pending') {
+          titleTa = "ஆர்டர் செய்யப்பட்டது! 🛒";
+          titleEn = "Order Placed Successfully! 🛒";
+          bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemsStr} வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது! மொத்தம்: ₹${order.totalAmount || order.finalTotal || 0}`;
+          bodyEn = `Your order #${shortId}${itemsStr} of ₹${order.totalAmount || order.finalTotal || 0} has been placed successfully. Thank you!`;
 
-                // 1. Write to Firestore 'ek_fcm_queue' to trigger the real cross-device FCM push via Cloud Function
-                if (typeof db !== 'undefined' && db) {
-                  db.collection('ek_fcm_queue').add({
-                    targetToken: adminToken,
-                    title: finalTitle,
-                    body: finalBody,
-                    orderId: order.id,
-                    type: "new_order",
-                    createdAt: new Date().toISOString(),
-                    processed: false
-                  }).catch(e => console.warn('[FCM Admin Queue] Write failed:', e));
-                }
+          setTimeout(() => {
+            try {
+              const admins = getData('ek_admin_accounts', []);
+              admins.forEach(adm => {
+                const adminToken = adm.fcmToken || adm.realFcmToken;
+                if (adminToken) {
+                  const adminTitleTa = "புதிய ஆர்டர் வந்துள்ளது! 🔔";
+                  const adminTitleEn = "New Order Received! 🔔";
+                  const adminBodyTa = `வாடிக்கையாளர் ${order.customerName || order.customerPhone} ஒரு புதிய ஆர்டர் #${shortId}${itemsStr} செய்துள்ளார்.`;
+                  const adminBodyEn = `Customer ${order.customerName || order.customerPhone} placed order #${shortId}${itemsStr}.`;
 
-                // 2. Local-only simulation for testing on the same device
-                if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
-                  try {
-                    AndroidStorage.simulateFcmPushNotification(
-                      adminToken,
-                      finalTitle,
-                      finalBody,
-                      JSON.stringify({ orderId: order.id, type: "new_order" })
-                    );
-                  } catch (simErr) {
-                    console.warn("[FCM Admin Simulator] Failed calling Android FCM Simulation bridge:", simErr);
+                  const finalTitle = currentLang === 'ta' ? adminTitleTa : adminTitleEn;
+                  const finalBody = currentLang === 'ta' ? adminBodyTa : adminBodyEn;
+
+                  if (typeof db !== 'undefined' && db) {
+                    db.collection('ek_fcm_queue').add({
+                      targetToken: adminToken,
+                      title: finalTitle,
+                      body: finalBody,
+                      orderId: order.id,
+                      type: "new_order",
+                      createdAt: new Date().toISOString(),
+                      processed: false
+                    }).catch(e => console.warn('[FCM Admin Queue] Write failed:', e));
+                  }
+
+                  if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+                    try {
+                      AndroidStorage.simulateFcmPushNotification(
+                        adminToken,
+                        finalTitle,
+                        finalBody,
+                        JSON.stringify({ orderId: order.id, type: "new_order" })
+                      );
+                    } catch (simErr) {
+                      console.warn("[FCM Admin Simulator] Failed calling Android FCM Simulation bridge:", simErr);
+                    }
                   }
                 }
-              }
-            });
-          } catch (admErr) {
-            console.warn("FCM admin notify failed:", admErr);
-          }
-        }, 500);
-      } else if (newStatus === 'ready') {
-        titleTa = "ஆர்டர் தயாராகிவிட்டது! 🥩";
-        titleEn = "Your Order is Ready! 🥩";
-        const shortId = order.id.slice(0, 8).toUpperCase();
-        bodyTa = `விவரம்: உங்கள் ஆர்டர் உறுதிசெய்யப்பட்டு, வெட்டி சுத்தம் செய்யப்பட்டு தயாராக உள்ளது! விரைவில் விநியோகிக்கப்படும்.\n[ஆர்டர் எண்: ${shortId}]`;
-        bodyEn = `Your order has been confirmed & custom-sliced. It is ready for dispatch!\n[Order ID: ${shortId}]`;
-      } else if (newStatus === 'delivering') {
-        titleTa = "ஆர்டர் விநியோகத்திற்கு புறப்பட்டது! 🏍️";
-        titleEn = "Order Out for Delivery! 🏍️";
-        const shortId = order.id.slice(0, 8).toUpperCase();
-        bodyTa = `மகிழ்ச்சியான செய்தி! உங்கள் ஆர்டர் விநியோகிக்க புறப்பட்டுவிட்டது. டெலிவரி நபர் உங்களை நோக்கி வந்து கொண்டிருக்கிறார்!\n[ஆர்டர் எண்: ${shortId}]`;
-        bodyEn = `Your order is out for delivery! Our partner is on their way with your fresh premium meat.\n[Order ID: ${shortId}]`;
-      } else if (newStatus === 'delivered') {
-        titleTa = "உங்கள் ஆர்டர் வழங்கப்பட்டது";
-        titleEn = "Order Delivered Successfully! 🎉";
-        const shortId = order.id.slice(0, 8).toUpperCase();
-        bodyTa = `மகிழ்ச்சி! உங்கள் ஆர்டர் வெற்றிகரமாக உங்களிடம் ஒப்படைக்கப்பட்டது. எடப்பாடி கடையில் வாங்கியதற்கு மிக்க நன்றி!\n[ஆர்டர் எண்: ${shortId}]`;
-        bodyEn = `Excellent! Your order has been delivered successfully. Thank you for shopping with Edappadi Kadai!\n[Order ID: ${shortId}]`;
-      } else if (newStatus === 'rejected') {
-        titleTa = "ஆர்டர் நிராகரிக்கப்பட்டது";
-        titleEn = "Order Cancelled ❌";
-        const shortId = order.id.slice(0, 8).toUpperCase();
-        bodyTa = `மன்னிக்கவும்! உங்கள் ஆர்டர் ரத்து செய்யப்பட்டுள்ளது. ஏதேனும் உதவிக்கு எங்களை தொடர்பு கொள்ளவும்.\n[ஆர்டர் எண்: ${shortId}]`;
-        bodyEn = `Sorry! Your order has been cancelled. Please contact support for any assistance.\n[Order ID: ${shortId}]`;
-      }
+              });
+            } catch (admErr) {
+              console.warn("FCM admin notify failed:", admErr);
+            }
+          }, 500);
+        } else if (normStatus === 'ready' || normStatus === 'accepted' || normStatus === 'preparing') {
+          titleTa = "ஆர்டர் தயாராகிறது! 🥩";
+          titleEn = "Your Order is Being Prepared! 🥩";
+          bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemsStr} ஏற்றுக்கொள்ளப்பட்டு தயார் செய்யப்படுகிறது!`;
+          bodyEn = `Your order #${shortId}${itemsStr} has been accepted and is being prepared!`;
+        } else if (normStatus === 'delivering' || normStatus === 'out_for_delivery') {
+          titleTa = "ஆர்டர் விநியோகத்திற்கு புறப்பட்டது! 🏍️";
+          titleEn = "Order Out for Delivery! 🏍️";
+          bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemsStr} டெலிவரிக்கு புறப்பட்டுவிட்டது!`;
+          bodyEn = `Your order #${shortId}${itemsStr} is out for delivery!`;
+        } else if (normStatus === 'delivered' || normStatus === 'completed') {
+          titleTa = "ஆர்டர் விநியோகிக்கப்பட்டது! 🎉";
+          titleEn = "Order Delivered Successfully! 🎉";
+          bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemsStr} வெற்றிகரமாக உங்களிடம் ஒப்படைக்கப்பட்டது. நன்றி!`;
+          bodyEn = `Your order #${shortId}${itemsStr} has been delivered successfully. Thank you!`;
+        } else if (normStatus === 'rejected' || normStatus === 'cancelled' || normStatus === 'canceled') {
+          titleTa = "ஆர்டர் ரத்து செய்யப்பட்டது ❌";
+          titleEn = "Order Cancelled ❌";
+          const reason = customReason || order.rejectionReason || "Store update";
+          bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemsStr} ரத்து செய்யப்பட்டது. காரணம்: ${reason}`;
+          bodyEn = `Your order #${shortId}${itemsStr} has been cancelled. Reason: ${reason}`;
+        } else {
+          titleTa = "ஆர்டர் நிலை புதுப்பிக்கப்பட்டது 🔔";
+          titleEn = "Order Status Updated 🔔";
+          bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemsStr} நிலை ${normStatus}-ஆக மாற்றப்பட்டது.`;
+          bodyEn = `Your order #${shortId}${itemsStr} status updated to ${normStatus}.`;
+        }
 
-      if (targetFcmToken) {
-        const payload = {
-          to: targetFcmToken,
-          notification: {
-            title: currentLang === 'ta' ? titleTa : titleEn,
-            body: currentLang === 'ta' ? bodyTa : bodyEn
-          },
-          data: {
-            orderId: order.id,
-            oldStatus: oldStatus,
-            newStatus: newStatus,
-            click_action: "OPEN_MAIN_ACTIVITY",
-            type: "order_status_update"
-          }
-        };
-
-        debugLog(`[FCM REST Send API] Enqueueing FCM Push payload to target Token [${targetFcmToken}]:`, JSON.stringify(payload, null, 2));
+        const currentLang = localStorage.getItem('ek_lang') || 'en';
+        const finalTitle = currentLang === 'ta' ? titleTa : titleEn;
+        const finalBody = currentLang === 'ta' ? bodyTa : bodyEn;
 
         if (typeof db !== 'undefined' && db) {
           db.collection('ek_fcm_queue').add({
             targetToken: targetFcmToken,
-            title: currentLang === 'ta' ? titleTa : titleEn,
-            body: currentLang === 'ta' ? bodyTa : bodyEn,
+            title: finalTitle,
+            body: finalBody,
             orderId: order.id,
             oldStatus: oldStatus,
             newStatus: newStatus,
@@ -2327,15 +2348,13 @@
           try {
             AndroidStorage.simulateFcmPushNotification(
               targetFcmToken,
-              currentLang === 'ta' ? titleTa : titleEn,
-              currentLang === 'ta' ? bodyTa : bodyEn,
-              JSON.stringify(payload.data)
+              finalTitle,
+              finalBody,
+              JSON.stringify({ orderId: order.id, oldStatus, newStatus, type: "order_status_update" })
             );
           } catch (simErr) {
             console.warn("[FCM Simulator] Failed calling Android FCM Simulation bridge:", simErr);
           }
-        } else {
-          debugLog(`[FCM Push Delivery Mock success] Client received push payload: ${titleEn} - ${bodyEn}`);
         }
 
         if (typeof db !== 'undefined' && db) {
@@ -2350,17 +2369,191 @@
             newStatus: newStatus,
             sentAt: new Date().toISOString(),
             status: "delivered"
-          }).then(docRef => {
-            debugLog(`[Cloud FCM Audit Log] Success register dispatch event record ${docRef.id}`);
-          }).catch(err => {
-            console.error("[Cloud FCM Audit Log] Error registering FCM log in Firestore:", err);
-          });
+          }).catch(err => console.error("[Cloud FCM Audit Log] Error:", err));
         }
-      }
-    } catch (fcmEx) {
+      } catch (fcmEx) {
         console.warn("[FCM Push Exception Handled]", fcmEx);
       }
     }
+
+    async function sendFcmNotificationForDeliveryOrEtaChange(order, oldFee, newFee, oldEta, newEta) {
+      try {
+        if (!order) return;
+        let targetToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(order) : order.customerFcmToken;
+        if (!targetToken) {
+          console.warn("[FCM] Cannot send Delivery/ETA change notification: No customer FCM token found.");
+          return;
+        }
+        const shortId = order.id ? order.id.slice(0, 8).toUpperCase() : '';
+        const itemsSummary = formatOrderItemsSummary(order);
+        const itemInfoStr = itemsSummary ? ` (${itemsSummary})` : '';
+
+        let feeTextTa = (newFee !== undefined && newFee !== oldFee) ? ` புதிய டெலிவரி கட்டணம்: ₹${newFee}.` : '';
+        let feeTextEn = (newFee !== undefined && newFee !== oldFee) ? ` New delivery fee: ₹${newFee}.` : '';
+
+        let etaTextTa = (newEta !== undefined && newEta !== oldEta) ? ` புதிய எதிர்பார்க்கப்படும் நேரம்: ${newEta} நிமிடம்.` : '';
+        let etaTextEn = (newEta !== undefined && newEta !== oldEta) ? ` Updated ETA: ${newEta} mins.` : '';
+
+        const titleTa = "🚚 டெலிவரி விவரங்கள் மாற்றப்பட்டன!";
+        const titleEn = "🚚 Delivery Details Updated!";
+
+        const bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemInfoStr} -${feeTextTa}${etaTextTa}`;
+        const bodyEn = `Your order #${shortId}${itemInfoStr} -${feeTextEn}${etaTextEn}`;
+
+        const currentLang = localStorage.getItem('ek_lang') || 'en';
+        const finalTitle = currentLang === 'ta' ? titleTa : titleEn;
+        const finalBody = currentLang === 'ta' ? bodyTa : bodyEn;
+
+        if (typeof db !== 'undefined' && db) {
+          db.collection('ek_fcm_queue').add({
+            targetToken: targetToken,
+            title: finalTitle,
+            body: finalBody,
+            orderId: order.id,
+            type: "delivery_eta_update",
+            createdAt: new Date().toISOString(),
+            processed: false
+          }).catch(e => console.warn('[FCM Delivery/ETA Queue] Error:', e));
+        }
+
+        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+          try {
+            AndroidStorage.simulateFcmPushNotification(
+              targetToken,
+              finalTitle,
+              finalBody,
+              JSON.stringify({ orderId: order.id, type: "delivery_eta_update" })
+            );
+          } catch (simErr) {
+            console.warn("[FCM Simulator] Fail:", simErr);
+          }
+        }
+        debugLog(`[FCM Targeted Push] Sent Delivery/ETA update to customer token [${targetToken}]`);
+      } catch (err) {
+        console.error("[FCM Delivery/ETA Notification Error]", err);
+      }
+    }
+
+    async function sendFcmNotificationForRiderAssignment(order, exec) {
+      try {
+        if (!order || !exec) return;
+        let targetToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(order) : order.customerFcmToken;
+        if (!targetToken) {
+          console.warn("[FCM] Cannot send Rider Assignment notification to customer: No FCM token found.");
+          return;
+        }
+        const shortId = order.id ? order.id.slice(0, 8).toUpperCase() : '';
+        const itemsSummary = formatOrderItemsSummary(order);
+        const itemInfoStr = itemsSummary ? ` (${itemsSummary})` : '';
+
+        const titleTa = "🏍️ டெலிவரி நபர் நியமிக்கப்பட்டார்!";
+        const titleEn = "🏍️ Delivery Partner Assigned!";
+
+        const bodyTa = `உங்கள் ஆர்டர் #${shortId}${itemInfoStr} -க்கு டெலிவரி நபர் ${exec.name || 'Rider'} (📞 ${exec.phone || ''}) நியமிக்கப்பட்டுள்ளார்!`;
+        const bodyEn = `Rider ${exec.name || 'Rider'} (📞 ${exec.phone || ''}) has been assigned to your order #${shortId}${itemInfoStr}!`;
+
+        const currentLang = localStorage.getItem('ek_lang') || 'en';
+        const finalTitle = currentLang === 'ta' ? titleTa : titleEn;
+        const finalBody = currentLang === 'ta' ? bodyTa : bodyEn;
+
+        if (typeof db !== 'undefined' && db) {
+          db.collection('ek_fcm_queue').add({
+            targetToken: targetToken,
+            title: finalTitle,
+            body: finalBody,
+            orderId: order.id,
+            riderName: exec.name,
+            riderPhone: exec.phone,
+            type: "rider_assigned",
+            createdAt: new Date().toISOString(),
+            processed: false
+          }).catch(e => console.warn('[FCM Rider Assign Queue] Error:', e));
+        }
+
+        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+          try {
+            AndroidStorage.simulateFcmPushNotification(
+              targetToken,
+              finalTitle,
+              finalBody,
+              JSON.stringify({ orderId: order.id, type: "rider_assigned", riderName: exec.name })
+            );
+          } catch (simErr) {
+            console.warn("[FCM Simulator] Fail:", simErr);
+          }
+        }
+        debugLog(`[FCM Targeted Push] Sent Rider Assignment to customer token [${targetToken}]`);
+      } catch (err) {
+        console.error("[FCM Rider Assignment Notification Error]", err);
+      }
+    }
+
+    async function sendDirectAdminCustomerMessage(targetUserOrId, messageText) {
+      try {
+        if (!targetUserOrId || !messageText || !messageText.trim()) return false;
+        let targetToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(targetUserOrId) : null;
+        if (!targetToken) {
+          showToast("Selected customer has no registered FCM token for push notifications.", "warning");
+          return false;
+        }
+
+        let customerName = "Customer";
+        if (typeof targetUserOrId === 'object') {
+          customerName = targetUserOrId.name || targetUserOrId.customerName || "Customer";
+        } else {
+          const users = getDataCached('ek_users', []);
+          const u = users.find(x => x && (x.id === targetUserOrId || x.phone === targetUserOrId));
+          if (u) customerName = u.name || "Customer";
+        }
+
+        const titleTa = "💬 நிர்வாகியிடமிருந்து செய்தி";
+        const titleEn = "💬 Message from Store Support";
+
+        const bodyTa = messageText.trim();
+        const bodyEn = messageText.trim();
+
+        const currentLang = localStorage.getItem('ek_lang') || 'en';
+        const finalTitle = currentLang === 'ta' ? titleTa : titleEn;
+        const finalBody = currentLang === 'ta' ? bodyTa : bodyEn;
+
+        if (typeof db !== 'undefined' && db) {
+          await db.collection('ek_fcm_queue').add({
+            targetToken: targetToken,
+            title: finalTitle,
+            body: finalBody,
+            targetUserId: typeof targetUserOrId === 'string' ? targetUserOrId : targetUserOrId.id,
+            type: "support_chat_reply",
+            createdAt: new Date().toISOString(),
+            processed: false
+          }).catch(e => console.warn('[FCM Direct Message Queue] Error:', e));
+        }
+
+        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+          try {
+            AndroidStorage.simulateFcmPushNotification(
+              targetToken,
+              finalTitle,
+              finalBody,
+              JSON.stringify({ type: "support_chat_reply", text: messageText })
+            );
+          } catch (simErr) {
+            console.warn("[FCM Simulator] Fail:", simErr);
+          }
+        }
+
+        showToast(`Direct message sent to ${customerName}! 💬`, "success");
+        return true;
+      } catch (err) {
+        console.error("[FCM Direct Message Error]", err);
+        showToast("Failed to send direct message: " + err.message, "error");
+        return false;
+      }
+    }
+
+    window.sendFcmPushNotification = sendFcmPushNotification;
+    window.sendFcmNotificationForDeliveryOrEtaChange = sendFcmNotificationForDeliveryOrEtaChange;
+    window.sendFcmNotificationForRiderAssignment = sendFcmNotificationForRiderAssignment;
+    window.sendDirectAdminCustomerMessage = sendDirectAdminCustomerMessage;
 
     function sendFcmNotificationToRider(order, exec) {
       try {

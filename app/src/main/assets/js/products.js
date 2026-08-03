@@ -67,26 +67,26 @@
             <div id="edit-form-${c.id}" style="display: none; border-top: 1.5px dashed rgba(255,255,255,0.08); padding-top: 14px; margin-top: 8px; flex-direction: column; gap: 12px; width: 100%; box-sizing: border-box; animation: fadeInSlide 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;">
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; width: 100%; box-sizing: border-box;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <label style="font-size: 10.5px; font-weight: 700; color: #94a3b8; display: block; text-transform: uppercase;">English Name</label>
-                  <input type="text" id="edit-cat-en-${c.id}" value="${c.nameEn || c.en || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                  <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">English Name</label>
+                  <input type="text" id="edit-cat-en-${c.id}" value="${c.nameEn || c.en || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;">
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <label style="font-size: 10.5px; font-weight: 700; color: #94a3b8; display: block; text-transform: uppercase;">Tamil Name (தமிழ்)</label>
-                  <input type="text" id="edit-cat-ta-${c.id}" value="${c.nameTa || c.ta || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                  <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Tamil Name (தமிழ்)</label>
+                  <input type="text" id="edit-cat-ta-${c.id}" value="${c.nameTa || c.ta || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;">
                 </div>
               </div>
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; width: 100%; box-sizing: border-box;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <label style="font-size: 10.5px; font-weight: 700; color: #94a3b8; display: block; text-transform: uppercase;">Icon / Emoji</label>
-                  <input type="text" id="edit-cat-icon-${c.id}" value="${c.icon || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; text-align: center; width: 100%; box-sizing: border-box;">
+                  <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Icon / Emoji</label>
+                  <input type="text" id="edit-cat-icon-${c.id}" value="${c.icon || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; text-align: center; width: 100%; box-sizing: border-box;">
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <label style="font-size: 10.5px; font-weight: 700; color: #94a3b8; display: block; text-transform: uppercase;">Accent (Hex)</label>
-                  <input type="text" id="edit-cat-accent-${c.id}" value="${c.accentColor || '#2E7D32'}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; width: 100%; box-sizing: border-box;" placeholder="#2E7D32">
+                  <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Accent (Hex)</label>
+                  <input type="text" id="edit-cat-accent-${c.id}" value="${c.accentColor || '#2E7D32'}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;" placeholder="#2E7D32">
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <label style="font-size: 10.5px; font-weight: 700; color: #94a3b8; display: block; text-transform: uppercase;">Sort Order</label>
-                  <input type="number" id="edit-cat-order-${c.id}" value="${c.order ?? index}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                  <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Sort Order</label>
+                  <input type="number" id="edit-cat-order-${c.id}" value="${c.order ?? index}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;">
                 </div>
               </div>
 
@@ -551,10 +551,14 @@ function renderSlidingBanners() {
   const outerWrapper = document.getElementById('carousel-outer-wrapper');
   if (!container) return;
 
+  const isCloudSynced = window._hasFreshCloudData || window._hasFreshSettings || getData('ek_settings_synced') === true || getData('ek_cloud_synced') === true;
   const settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
-  const banners = (settings && Array.isArray(settings.slidingBanners) && settings.slidingBanners.length > 0)
-    ? settings.slidingBanners
-    : (typeof DEFAULT_SETTINGS !== 'undefined' && DEFAULT_SETTINGS.slidingBanners ? DEFAULT_SETTINGS.slidingBanners : []);
+  let banners = [];
+  if (settings && Array.isArray(settings.slidingBanners)) {
+    banners = settings.slidingBanners;
+  } else if (!isCloudSynced && typeof DEFAULT_SETTINGS !== 'undefined' && Array.isArray(DEFAULT_SETTINGS.slidingBanners)) {
+    banners = DEFAULT_SETTINGS.slidingBanners;
+  }
 
   if (!banners || banners.length === 0) {
     if (outerWrapper) outerWrapper.style.display = 'none';
@@ -562,7 +566,7 @@ function renderSlidingBanners() {
   }
   if (outerWrapper) outerWrapper.style.display = 'block';
 
-  const hash = JSON.stringify(banners.map(b => (b.id || b.image))) + '_' + (typeof currentLang !== 'undefined' ? currentLang : 'en');
+  const hash = JSON.stringify(banners) + '_' + (typeof currentLang !== 'undefined' ? currentLang : 'en');
   if (window._lastBannersHash === hash && container.children.length > 0) {
     return;
   }
@@ -649,13 +653,269 @@ function startCarouselAutoSlide(count) {
   }, 4000);
 }
 
+window._editingBannerId = null;
+
+function compressAndCacheBannerImage(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const base64Str = e.target.result;
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const maxW = 800;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxW) {
+        h = Math.round((h * maxW) / w);
+        w = maxW;
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.8);
+      
+      const urlInp = document.getElementById('admin-banner-url-input');
+      const previewImg = document.getElementById('admin-banner-preview-img');
+      const previewContainer = document.getElementById('admin-banner-preview-container');
+      if (urlInp) urlInp.value = compressed;
+      if (previewImg) previewImg.src = compressed;
+      if (previewContainer) previewContainer.style.display = 'block';
+    };
+    img.src = base64Str;
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateAdminBannerUrlPreview() {
+  const urlInp = document.getElementById('admin-banner-url-input');
+  const previewImg = document.getElementById('admin-banner-preview-img');
+  const previewContainer = document.getElementById('admin-banner-preview-container');
+  if (urlInp && previewImg && previewContainer) {
+    const val = urlInp.value.trim();
+    if (val) {
+      previewImg.src = val;
+      previewContainer.style.display = 'block';
+    } else {
+      previewContainer.style.display = 'none';
+    }
+  }
+}
+
+function deleteSelectedBannerPhoto() {
+  const fileInp = document.getElementById('admin-banner-file-input');
+  const urlInp = document.getElementById('admin-banner-url-input');
+  const previewImg = document.getElementById('admin-banner-preview-img');
+  const previewContainer = document.getElementById('admin-banner-preview-container');
+  if (fileInp) fileInp.value = '';
+  if (urlInp) urlInp.value = '';
+  if (previewImg) previewImg.src = '';
+  if (previewContainer) previewContainer.style.display = 'none';
+}
+
+function addNewSlidingBanner() {
+  const urlInp = document.getElementById('admin-banner-url-input');
+  const previewImg = document.getElementById('admin-banner-preview-img');
+  const titleTaInp = document.getElementById('admin-banner-title-ta');
+  const titleEnInp = document.getElementById('admin-banner-title-en');
+  const subTaInp = document.getElementById('admin-banner-sub-ta');
+  const subEnInp = document.getElementById('admin-banner-sub-en');
+
+  let imgUrl = (urlInp ? urlInp.value.trim() : '') || (previewImg ? previewImg.src : '');
+  if (!imgUrl) {
+    showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "தயவுசெய்து விளம்பரப் படத்தை தேர்ந்தெடுக்கவும்!" : "Please choose or enter a banner image!", "warning");
+    return;
+  }
+
+  const titleTa = titleTaInp ? titleTaInp.value.trim() : '';
+  const titleEn = titleEnInp ? titleEnInp.value.trim() : '';
+  const subTa = subTaInp ? subTaInp.value.trim() : '';
+  const subEn = subEnInp ? subEnInp.value.trim() : '';
+
+  let settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
+  if (!settings) settings = { ...DEFAULT_SETTINGS };
+  if (!Array.isArray(settings.slidingBanners)) settings.slidingBanners = [];
+
+  if (window._editingBannerId) {
+    const idx = settings.slidingBanners.findIndex(b => b && b.id === window._editingBannerId);
+    if (idx >= 0) {
+      settings.slidingBanners[idx] = {
+        ...settings.slidingBanners[idx],
+        image: imgUrl,
+        titleTa: titleTa,
+        titleEn: titleEn,
+        subTa: subTa,
+        subEn: subEn
+      };
+    }
+  } else {
+    if (settings.slidingBanners.length >= 10) {
+      showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "அதிகபட்சமாக 10 பேனர்கள் மட்டுமே சேர்க்க முடியும்!" : "Maximum 10 banners allowed!", "warning");
+      return;
+    }
+    settings.slidingBanners.push({
+      id: 'b_' + Date.now(),
+      image: imgUrl,
+      titleTa: titleTa,
+      titleEn: titleEn,
+      subTa: subTa,
+      subEn: subEn
+    });
+  }
+
+  settings.updatedAt = new Date().toISOString();
+  settings._isAdminModified = true;
+
+  saveData('ek_settings', settings);
+  if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_settings');
+  window._lastBannersHash = '';
+
+  if (typeof db !== 'undefined' && db) {
+    try {
+      db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings))
+        .then(() => debugLog('[Banner Admin] Saved banner settings to Firestore'))
+        .catch(err => console.error('[Banner Admin] Firestore save error:', err));
+    } catch(e) {}
+  }
+
+  cancelEditSlidingBanner();
+  renderAdminBannerList(true);
+  renderSlidingBanners();
+
+  showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "ஸ்லைடிங் பேனர் வெற்றிகரமாக சேமிக்கப்பட்டது! 🖼️" : "Sliding banner saved successfully! 🖼️", "success");
+}
+
+function editSlidingBanner(bannerId) {
+  let settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
+  if (!settings || !Array.isArray(settings.slidingBanners)) return;
+
+  const b = settings.slidingBanners.find(x => x && x.id === bannerId);
+  if (!b) return;
+
+  window._editingBannerId = bannerId;
+
+  const urlInp = document.getElementById('admin-banner-url-input');
+  const previewImg = document.getElementById('admin-banner-preview-img');
+  const previewContainer = document.getElementById('admin-banner-preview-container');
+  const titleTaInp = document.getElementById('admin-banner-title-ta');
+  const titleEnInp = document.getElementById('admin-banner-title-en');
+  const subTaInp = document.getElementById('admin-banner-sub-ta');
+  const subEnInp = document.getElementById('admin-banner-sub-en');
+  const formTitle = document.getElementById('admin-banner-form-title');
+  const submitBtn = document.getElementById('admin-banner-submit-btn');
+  const cancelBtn = document.getElementById('admin-banner-cancel-btn');
+
+  if (urlInp) urlInp.value = b.image || '';
+  if (previewImg) previewImg.src = b.image || '';
+  if (previewContainer) previewContainer.style.display = b.image ? 'block' : 'none';
+
+  if (titleTaInp) titleTaInp.value = b.titleTa || '';
+  if (titleEnInp) titleEnInp.value = b.titleEn || '';
+  if (subTaInp) subTaInp.value = b.subTa || '';
+  if (subEnInp) subEnInp.value = b.subEn || '';
+
+  if (formTitle) formTitle.innerText = "✏️ பேனர் திருத்த / Edit Banner";
+  if (submitBtn) submitBtn.innerHTML = "<span>💾 UPDATE CAROUSEL</span>";
+  if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+
+  const formSection = document.getElementById('admin-banner-form-title');
+  if (formSection) formSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelEditSlidingBanner() {
+  window._editingBannerId = null;
+  deleteSelectedBannerPhoto();
+
+  const titleTaInp = document.getElementById('admin-banner-title-ta');
+  const titleEnInp = document.getElementById('admin-banner-title-en');
+  const subTaInp = document.getElementById('admin-banner-sub-ta');
+  const subEnInp = document.getElementById('admin-banner-sub-en');
+  const formTitle = document.getElementById('admin-banner-form-title');
+  const submitBtn = document.getElementById('admin-banner-submit-btn');
+  const cancelBtn = document.getElementById('admin-banner-cancel-btn');
+
+  if (titleTaInp) titleTaInp.value = '';
+  if (titleEnInp) titleEnInp.value = '';
+  if (subTaInp) subTaInp.value = '';
+  if (subEnInp) subEnInp.value = '';
+
+  if (formTitle) formTitle.innerText = "⚡ புதிய பேனர் சேர்க்க / Add New Slide";
+  if (submitBtn) submitBtn.innerHTML = "<span>➕ ADD TO CAROUSEL</span>";
+  if (cancelBtn) cancelBtn.style.display = 'none';
+}
+
+function deleteSlidingBanner(bannerId) {
+  let settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
+  if (!settings) settings = { ...DEFAULT_SETTINGS };
+  if (!Array.isArray(settings.slidingBanners)) settings.slidingBanners = [];
+
+  settings.slidingBanners = settings.slidingBanners.map((b, i) => {
+    if (!b) return null;
+    return {
+      ...b,
+      id: b.id || ('b_' + (i + 1))
+    };
+  }).filter(Boolean);
+
+  settings.slidingBanners = settings.slidingBanners.filter(b => b.id !== bannerId && String(b.id) !== String(bannerId));
+  settings.updatedAt = new Date().toISOString();
+  settings._isAdminModified = true;
+
+  saveData('ek_settings', settings);
+  if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_settings');
+  window._lastBannersHash = '';
+
+  if (typeof db !== 'undefined' && db) {
+    try {
+      db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings))
+        .then(() => debugLog('[Banner Admin] Saved banner deletion to Firestore'))
+        .catch(err => console.error('[Banner Admin] Firestore deletion save error:', err));
+    } catch(e) {}
+  }
+
+  if (window._editingBannerId === bannerId) {
+    cancelEditSlidingBanner();
+  }
+
+  renderAdminBannerList(true);
+  renderSlidingBanners();
+
+  showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "பானர் நீக்கப்பட்டது ✓" : "Banner removed ✓", "info");
+}
+
+window.compressAndCacheBannerImage = compressAndCacheBannerImage;
+window.updateAdminBannerUrlPreview = updateAdminBannerUrlPreview;
+window.deleteSelectedBannerPhoto = deleteSelectedBannerPhoto;
+window.addNewSlidingBanner = addNewSlidingBanner;
+window.editSlidingBanner = editSlidingBanner;
+window.cancelEditSlidingBanner = cancelEditSlidingBanner;
+window.deleteSlidingBanner = deleteSlidingBanner;
+window.renderAdminBannerList = renderAdminBannerList;
+window.renderAdminCategoriesList = renderAdminCategoriesList;
+window.handleCreateCategory = handleCreateCategory;
+window.saveEditedCategory = saveEditedCategory;
+window.deleteCategoryItem = deleteCategoryItem;
+window.toggleCategoryVisibility = toggleCategoryVisibility;
+window.toggleCategoryEditForm = toggleCategoryEditForm;
+window.toggleCategorySchedule = toggleCategorySchedule;
+window.updateCategoryScheduleTimes = updateCategoryScheduleTimes;
+window.reorderCategoryItem = reorderCategoryItem;
+
 function renderAdminBannerList(force = false) {
   const listEl = document.getElementById('admin-banner-list');
   const badgeEl = document.getElementById('admin-carousel-count-badge');
   if (!listEl) return;
 
+  const isCloudSynced = window._hasFreshCloudData || window._hasFreshSettings || getData('ek_settings_synced') === true || getData('ek_cloud_synced') === true;
   const settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
-  const banners = (settings && Array.isArray(settings.slidingBanners)) ? settings.slidingBanners : (typeof DEFAULT_SETTINGS !== 'undefined' && DEFAULT_SETTINGS.slidingBanners ? DEFAULT_SETTINGS.slidingBanners : []);
+  let banners = [];
+  if (settings && Array.isArray(settings.slidingBanners)) {
+    banners = settings.slidingBanners;
+  } else if (!isCloudSynced && typeof DEFAULT_SETTINGS !== 'undefined' && Array.isArray(DEFAULT_SETTINGS.slidingBanners)) {
+    banners = DEFAULT_SETTINGS.slidingBanners;
+  }
 
   if (badgeEl) badgeEl.innerText = `${banners.length} Slides`;
 
@@ -666,14 +926,19 @@ function renderAdminBannerList(force = false) {
 
   let html = '';
   banners.forEach((b, idx) => {
+    if (!b) return;
+    const bId = b.id || ('b_' + (idx + 1));
+    const titleText = (b.titleTa || b.titleEn || ('Banner #' + (idx+1))).replace(/"/g, '&quot;');
+    const subText = (b.subTa || b.subEn || '').replace(/"/g, '&quot;');
     html += `
-      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px; display: flex; align-items: center; gap: 12px;">
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px; display: flex; align-items: center; gap: 10px;">
         <img src="${b.image}" style="width: 50px; height: 35px; object-fit: cover; border-radius: 6px;" onError="this.onerror=null;this.src='https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800';" />
         <div style="flex: 1; min-width: 0;">
-          <div style="color: var(--text-primary); font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${b.titleEn || b.titleTa || 'Banner #' + (idx+1)}</div>
-          <div style="color: var(--text-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${b.subEn || b.subTa || ''}</div>
+          <div style="color: var(--text-primary); font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${titleText}</div>
+          <div style="color: var(--text-secondary); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subText}</div>
         </div>
-        <button onclick="deleteSlidingBanner('${b.id}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">Delete</button>
+        <button type="button" onclick="editSlidingBanner('${bId}')" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">Edit</button>
+        <button type="button" onclick="deleteSlidingBanner('${bId}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">Delete</button>
       </div>
     `;
   });
@@ -681,6 +946,7 @@ function renderAdminBannerList(force = false) {
 }
 function renderHomeScreen(forceReRender = false) {
       _categoriesListCachedValue = null;
+      window._categoriesListCachedValue = null;
       if (forceReRender) {
         _lastBannersHash = '';
         _lastCategoryPillsHash = '';
@@ -788,6 +1054,17 @@ function renderHomeScreen(forceReRender = false) {
       }
     }
 
+    function syncActiveCategoryPillScroll(catId) {
+      setTimeout(() => {
+        const pillsContainer = document.querySelector('#screen-home .filter-pills') || document.querySelector('.filter-pills');
+        if (!pillsContainer) return;
+        const activeBtn = pillsContainer.querySelector('button.pill.active');
+        if (activeBtn && typeof scrollToCenterHorizontal === 'function') {
+          scrollToCenterHorizontal(activeBtn, pillsContainer);
+        }
+      }, 50);
+    }
+
     function filterHomeProducts(catId, btn) {
       activeCategory = catId;
       try {
@@ -801,6 +1078,94 @@ function renderHomeScreen(forceReRender = false) {
       }
       renderCategoryPills();
       renderHomeScreenProducts();
+
+      if (btn && typeof scrollToCenterHorizontal === 'function') {
+        scrollToCenterHorizontal(btn, btn.parentElement);
+      } else {
+        syncActiveCategoryPillScroll(catId);
+      }
+    }
+
+    let homeSwipeStartX = 0;
+    let homeSwipeStartY = 0;
+
+    function handleHomeCategorySwipe(direction) {
+      const catList = Array.isArray(window._currentHomeCategories) && window._currentHomeCategories.length > 0
+        ? window._currentHomeCategories
+        : [{ id: 'all' }];
+
+      if (!catList || catList.length === 0) return;
+
+      const currentIndex = catList.findIndex(c => String(c.id) === String(activeCategory));
+      if (currentIndex === -1) return;
+
+      let targetIndex = currentIndex;
+      if (direction === 'next') {
+        targetIndex = currentIndex + 1;
+      } else if (direction === 'prev') {
+        targetIndex = currentIndex - 1;
+      }
+
+      if (targetIndex < 0 || targetIndex >= catList.length) return;
+
+      const targetCategory = catList[targetIndex];
+      if (!targetCategory || targetCategory.id === undefined) return;
+
+      const grid = document.getElementById('home-product-grid');
+      if (grid) {
+        grid.style.transition = 'opacity 0.15s ease-in-out';
+        grid.style.opacity = '0.35';
+        setTimeout(() => {
+          grid.style.opacity = '1';
+        }, 150);
+      }
+
+      filterHomeProducts(String(targetCategory.id));
+    }
+
+    function setupHomeCategorySwipeListeners() {
+      const targets = [
+        document.getElementById('home-product-grid'),
+        document.getElementById('home-search-wrapper')
+      ].filter(Boolean);
+
+      targets.forEach(target => {
+        target.addEventListener('touchstart', function(e) {
+          if (typeof currentScreen !== 'undefined' && currentScreen !== 'screen-home') return;
+          if (e.touches && e.touches.length === 1) {
+            homeSwipeStartX = e.touches[0].clientX;
+            homeSwipeStartY = e.touches[0].clientY;
+          }
+        }, { passive: true });
+
+        target.addEventListener('touchend', function(e) {
+          if (typeof currentScreen !== 'undefined' && currentScreen !== 'screen-home') return;
+          if (!e.changedTouches || e.changedTouches.length === 0) return;
+
+          const endX = e.changedTouches[0].clientX;
+          const endY = e.changedTouches[0].clientY;
+
+          const deltaX = endX - homeSwipeStartX;
+          const deltaY = endY - homeSwipeStartY;
+
+          const absX = Math.abs(deltaX);
+          const absY = Math.abs(deltaY);
+
+          if (absX >= 60 && absX >= 1.5 * absY) {
+            if (deltaX < 0) {
+              handleHomeCategorySwipe('next');
+            } else {
+              handleHomeCategorySwipe('prev');
+            }
+          }
+        }, { passive: true });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupHomeCategorySwipeListeners);
+    } else {
+      setupHomeCategorySwipeListeners();
     }
 
     function handleProductImageError(img, category) {
@@ -922,13 +1287,23 @@ function renderHomeScreen(forceReRender = false) {
     }
 
     function renderHomeScreenProducts(force = false) {
+      const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
       if (force) {
         _lastProductsHash = '';
         _lastSpecialsHash = '';
       }
       const grid = document.getElementById('home-product-grid');
       let rawLocalProducts = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
-      if ((!rawLocalProducts || rawLocalProducts.length === 0) && !window._hasFreshCloudData) {
+      const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
+      const demoList = (!isCloudSynced && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) ? DEMO_PRODUCTS : [];
+      if (!isCloudSynced && (!rawLocalProducts || rawLocalProducts.length === 0) && demoList.length > 0) {
+        rawLocalProducts = demoList.filter(p => p && p.id && !deletedProdIds.includes(p.id));
+        if (rawLocalProducts.length > 0) {
+          saveData('ek_products', rawLocalProducts);
+          if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
+        }
+      }
+      if ((!rawLocalProducts || rawLocalProducts.length === 0) && !window._hasFreshCloudData && (isProductsLoading || window.isProductsLoading)) {
         if (grid) {
           let skeletonCardsHtml = '';
           for (let i = 0; i < 6; i++) {
@@ -953,17 +1328,16 @@ function renderHomeScreen(forceReRender = false) {
         return;
       }
       try {
-        let rawLocalProducts = getDataCached('ek_products', []);
-        let products = rawLocalProducts;
+        let products = (rawLocalProducts || []).filter(p => p && p.id && !deletedProdIds.includes(p.id));
         if (Array.isArray(products)) { products.forEach(p => { if (p) updateProductAvailability(p); }); }
         const catList = getCategoriesList() || [];
         const grid = document.getElementById('home-product-grid');
-        const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
 
-        if (!getData('ek_db_initialized') && (!products || products.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+        if (!isCloudSynced && typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!products || products.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
           products = DEMO_PRODUCTS.filter(p => p && p.id && !deletedProdIds.includes(p.id));
           if (products.length > 0) {
             saveData('ek_products', products);
+            if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
           }
         }
 
@@ -1097,6 +1471,11 @@ function renderHomeScreen(forceReRender = false) {
           filtered = filtered.filter(p => p && String(p.category || '').toLowerCase().trim() === activeCatLower);
         }
 
+        if (filtered.length === 0 && String(activeCategory) !== 'all' && !searchQuery) {
+          activeCategory = 'all';
+          filtered = (products || []).filter(p => p && !p.isHidden);
+        }
+
         if (searchQuery) {
           filtered = filtered.filter(p => {
             if (!p) return false;
@@ -1141,7 +1520,7 @@ function renderHomeScreen(forceReRender = false) {
         const categoryOrdersHash = catListForSorting.map(c => `${c.id}:${c.order}`).join(',');
         const favsHash = (String(activeCategory) === 'favorites') ? '::favs:' + (getData('ek_customer_favorites', []) || []).join(',') : '';
         const filterKey = String(activeCategory) + '::' + searchQuery + '::' + categoryOrdersHash + favsHash;
-        const dataHash = filtered.map(p => `${p ? p.id : ''}:${p ? p.stockKg : ''}:${p ? p.isOutOfStock : ''}:${p ? p.pricePerKg : ''}:${p ? String(p.imageUrl || '').trim() : ''}:${p ? String(p.englishName || '').trim() : ''}:${p ? (p.sellingUnit || p.unit || '') : ''}`).join('|');
+        const dataHash = filtered.map(p => `${p ? p.id : ''}:${p ? p.stockKg : ''}:${p ? p.isOutOfStock : ''}:${p ? p.pricePerKg : ''}:${p ? String(p.imageUrl || '').trim() : ''}:${p ? String(p.englishName || '').trim() : ''}:${p ? (p.sellingUnit || p.unit || '') : ''}:${p ? String(p.category || '') : ''}:${p ? !!p.isHidden : ''}`).join('|');
         const combinedKey = filterKey + '::' + dataHash;
         if (filtered.length === 0) {
           grid.innerHTML = `            <div style="grid-column: 1 / -1; text-align: center; padding: 48px 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">              <div style="font-size: 40px; filter: grayscale(1);">🛒</div>              <p style="color: var(--text-muted); font-size: 14px; font-weight: 500; margin: 0;">                ${currentLang === 'ta' ? 'தயாரிப்புகள் இன்னும் சேர்க்கப்படவில்லை.' : 'No products available yet.'}              </p>              <p style="color: var(--text-muted); font-size: 11px; margin: 0; opacity: 0.7;">                ${currentLang === 'ta' ? 'அட்மின் பேனலில் இருந்து புதிய தயாரிப்புகளை சேர்க்கவும்.' : 'Add products from the Admin Panel.'}              </p>            </div>          `;
@@ -2404,6 +2783,7 @@ function renderHomeScreen(forceReRender = false) {
         specialNote: note,
         pricePerKg: activeProduct.pricePerKg,
         imageUrl: activeProduct.imageUrl,
+        isFreeDeliveryEligible: Boolean(activeProduct.isFreeDeliveryEligible),
         totalPrice: price
       };
 
@@ -2767,13 +3147,15 @@ function renderHomeScreen(forceReRender = false) {
      * Infallible order financial calculation formula to ensure identical values everywhere,
      * including Subtotal, Delivery Fee, Loyalty Discount, Coupon Discount, and Grand Total.
      */
-    function calculateOrderFinancials(subtotal, user, appliedCouponCode, useLoyaltyPts) {
+    function calculateOrderFinancials(subtotal, user, appliedCouponCode, useLoyaltyPts, cartItems = null) {
       const numericSubtotal = Math.max(0, parseFloat(subtotal) || 0);
 
       if (numericSubtotal <= 0) {
         return {
           subtotal: 0,
           deliveryFee: 0,
+          isFreeDelivery: false,
+          freeDeliveryReason: null,
           loyaltyDiscount: 0,
           couponDiscount: 0,
           grandTotal: 0,
@@ -2783,13 +3165,32 @@ function renderHomeScreen(forceReRender = false) {
       }
 
       const settings = getSettings();
+      const currentCart = Array.isArray(cartItems) ? cartItems : (typeof cart !== 'undefined' ? cart : []);
+
       let deliveryFee = settings.deliveryCharge !== undefined ? parseFloat(settings.deliveryCharge) : 40;
       let distance = null;
       let zoneName = 'Flat Rate';
 
+      let isFreeDel = false;
+      let freeDelReason = null;
+
+      if (typeof LyoAiEngine !== 'undefined' && LyoAiEngine.DeliveryChargeCalculator) {
+        const delRes = LyoAiEngine.DeliveryChargeCalculator.calculateDelivery(numericSubtotal, currentCart, settings);
+        isFreeDel = delRes.isFreeDelivery;
+        freeDelReason = delRes.freeDeliveryReason;
+      } else {
+        const subtotalFree = numericSubtotal >= 500;
+        const allEligible = currentCart.length > 0 && currentCart.every(item => item && item.isFreeDeliveryEligible === true);
+        isFreeDel = subtotalFree || allEligible;
+        freeDelReason = allEligible ? 'product' : (subtotalFree ? 'subtotal' : null);
+      }
+
       if (user && (user.tier || '').toLowerCase() === 'gold') {
         deliveryFee = 0;
         zoneName = 'Gold Member Free Delivery';
+      } else if (isFreeDel) {
+        deliveryFee = 0;
+        zoneName = freeDelReason === 'product' ? 'Free Delivery - Eligible Product(s)' : 'Free Delivery';
       } else if (settings.useDynamicDistancePricing) {
         const dynFee = getDynamicDeliveryCharge(numericSubtotal, user);
         deliveryFee = parseFloat(dynFee.charge) || 0;
@@ -2834,6 +3235,8 @@ function renderHomeScreen(forceReRender = false) {
       return {
         subtotal: numericSubtotal,
         deliveryFee: Math.round(deliveryFee),
+        isFreeDelivery: isFreeDel,
+        freeDeliveryReason: freeDelReason,
         loyaltyDiscount: Math.round(loyaltyDiscount),
         couponDiscount: Math.round(couponDiscount),
         grandTotal: grandTotal,
@@ -2862,13 +3265,49 @@ function renderHomeScreen(forceReRender = false) {
       const usePointsCheckbox = document.getElementById('cart-use-loyalty');
       const useLoyaltyPts = usePointsCheckbox && usePointsCheckbox.checked;
 
-      const financials = calculateOrderFinancials(subtotal, user, appliedCouponCode, useLoyaltyPts);
+      const financials = calculateOrderFinancials(subtotal, user, appliedCouponCode, useLoyaltyPts, cart);
 
       const subtotalEl = document.getElementById('bill-subtotal');
       if (subtotalEl) subtotalEl.innerText = `₹${financials.subtotal}`;
 
       const deliveryEl = document.getElementById('bill-delivery');
-      if (deliveryEl) deliveryEl.innerText = `₹${financials.deliveryFee}`;
+      if (deliveryEl) {
+        if (financials.deliveryFee === 0) {
+          deliveryEl.innerText = currentLang === 'ta' ? 'இலவசம் 🎉' : 'FREE 🎉';
+        } else {
+          deliveryEl.innerText = `₹${financials.deliveryFee}`;
+        }
+      }
+
+      let deliveryNoteEl = document.getElementById('bill-delivery-note');
+      if (!deliveryNoteEl && deliveryEl && deliveryEl.parentElement) {
+        deliveryNoteEl = document.createElement('div');
+        deliveryNoteEl.id = 'bill-delivery-note';
+        deliveryNoteEl.style.fontSize = '11px';
+        deliveryNoteEl.style.fontWeight = '700';
+        deliveryNoteEl.style.textAlign = 'right';
+        deliveryNoteEl.style.marginTop = '2px';
+        deliveryNoteEl.style.marginBottom = '6px';
+        deliveryEl.parentElement.insertAdjacentElement('afterend', deliveryNoteEl);
+      }
+
+      if (deliveryNoteEl) {
+        if (financials.isFreeDelivery && financials.freeDeliveryReason === 'product') {
+          deliveryNoteEl.style.display = 'block';
+          deliveryNoteEl.style.color = 'var(--accent-green, #10b981)';
+          deliveryNoteEl.innerText = currentLang === 'ta'
+            ? '🎉 இலவச டெலிவரி - தகுதியான பொருள்'
+            : '🎉 Free Delivery - Eligible Product(s) in Cart';
+        } else if (financials.isFreeDelivery && financials.freeDeliveryReason === 'subtotal') {
+          deliveryNoteEl.style.display = 'block';
+          deliveryNoteEl.style.color = 'var(--accent-green, #10b981)';
+          deliveryNoteEl.innerText = currentLang === 'ta'
+            ? '🎉 ₹500 மேலான ஆர்டர்களுக்கு இலவச டெலிவரி'
+            : '🎉 Free Delivery on orders above ₹500';
+        } else {
+          deliveryNoteEl.style.display = 'none';
+        }
+      }
 
       const discountRow = document.getElementById('bill-discount-row');
       const discountEl = document.getElementById('bill-discount');

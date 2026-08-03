@@ -514,53 +514,10 @@
           }
         });
 
-        const isCloudInitialized = getData('ek_cloud_initialized') === true;
-        if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && !isCloudInitialized) {
-          if (cloudProducts.length === 0) {
-            debugLog("[Cloud Sync] First time cloud setup: returned 0 products. Seeding initial demo products...");
-            cloudProducts = DEMO_PRODUCTS
-              .filter(p => !deletedProdIds.includes(p.id))
-              .map(p => ({
-                ...p,
-                updatedAt: p.createdAt || new Date().toISOString()
-              }));
+        window._hasFreshCloudData = true;
+        saveData('ek_cloud_synced', true);
 
-            cloudProducts.forEach(p => {
-              db.collection('ek_products').doc(p.id).set(cleanFirestoreData(p))
-                .then(() => debugLog(`[Cloud Sync] Auto-seeded product ${p.id} to Firestore.`))
-                .catch(e => console.warn(`[Cloud Sync] Failed to seed product ${p.id} to Firestore:`, e));
-            });
-          }
-          saveData('ek_cloud_initialized', true);
-        }
-
-          if (cloudCategories.length === 0) {
-            debugLog("[Cloud Sync] Cloud returned 0 categories. Seeding default categories locally and pushing to Firestore...");
-            cloudCategories = DEFAULT_CATEGORIES.map(c => ({
-              ...c,
-              isAvailable: true,
-              order: c.order !== undefined ? c.order : 0
-            }));
-
-            cloudCategories.forEach(c => {
-              db.collection('ek_categories').doc(c.id).set(cleanFirestoreData(c))
-                .then(() => debugLog(`[Cloud Sync] Auto-seeded category ${c.id} to Firestore.`))
-                .catch(e => console.warn(`[Cloud Sync] Failed to seed category ${c.id} to Firestore:`, e));
-            });
-          } else {
-            DEFAULT_CATEGORIES.forEach(c => {
-              if (!cloudCategories.some(cc => cc.id === c.id)) {
-                debugLog(`[Cloud Sync] Default category ${c.id} missing from cloud. Injecting locally for robust fallback.`);
-                cloudCategories.push(c);
-              }
-            });
-          }
-
-        const jsonProducts = JSON.stringify(cloudProducts);
-        localStorage.setItem('ek_products', jsonProducts);
-        if (typeof AndroidStorage !== 'undefined') {
-          AndroidStorage.saveData('ek_products', jsonProducts);
-        }
+        saveData('ek_products', cloudProducts);
         invalidateDataCache('ek_products');
 
         cloudCategories.sort((a, b) => {
@@ -569,11 +526,7 @@
           if (orderA !== orderB) return orderA - orderB;
           return String(a.id || "").localeCompare(String(b.id || ""));
         });
-        const jsonCategories = JSON.stringify(cloudCategories);
-        localStorage.setItem('ek_categories', jsonCategories);
-        if (typeof AndroidStorage !== 'undefined') {
-          AndroidStorage.saveData('ek_categories', jsonCategories);
-        }
+        saveData('ek_categories', cloudCategories);
         invalidateDataCache('ek_categories');
 
         debugLog(`[Cloud Sync] Fetched once successfully: ${cloudProducts.length} products, ${cloudCategories.length} categories.`);
@@ -1610,15 +1563,35 @@ async function verifyOtpAndResetPassword() {
           }
 
           let cred = null;
+          let credentialVerified = false;
           try {
             cred = await firebase.auth().signInWithEmailAndPassword(adminEmail, pass);
+            credentialVerified = true;
           } catch (signInErr) {
             console.warn("[Admin Login] Firebase signInWithEmailAndPassword failed, attempting user registration/healing...", signInErr);
             try {
-              cred = await firebase.auth().createUserWithEmailAndPassword(adminEmail, pass);
+              if (!matchedAcc) {
+                cred = await firebase.auth().createUserWithEmailAndPassword(adminEmail, pass);
+                credentialVerified = true;
+              }
             } catch (createErr) {
               console.warn("[Admin Login] Firebase createUserWithEmailAndPassword failed/exists:", createErr);
             }
+          }
+
+          const localPasswordVerified = !!(matchedAcc && matchedAcc.password);
+          if (!credentialVerified && !localPasswordVerified) {
+            loginCompleted = true;
+            clearTimeout(loginTimeout);
+            clearTimeout(slowNetworkTimeout);
+            showToast(
+              currentLang === 'ta'
+                ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
+                : "Incorrect admin password! Please check credentials ❌",
+              "error"
+            );
+            restoreButton();
+            return;
           }
 
           const uid = (cred && cred.user) ? cred.user.uid : ((firebase.auth() && firebase.auth().currentUser && firebase.auth().currentUser.uid) || (matchedAcc ? matchedAcc.id : ('admin_' + phoneStr)));
@@ -1944,31 +1917,51 @@ async function verifyOtpAndResetPassword() {
       let matched = null;
 
       if (!identifier.includes('@')) {
-        const cleanPhone = identifier.replace(/[\s\-\(\)\+]/g, '');
+        const rawDigits = identifier.replace(/\D/g, '');
+        const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
         const localUsers = getData('ek_users', []) || [];
-        const localMatched = localUsers.find(u => u.phone === cleanPhone || (u.phone && u.phone.replace(/[\s\-\(\)\+]/g, '') === cleanPhone));
+        const localMatched = localUsers.find(u => {
+          if (!u || !u.phone) return false;
+          const uDigits = String(u.phone).replace(/\D/g, '');
+          const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
+          return u10 === phone10 || uDigits === rawDigits;
+        });
+
         if (localMatched && localMatched.email) {
           matched = localMatched;
           authEmail = localMatched.email.trim().toLowerCase();
         } else if (typeof db !== 'undefined' && db) {
           try {
-            const qSnap = await db.collection('ek_users').where('phone', '==', cleanPhone).get();
-            if (!qSnap.empty) {
+            const dbPromise = (async () => {
+              let qSnap = await db.collection('ek_users').where('phone', '==', phone10).get();
+              if (qSnap.empty && rawDigits !== phone10) {
+                qSnap = await db.collection('ek_users').where('phone', '==', rawDigits).get();
+              }
+              return qSnap;
+            })();
+
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("FIRESTORE_PHONE_LOOKUP_TIMEOUT")), 5000));
+            const qSnap = await Promise.race([dbPromise, timeoutPromise]).catch(e => {
+              console.warn("Phone lookup race timeout:", e);
+              return { empty: true };
+            });
+
+            if (qSnap && !qSnap.empty) {
               matched = qSnap.docs[0].data();
               if (matched && matched.email) {
                 authEmail = matched.email.trim().toLowerCase();
               } else {
-                authEmail = `${cleanPhone}@app.com`;
+                authEmail = `${phone10}@app.com`;
               }
             } else {
-              authEmail = `${cleanPhone}@app.com`;
+              authEmail = `${phone10}@app.com`;
             }
           } catch (err) {
             console.warn("Firestore phone lookup failed, falling back to phone email:", err);
-            authEmail = `${cleanPhone}@app.com`;
+            authEmail = `${phone10}@app.com`;
           }
         } else {
-          authEmail = `${cleanPhone}@app.com`;
+          authEmail = `${phone10}@app.com`;
         }
       }
 

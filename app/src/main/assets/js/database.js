@@ -104,6 +104,34 @@
     const ENABLE_DEMO_SEED_DATA = true;
     const DEMO_PRODUCTS = [
       {
+        id: "mutton_head_curry",
+        category: "meat",
+        englishName: "Fresh Goat Head Curry / Cut",
+        tamilName: "ஆட்டுத் தலைக்கறி",
+        pricePerKg: 350,
+        sellingUnit: "kg",
+        stockKg: 20,
+        imageUrl: "https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=400",
+        isSpecial: true,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "potato_fresh",
+        category: "veg",
+        englishName: "Fresh Organic Potato",
+        tamilName: "பிரெஷ் உருளைக்கிழங்கு",
+        pricePerKg: 40,
+        sellingUnit: "kg",
+        stockKg: 80,
+        imageUrl: "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=400",
+        isSpecial: false,
+        isOutOfStock: false,
+        isHidden: false,
+        createdAt: new Date().toISOString()
+      },
+      {
         id: "mutton_tender",
         category: "meat",
         englishName: "Tender Goat Mutton",
@@ -296,6 +324,12 @@
       minOrderWeight: 50,
       minOrderAmount: 0,
       merchantUpiId: "8778148899@ptyes",
+      merchantName: "Edappadi Kadai",
+      backupUpi1: "einsteinananth24-4@okicici",
+      backupUpi2: "",
+      upiQrUrl: "",
+      rainMode: false,
+      rainCharge: 20,
       slidingBanners: [
         { id: 'b_1', image: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800', titleTa: "நாட்டு ஆட்டுக்கறி பிரஷ்ஷாக!", titleEn: "Premium Fresh Mutton Cuts", subTa: "இடப்பாடி நகரத்தில் உங்களின் இல்லத்திற்கே நேரடியாக!", subEn: "Direct organic local meat delivered to your home." },
         { id: 'b_2', image: 'https://images.unsplash.com/photo-1587593810167-a84920ea0781?w=800', titleTa: "தரமான நாட்டுக்கோழி!", titleEn: "Farm Fresh Chicken Varieties", subTa: "சுத்தமான முறையில் கட் செய்து வழங்கப்படும்!", subEn: "Cleanly cut & prepared perfectly for your tasty health." },
@@ -353,21 +387,68 @@
       smsCustomUrl: ''
     };
 
+    const DEFAULT_CATEGORIES = [
+      { id: 'fruits', nameEn: 'Fruits', nameTa: 'பழங்கள்', en: 'Fruits', ta: 'பழங்கள்', icon: '🍎', accentColor: '#2E7D32', order: 0 },
+      { id: 'veg', nameEn: 'Veg', nameTa: 'காய்கறி', en: 'Veg', ta: 'காய்கறி', icon: '🥦', accentColor: '#4CAF50', order: 1 },
+      { id: 'fish', nameEn: 'Fish', nameTa: 'மீன்வகை', en: 'Fish', ta: 'மீன்வகை', icon: '🐟', accentColor: '#0288D1', order: 2 },
+      { id: 'meat', nameEn: 'Meat', nameTa: 'கறிவகை', en: 'Meat', ta: 'கறிவகை', icon: '🥩', accentColor: '#C62828', order: 3 },
+      { id: 'dairy', nameEn: 'Dairy & Eggs', nameTa: 'பால் & முட்டை', en: 'Dairy & Eggs', ta: 'பால் & முட்டை', icon: '🥛', accentColor: '#FFB300', order: 4 },
+      { id: 'bakery', nameEn: 'Bakery', nameTa: 'பேக்கரி', en: 'Bakery', ta: 'பேக்கரி', icon: '🍞', accentColor: '#8D6E63', order: 5 },
+      { id: 'groceries', nameEn: 'Grocery', nameTa: 'மளிகை', en: 'Grocery', ta: 'மளிகை', icon: '🥫', accentColor: '#008080', order: 6 }
+    ];
+
+    window.ENABLE_DEMO_SEED_DATA = ENABLE_DEMO_SEED_DATA;
+    window.DEMO_PRODUCTS = DEMO_PRODUCTS;
+    window.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
+    window.DEFAULT_CATEGORIES = DEFAULT_CATEGORIES;
+
+    function getActiveUpiAccount(settings, accountId) {
+      if (!settings) return null;
+      const upiSettings = settings.upiSettings;
+      if (upiSettings && Array.isArray(upiSettings.accounts)) {
+        if (accountId) {
+          const acc = upiSettings.accounts.find(a => a.id === accountId && a.isActive && a.upiId && a.upiId.trim() !== '');
+          if (acc) return acc;
+        }
+        const primary = upiSettings.accounts.find(a => a.id === 'primary' && a.isActive && a.upiId && a.upiId.trim() !== '');
+        if (primary) return primary;
+        const firstActive = upiSettings.accounts.find(a => a.isActive && a.upiId && a.upiId.trim() !== '');
+        if (firstActive) return firstActive;
+      }
+      if (settings.merchantUpiId && settings.merchantUpiId.trim() !== '') {
+        return {
+          id: 'primary',
+          upiId: settings.merchantUpiId.trim(),
+          merchantName: settings.merchantName || 'Edappadi Kadai',
+          displayName: 'Primary Merchant UPI',
+          note: 'Order {id} - Edappadi Kadai',
+          isActive: settings.upiEnabled !== false
+        };
+      }
+      return null;
+    }
+    window.getActiveUpiAccount = getActiveUpiAccount;
+
     function initializeOrFixUpiSettings() {
       const settings = getData('ek_settings', null) || { ...DEFAULT_SETTINGS };
       let updated = false;
 
-      // Force upiSettings structure if missing or if accounts are not properly configured
+      const legacyPrimary = (settings.merchantUpiId && settings.merchantUpiId.trim()) || '8778148899@ptyes';
+      const legacyBackup1 = (settings.backupUpi1 && settings.backupUpi1.trim()) || 'einsteinananth24-4@okicici';
+      const legacyBackup2 = (settings.backupUpi2 && settings.backupUpi2.trim()) || '';
+      const legacyMerchantName = (settings.merchantName && settings.merchantName.trim()) || 'Edappadi Kadai';
+      const legacyEnabled = settings.upiEnabled !== false;
+
       if (!settings.upiSettings) {
         settings.upiSettings = {
-          upiEnabled: true,
+          upiEnabled: legacyEnabled,
           currency: 'INR',
           accounts: [
             {
               id: 'primary',
               label: 'Primary UPI',
-              upiId: '8778148899@ptyes',
-              merchantName: 'Edappadi Kadai',
+              upiId: legacyPrimary,
+              merchantName: legacyMerchantName,
               displayName: 'Anantharaj Primary',
               note: 'Order {id} - Edappadi Kadai',
               isActive: true
@@ -375,84 +456,128 @@
             {
               id: 'backup1',
               label: 'Backup UPI 1',
-              upiId: 'einsteinananth24-4@okicici',
-              merchantName: 'Edappadi Kadai',
-              displayName: 'Anantharaj Backup 1',
+              upiId: legacyBackup1,
+              merchantName: legacyMerchantName,
+              displayName: 'Backup UPI 1',
               note: 'Order {id} - Edappadi Kadai',
-              isActive: true
+              isActive: !!legacyBackup1
             },
             {
               id: 'backup2',
               label: 'Backup UPI 2',
-              upiId: '',
-              merchantName: 'Edappadi Kadai',
-              displayName: 'Anantharaj Backup 2',
+              upiId: legacyBackup2,
+              merchantName: legacyMerchantName,
+              displayName: 'Backup UPI 2',
               note: 'Order {id} - Edappadi Kadai',
-              isActive: false
+              isActive: !!legacyBackup2
             }
           ]
         };
-        settings.merchantUpiId = '8778148899@ptyes';
         updated = true;
       } else {
-        // Ensure the accounts array exists
-        if (!settings.upiSettings.accounts || !Array.isArray(settings.upiSettings.accounts) || settings.upiSettings.accounts.length === 0) {
-          settings.upiSettings.accounts = [
-            {
-              id: 'primary',
-              label: 'Primary UPI',
-              upiId: '8778148899@ptyes',
-              merchantName: 'Edappadi Kadai',
-              displayName: 'Anantharaj Primary',
-              note: 'Order {id} - Edappadi Kadai',
-              isActive: true
-            },
-            {
-              id: 'backup1',
-              label: 'Backup UPI 1',
-              upiId: 'einsteinananth24-4@okicici',
-              merchantName: 'Edappadi Kadai',
-              displayName: 'Anantharaj Backup 1',
-              note: 'Order {id} - Edappadi Kadai',
-              isActive: true
-            },
-            {
-              id: 'backup2',
-              label: 'Backup UPI 2',
-              upiId: '',
-              merchantName: 'Edappadi Kadai',
-              displayName: 'Anantharaj Backup 2',
-              note: 'Order {id} - Edappadi Kadai',
-              isActive: false
-            }
-          ];
-          settings.merchantUpiId = '8778148899@ptyes';
+        if (settings.upiSettings.upiEnabled === undefined) {
+          settings.upiSettings.upiEnabled = legacyEnabled;
           updated = true;
-        } else {
-          // If accounts exist, check and correct the UPI IDs to the ones requested by the user
-          const primary = settings.upiSettings.accounts.find(a => a.id === 'primary');
-          const backup1 = settings.upiSettings.accounts.find(a => a.id === 'backup1');
-          
-          if (primary && primary.upiId !== '8778148899@ptyes') {
-            primary.upiId = '8778148899@ptyes';
-            primary.isActive = true;
-            settings.merchantUpiId = '8778148899@ptyes';
-            updated = true;
-          }
-          if (backup1 && backup1.upiId !== 'einsteinananth24-4@okicici') {
-            backup1.upiId = 'einsteinananth24-4@okicici';
-            backup1.isActive = true;
-            updated = true;
-          }
         }
+        if (!settings.upiSettings.currency) {
+          settings.upiSettings.currency = 'INR';
+          updated = true;
+        }
+        if (!Array.isArray(settings.upiSettings.accounts)) {
+          settings.upiSettings.accounts = [];
+          updated = true;
+        }
+
+        // Ensure primary account slot
+        let primary = settings.upiSettings.accounts.find(a => a.id === 'primary');
+        if (!primary) {
+          primary = {
+            id: 'primary',
+            label: 'Primary UPI',
+            upiId: legacyPrimary,
+            merchantName: legacyMerchantName,
+            displayName: 'Anantharaj Primary',
+            note: 'Order {id} - Edappadi Kadai',
+            isActive: true
+          };
+          settings.upiSettings.accounts.push(primary);
+          updated = true;
+        } else if (!primary.upiId && legacyPrimary) {
+          primary.upiId = legacyPrimary;
+          updated = true;
+        }
+
+        // Ensure backup1 account slot
+        let backup1 = settings.upiSettings.accounts.find(a => a.id === 'backup1');
+        if (!backup1) {
+          backup1 = {
+            id: 'backup1',
+            label: 'Backup UPI 1',
+            upiId: legacyBackup1,
+            merchantName: legacyMerchantName,
+            displayName: 'Backup UPI 1',
+            note: 'Order {id} - Edappadi Kadai',
+            isActive: !!legacyBackup1
+          };
+          settings.upiSettings.accounts.push(backup1);
+          updated = true;
+        } else if (!backup1.upiId && legacyBackup1) {
+          backup1.upiId = legacyBackup1;
+          updated = true;
+        }
+
+        // Ensure backup2 account slot
+        let backup2 = settings.upiSettings.accounts.find(a => a.id === 'backup2');
+        if (!backup2) {
+          backup2 = {
+            id: 'backup2',
+            label: 'Backup UPI 2',
+            upiId: legacyBackup2,
+            merchantName: legacyMerchantName,
+            displayName: 'Backup UPI 2',
+            note: 'Order {id} - Edappadi Kadai',
+            isActive: !!legacyBackup2
+          };
+          settings.upiSettings.accounts.push(backup2);
+          updated = true;
+        }
+      }
+
+      // Sync top-level backward compatibility fields
+      const pAcc = settings.upiSettings.accounts.find(a => a.id === 'primary');
+      const b1Acc = settings.upiSettings.accounts.find(a => a.id === 'backup1');
+      const b2Acc = settings.upiSettings.accounts.find(a => a.id === 'backup2');
+
+      if (pAcc && pAcc.upiId) {
+        if (settings.merchantUpiId !== pAcc.upiId) {
+          settings.merchantUpiId = pAcc.upiId;
+          updated = true;
+        }
+        if (pAcc.merchantName && settings.merchantName !== pAcc.merchantName) {
+          settings.merchantName = pAcc.merchantName;
+          updated = true;
+        }
+      }
+      if (b1Acc && settings.backupUpi1 !== (b1Acc.upiId || '')) {
+        settings.backupUpi1 = b1Acc.upiId || '';
+        updated = true;
+      }
+      if (b2Acc && settings.backupUpi2 !== (b2Acc.upiId || '')) {
+        settings.backupUpi2 = b2Acc.upiId || '';
+        updated = true;
+      }
+      if (settings.upiEnabled !== settings.upiSettings.upiEnabled) {
+        settings.upiEnabled = settings.upiSettings.upiEnabled;
+        updated = true;
       }
 
       if (updated) {
         saveData('ek_settings', settings);
         if (typeof db !== 'undefined' && db) {
-          db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings))
-            .then(() => debugLog("[UPI Self-Heal] Successfully synced corrected UPI settings to Firestore"))
+          db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true })
+            .then(() => debugLog("[UPI Self-Heal] Successfully synced updated UPI settings to Firestore (global_config)"))
             .catch(err => console.error("[UPI Self-Heal] Sync error:", err));
+          db.collection('ek_settings').doc('global').set(cleanFirestoreData(settings), { merge: true }).catch(() => {});
         }
       }
     }
@@ -476,8 +601,9 @@
       let existingProds = getData('ek_products');
       let existingCats = getData('ek_categories');
       const isDbInitialized = getData('ek_db_initialized') === true;
-      debugLog(`[DEBUG seedDatabase] existingProds count: ${Array.isArray(existingProds) ? existingProds.length : 'non-array'}, existingCats count: ${Array.isArray(existingCats) ? existingCats.length : 'non-array'}, isDbInitialized: ${isDbInitialized}`);
-      if (!isDbInitialized && (!Array.isArray(existingProds) || existingProds === null)) {
+      const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
+      debugLog(`[DEBUG seedDatabase] existingProds count: ${Array.isArray(existingProds) ? existingProds.length : 'non-array'}, existingCats count: ${Array.isArray(existingCats) ? existingCats.length : 'non-array'}, isDbInitialized: ${isDbInitialized}, isCloudSynced: ${isCloudSynced}`);
+      if (!isCloudSynced && (!Array.isArray(existingProds) || existingProds === null || existingProds.length === 0)) {
         if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
           const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
           const seededProducts = DEMO_PRODUCTS
@@ -493,13 +619,18 @@
         } else {
           saveData('ek_products', []);
         }
+      } else if (isCloudSynced && (!Array.isArray(existingProds) || existingProds === null)) {
+        saveData('ek_products', []);
       }
-      if (!isDbInitialized && (!Array.isArray(existingCats) || existingCats === null)) {
-        if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
+
+      if (!isCloudSynced && (!Array.isArray(existingCats) || existingCats === null || existingCats.length === 0)) {
+        if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
           saveData('ek_categories', DEFAULT_CATEGORIES.map(c => ({ ...c, isAvailable: true })));
         } else {
           saveData('ek_categories', []);
         }
+      } else if (isCloudSynced && (!Array.isArray(existingCats) || existingCats === null)) {
+        saveData('ek_categories', []);
       }
       saveData('ek_db_initialized', true);
       debugLog(`[DEBUG seedDatabase] finished. final ek_products count: ${getData('ek_products')?.length}, final ek_categories count: ${getData('ek_categories')?.length}`);
@@ -586,6 +717,7 @@
         orders: "Orders",
         forgotPassword: "Forgot Password?",
         offers: "Offers",
+        categories: "Categories",
         shareLink: "🔗 Share Link"
       },
       ta: {
@@ -623,6 +755,7 @@
         orderStatistics: "ஆர்டர் பகுப்பாய்வு",
         orders: "ஆர்டர்கள்",
         offers: "சலுகைகள்",
+        categories: "வகைகள்",
         shareLink: "🔗 லிங்கை பகிர்க"
       }
     };
@@ -680,7 +813,9 @@
         try { renderProfileScreen(); } catch(e) { console.error('renderProfileScreen failed:', e); }
       }
       try {
-        syncCollapsePreferences();
+        if (typeof syncCollapsePreferences === 'function') {
+          syncCollapsePreferences();
+        }
       } catch (e) {
         console.error("syncCollapsePreferences error", e);
       }
@@ -1932,7 +2067,11 @@
         }
 
         if (screenId !== 'screen-track') {
-          try { clearRiderAnimation(); } catch(e) { console.warn('clearRiderAnimation failed', e); }
+          try {
+            if (typeof clearRiderAnimation === 'function') {
+              clearRiderAnimation();
+            }
+          } catch(e) { console.warn('clearRiderAnimation failed', e); }
         }
 
         if (screenId !== 'screen-track' && typeof trackerLeafletMap !== 'undefined' && trackerLeafletMap) {
@@ -1971,8 +2110,8 @@
           target.scrollLeft = 0; // RESET horizontal scroll offset
           const appContainer = document.querySelector('.app-container');
           if (appContainer) appContainer.scrollLeft = 0;
-          document.body.scrollLeft = 0;
-          document.documentElement.scrollLeft = 0;
+          if (document.body) document.body.scrollLeft = 0;
+          if (document.documentElement) document.documentElement.scrollLeft = 0;
           target.classList.add('active', 'screen-transitioning');
           currentScreen = screenId;
 

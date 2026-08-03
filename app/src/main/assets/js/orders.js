@@ -608,7 +608,7 @@
       const usePointsCheckbox = document.getElementById('cart-use-loyalty');
       const useLoyaltyPts = usePointsCheckbox && usePointsCheckbox.checked;
 
-      const financials = calculateOrderFinancials(subtotal, customerProfile, appliedCouponCode, useLoyaltyPts);
+      const financials = calculateOrderFinancials(subtotal, customerProfile, appliedCouponCode, useLoyaltyPts, cart);
       const randomID = generateUniqueOrderId();
 
       const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
@@ -631,7 +631,7 @@
         customerId: orderUserId,
         customerName: customerProfile.name || "Customer / வாடிக்கையாளர்",
         customerPhone: customerProfile.phone || (user ? user.phoneNumber : "") || "",
-        customerFcmToken: customerProfile.fcmToken || (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : ''),
+        customerFcmToken: customerProfile.fcmToken || customerProfile.realFcmToken || (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : ''),
         deliveryAddress: address,
         deliveryLatitude: sanitizedLat,
         deliveryLongitude: sanitizedLng,
@@ -714,8 +714,8 @@
         saveData('ek_pending_upi_order_data', pendingOrderData);
 
         const upiSettings = settings.upiSettings || { upiEnabled: true, currency: 'INR' };
-        let upiMerchantId = settings.merchantUpiId || 'einsteinananth24@okaxis';
-        let upiMerchantName = "Edappadi Kadai";
+        let upiMerchantId = settings.merchantUpiId || '8778148899@ptyes';
+        let upiMerchantName = settings.merchantName || "Edappadi Kadai";
         let upiTxnNote = `Order ${order.id} - Edappadi Kadai`;
         let upiCurrency = upiSettings.currency || 'INR';
 
@@ -1483,6 +1483,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
               imageUrl: product.imageUrl,
               category: product.category,
               isWorthBased: isWorthBased,
+              isFreeDeliveryEligible: Boolean(product.isFreeDeliveryEligible),
               rupeeValue: rupeeValue,
               originalLine: line
             });
@@ -1598,7 +1599,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         customerProfile = getData('ek_users', []).find(u => u.id === user.uid);
       }
 
-      const financials = calculateOrderFinancials(subtotal, customerProfile, "", false);
+      const financials = calculateOrderFinancials(subtotal, customerProfile, "", false, quickOrderCart);
 
       document.getElementById('quick-order-review-subtotal').innerText = `₹${financials.subtotal}`;
       document.getElementById('quick-order-review-delivery').innerText = `₹${financials.deliveryFee}`;
@@ -1666,7 +1667,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         return;
       }
 
-      const financials = calculateOrderFinancials(subtotal, customerProfile, "", false);
+      const financials = calculateOrderFinancials(subtotal, customerProfile, "", false, quickOrderCart);
       const randomID = generateUniqueOrderId();
 
       let loyaltyMultiplier = 1.0;
@@ -1688,7 +1689,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         customerId: user.uid,
         customerName: customerProfile.name || "Customer / வாடிக்கையாளர்",
         customerPhone: customerProfile.phone || user.phoneNumber || "",
-        customerFcmToken: customerProfile.fcmToken || (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : ''),
+        customerFcmToken: customerProfile.fcmToken || customerProfile.realFcmToken || (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : ''),
         deliveryAddress: address,
         deliveryLatitude: finalLat,
         deliveryLongitude: finalLng,
@@ -1907,7 +1908,8 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
             "ek_products", "ek_settings", "ek_orders", "ek_users",
             "ek_delivery_persons", "ek_admin_accounts", "ek_admin_session",
             "ek_customer_session", "ek_delivery_session", "ek_lyo_ai_config", "ek_last_update", "ek_lang",
-            "ek_remembered_credentials", "ek_categories", "ek_coupons"
+            "ek_remembered_credentials", "ek_categories", "ek_coupons",
+            "ek_deleted_order_ids", "ek_deleted_product_ids", "ek_deleted_user_ids", "ek_deleted_rider_ids"
           ];
           syncKeys.forEach(k => {
             try {
@@ -2003,31 +2005,6 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         migratePasswordsToHash();
       } catch (err) {
         console.error("Failed to migrate passwords during bootstrap:", err);
-      }
-
-      try {
-        if (typeof AndroidStorage !== 'undefined') {
-          const syncKeys = [
-            'ek_products', 'ek_settings', 'ek_orders', 'ek_users',
-            'ek_delivery_persons', 'ek_admin_accounts', 'ek_admin_session',
-            'ek_customer_session', 'ek_delivery_session', 'ek_lyo_ai_config', 'ek_last_update', 'ek_lang',
-            'ek_remembered_credentials',
-            'ek_deleted_order_ids', 'ek_deleted_product_ids', 'ek_deleted_user_ids', 'ek_deleted_rider_ids',
-            'ek_categories'
-          ];
-          syncKeys.forEach(k => {
-            try {
-              const val = AndroidStorage.getData(k, "");
-              if (val) {
-                localStorage.setItem(k, val);
-              }
-            } catch (e) {
-              console.error("Sync error", e);
-            }
-          });
-        }
-      } catch (e) {
-        console.error("Android storage sync failed:", e);
       }
 
       try {
@@ -2827,8 +2804,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         ? `ஹாய்! எடப்பாடி கடை ஆப் மூலமா வீட்டிற்கே ஸ்பெஷல் மட்டன் & நாட்டுக்கோழியை 100% சுத்தமா ஆர்டர் பண்ணலாம்! என்னோட ரெஃப்ரல் கோடு '${referralCode}' பயன்படுத்தி ₹50 தள்ளுபடி பெறுங்கள். இங்கே டவுன்லோடு செய்யுங்கள்: https://ek-town-meats.web.app`
         : `Hey! Order premium fresh meats, mutton, & country chicken online via Edappadi Kadai! Use my referral code '${referralCode}' to get ₹50 discount on your first order. Live tracking in Idappadi town. Download now: https://ek-town-meats.web.app`;
 
-      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
-      window.open(url, '_blank');
+      openWhatsAppDirect('', message);
     }
 
     function updateClaimBoxState() {
@@ -2920,6 +2896,24 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
       ShoppingListParser: {
         parseInput(inputText) {
           if (!inputText) return [];
+          if (typeof parseSingleItemText === 'function') {
+            const rawLines = inputText.replace(/மற்றும்/g, '\n').split(/[\n,]/);
+            const items = [];
+            rawLines.forEach(part => {
+              const parsed = parseSingleItemText(part);
+              if (parsed && parsed.productSearchTerm) {
+                items.push({
+                  product_name: parsed.productSearchTerm,
+                  raw_quantity_val: parsed.rawQtyVal,
+                  amount_type: parsed.amountType,
+                  unit: parsed.unit,
+                  originalLine: part
+                });
+              }
+            });
+            if (items.length > 0) return items;
+          }
+
           const lines = inputText
             .replace(/மற்றும்/g, '\n')
             .replace(/,\s*/g, '\n')
@@ -3288,6 +3282,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
             imageUrl: product.imageUrl || '',
             totalPrice: qtyData.calculatedPrice,
             price: qtyData.calculatedPrice,
+            isFreeDeliveryEligible: Boolean(product.isFreeDeliveryEligible),
             isSubstituted: meta.isSubstituted || false,
             originalRequestedName: meta.originalRequestedName || '',
             requestedDesc: qtyData.requestedDesc || ''
@@ -3316,21 +3311,24 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
 
       // 7. Delivery Charge Calculator
       DeliveryChargeCalculator: {
-        calculateDelivery(subtotal, settings = {}) {
+        calculateDelivery(subtotal, cartItems, settings = {}) {
           let deliveryCharge = parseInt(settings.deliveryCharge) || 0;
           if (settings.useDynamicDistancePricing) {
             deliveryCharge = parseInt(settings.deliveryBasePrice) || 20;
           }
-          const isFreeDelivery = subtotal >= 500;
+          const subtotalFreeDelivery = subtotal >= 500;
+          const allItemsFreeDeliveryEligible = Array.isArray(cartItems) && cartItems.length > 0 &&
+            cartItems.every(item => item && item.isFreeDeliveryEligible === true);
+          const isFreeDelivery = subtotalFreeDelivery || allItemsFreeDeliveryEligible;
           if (isFreeDelivery) deliveryCharge = 0;
-          return { deliveryCharge, isFreeDelivery };
+          return { deliveryCharge, isFreeDelivery, freeDeliveryReason: allItemsFreeDeliveryEligible ? 'product' : (subtotalFreeDelivery ? 'subtotal' : null) };
         }
       },
 
       // 8. Pricing & Offer Engine
       PricingOfferEngine: {
-        calculatePricing(subtotal, settings = {}) {
-          const { deliveryCharge, isFreeDelivery } = LyoAiEngine.DeliveryChargeCalculator.calculateDelivery(subtotal, settings);
+        calculatePricing(subtotal, cartItems = [], settings = {}) {
+          const { deliveryCharge, isFreeDelivery, freeDeliveryReason } = LyoAiEngine.DeliveryChargeCalculator.calculateDelivery(subtotal, cartItems, settings);
 
           let discount = 0;
           if (subtotal >= 1000) {
@@ -3341,7 +3339,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
           const minOrderAmount = parseInt(settings.minOrderAmount) || 0;
           const meetsMinOrder = subtotal >= minOrderAmount;
 
-          return { subtotal, deliveryCharge, isFreeDelivery, discount, finalPayable, minOrderAmount, meetsMinOrder };
+          return { subtotal, deliveryCharge, isFreeDelivery, freeDeliveryReason, discount, finalPayable, minOrderAmount, meetsMinOrder };
         }
       },
 

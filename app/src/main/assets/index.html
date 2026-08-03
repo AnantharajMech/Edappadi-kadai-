@@ -934,9 +934,12 @@
             </div>
           </div>
 
-          <div style="display: flex; gap: 16px; margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.04);">
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.04);">
             <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none;">
               <input type="checkbox" id="add-prod-special" style="accent-color: var(--accent-orange);"> Today's Special ⭐
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none;">
+              <input type="checkbox" id="add-prod-free-delivery" style="accent-color: var(--accent-orange);"> 🚚 இந்த Product மட்டும் Free Delivery / Free Delivery Only For This Product
             </label>
           </div>
 
@@ -1084,9 +1087,12 @@
             </div>
           </div>
 
-          <div style="display: flex; gap: 16px; margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.04);">
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.04);">
             <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none;">
               <input type="checkbox" id="edit-prod-special" style="accent-color: var(--accent-orange);"> Today's Special ⭐
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none;">
+              <input type="checkbox" id="edit-prod-free-delivery" style="accent-color: var(--accent-orange);"> 🚚 இந்த Product மட்டும் Free Delivery / Free Delivery Only For This Product
             </label>
           </div>
 
@@ -3113,63 +3119,19 @@
       <!-- Admin Sync Health Warning Banner -->
       <div id="admin-sync-health-banner" style="display:none; margin-top:10px; margin-bottom:12px; background:linear-gradient(135deg, #ef4444, #b91c1c); color:#ffffff; padding:12px 14px; border-radius:12px; border:1px solid #f87171; box-shadow:0 4px 16px rgba(239, 68, 68, 0.4); font-size:12.5px; font-weight:600; line-height:1.4;"></div>
 
-      <!-- Dashboard Statistics Row (14 Live Real-Time Production Metrics) -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 8px; margin-top: 12px; margin-bottom: 16px;">
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Total Orders</span>
-          <p id="admin-stat-orders" style="font-size: 15px; font-weight: 700; color: var(--accent-orange); margin: 3px 0 0 0;">0</p>
+      <!-- Dashboard Statistics Row (Exact 3 Cards as per user request) -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px; margin-bottom: 16px;">
+        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(245,158,11,0.2); cursor: pointer;" onclick="switchAdminTab('tab-orders'); filterAdminOrdersByStatus('all', document.querySelector('.filter-pills .pill:nth-child(1)'));">
+          <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 500;">Orders</span>
+          <p id="admin-stat-orders" style="font-size: 16px; font-weight: 700; color: var(--accent-orange); margin: 3px 0 0 0;">0</p>
         </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(59,130,246,0.25); background: rgba(59,130,246,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Today's Orders</span>
-          <p id="admin-stat-today-orders" style="font-size: 15px; font-weight: 700; color: #60a5fa; margin: 3px 0 0 0;">0</p>
+        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(34,197,94,0.2);">
+          <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 500;">Revenue</span>
+          <p id="admin-stat-revenue" style="font-size: 16px; font-weight: 700; color: var(--accent-green); margin: 3px 0 0 0;">₹0</p>
         </div>
         <div class="card" id="pending-card-alert" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: #262626; cursor: pointer;" onclick="switchAdminTab('tab-orders'); filterAdminOrdersByStatus('pending', document.querySelector('.filter-pills .pill:nth-child(2)'));">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Pending</span>
-          <p id="admin-stat-pending" style="font-size: 15px; font-weight: 700; color: #fff; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(16,185,129,0.25); background: rgba(16,185,129,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Confirmed</span>
-          <p id="admin-stat-confirmed" style="font-size: 15px; font-weight: 700; color: #34d399; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(236,72,153,0.25); background: rgba(236,72,153,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Preparing</span>
-          <p id="admin-stat-preparing" style="font-size: 15px; font-weight: 700; color: #f472b6; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(168,85,247,0.25); background: rgba(168,85,247,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Out For Delivery</span>
-          <p id="admin-stat-out-for-delivery" style="font-size: 15px; font-weight: 700; color: #c084fc; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(34,197,94,0.25); background: rgba(34,197,94,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Delivered</span>
-          <p id="admin-stat-delivered" style="font-size: 15px; font-weight: 700; color: #4ade80; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Cancelled</span>
-          <p id="admin-stat-cancelled" style="font-size: 15px; font-weight: 700; color: #f87171; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Total Revenue</span>
-          <p id="admin-stat-revenue" style="font-size: 15px; font-weight: 700; color: var(--accent-green); margin: 3px 0 0 0;">₹0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.06);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Today Revenue</span>
-          <p id="admin-stat-today-revenue" style="font-size: 15px; font-weight: 700; color: #10b981; margin: 3px 0 0 0;">₹0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(14,165,233,0.3); background: rgba(14,165,233,0.06);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">This Month Rev</span>
-          <p id="admin-stat-month-revenue" style="font-size: 15px; font-weight: 700; color: #38bdf8; margin: 3px 0 0 0;">₹0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(99,102,241,0.25); background: rgba(99,102,241,0.04);" onclick="switchAdminTab('tab-customers');">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Customers</span>
-          <p id="admin-stat-customers" style="font-size: 15px; font-weight: 700; color: #818cf8; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.04);" onclick="switchAdminTab('tab-delivery');">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Riders</span>
-          <p id="admin-stat-delivery-partners" style="font-size: 15px; font-weight: 700; color: #fbbf24; margin: 3px 0 0 0;">0</p>
-        </div>
-        <div class="card" style="margin-bottom: 0; padding: 8px; text-align: center; border-color: rgba(20,184,166,0.25); background: rgba(20,184,166,0.04);">
-          <span style="font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Restaurants</span>
-          <p id="admin-stat-restaurants" style="font-size: 15px; font-weight: 700; color: #2dd4bf; margin: 3px 0 0 0;">1</p>
+          <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 500;">Pending</span>
+          <p id="admin-stat-pending" style="font-size: 16px; font-weight: 700; color: #fff; margin: 3px 0 0 0;">0</p>
         </div>
       </div>
 
@@ -3267,7 +3229,7 @@
                 <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px;">
                   <!-- Profile Photo Preview -->
                   <div style="width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: #f3f4f6; border: 2px solid var(--accent-orange); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img id="rider-photo-preview" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>" style="width: 100%; height: 100%; object-fit: cover;" alt="Rider Preview" loading="lazy">
+                    <img id="rider-photo-preview" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%2310b981'/%3E%3Ccircle cx='50' cy='38' r='18' fill='%23ffffff'/%3E%3Cpath d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/%3E%3C/svg%3E" style="width: 100%; height: 100%; object-fit: cover;" alt="Rider Preview" loading="lazy">
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1;">
                     <!-- Hidden File Input -->
@@ -3391,19 +3353,19 @@
           </div>
 
           <!-- Quick Broadcast Banner Box -->
-          <div class="form-group" style="margin-bottom: 16px; padding: 14px; background: rgba(59,130,246,0.08); border-radius: 12px; border: 1px solid rgba(59,130,246,0.25);">
-            <label style="font-weight: 700; font-size: 12.5px; color: #60a5fa; display: block; margin-bottom: 6px;">
+          <div class="form-group" style="margin-bottom: 16px; padding: 14px; background: rgba(59,130,246,0.08); border-radius: 12px; border: 1px solid rgba(59,130,246,0.25); width: 100%; box-sizing: border-box; overflow: hidden;">
+            <label style="font-weight: 700; font-size: 12.5px; color: #60a5fa; display: block; margin-bottom: 6px; word-break: break-word; overflow-wrap: break-word;">
               ⚡ Quick Broadcast to All Registered Devices (உடனடி அறிவிப்பு)
             </label>
             <textarea id="admin-broadcast-text" class="form-control" rows="2"
               placeholder="உதாரணம்: இன்று சிறப்பு சலுகை! 20% தள்ளுபடி அனைத்து பொருட்களுக்கும்!"
-              style="font-size: 12.5px; color: #fff; background: #090d16; border: 1px solid #1d283a; border-radius: 8px; width: 100%; padding: 10px; box-sizing: border-box;"></textarea>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px;">
-              <p style="font-size: 10px; color: #94a3b8; margin: 0;">
+              style="font-size: 12.5px; color: #fff; background: #090d16; border: 1px solid #1d283a; border-radius: 8px; width: 100%; max-width: 100%; padding: 10px; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word; resize: vertical;"></textarea>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px; flex-wrap: wrap;">
+              <p style="font-size: 10px; color: #94a3b8; margin: 0; flex: 1; min-width: 160px; word-break: break-word;">
                 பயனர் ஆப் திறக்காவிட்டாலும் மொபைல் திரை அறிவிப்பாக உடனடியாக செல்லும்.
               </p>
               <button id="admin-broadcast-btn" class="btn" onclick="broadcastToAll()"
-                style="padding: 6px 14px; height: 34px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 12px; white-space: nowrap;">
+                style="padding: 6px 14px; height: 34px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 12px; white-space: nowrap; flex-shrink: 0;">
                 அனைவருக்கும் அனுப்பு 📢
               </button>
             </div>
@@ -3457,18 +3419,18 @@
               <select id="push-form-selected-customer" class="form-control" style="font-size: 12px; background: #0b1329; border-color: #1e293b; color: #fff; border-radius: 8px;"></select>
             </div>
 
-            <div class="form-group" style="margin-bottom: 10px;">
-              <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">
+            <div class="form-group" style="margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+              <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px; word-break: break-word;">
                 Notification Title (தலைப்பு)
               </label>
-              <input type="text" id="push-form-title" class="form-control" placeholder="எ.கா: 🛒 இன்று சிறப்பு சலுகை! / Special Weekend Sale!" style="font-size: 12.5px; background: #0f172a; border-color: #334155; color: #fff; border-radius: 8px;">
+              <input type="text" id="push-form-title" class="form-control" placeholder="எ.கா: 🛒 இன்று சிறப்பு சலுகை! / Special Weekend Sale!" style="font-size: 12.5px; background: #0f172a; border-color: #334155; color: #fff; border-radius: 8px; width: 100%; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word;">
             </div>
 
-            <div class="form-group" style="margin-bottom: 10px;">
-              <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">
+            <div class="form-group" style="margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+              <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px; word-break: break-word;">
                 Notification Message Body (செய்தி விவரம்)
               </label>
-              <textarea id="push-form-body" class="form-control" rows="3" placeholder="எ.கா: புது பிரஷ் காய்கறிகள் மற்றும் இறைச்சிகள் 20 நிமிடத்தில் ஹோம் டெலிவரி! உடனே ஆர்டர் செய்யுங்கள்!" style="font-size: 12.5px; background: #0f172a; border-color: #334155; color: #fff; border-radius: 8px;"></textarea>
+              <textarea id="push-form-body" class="form-control" rows="3" placeholder="எ.கா: புது பிரஷ் காய்கறிகள் மற்றும் இறைச்சிகள் 20 நிமிடத்தில் ஹோம் டெலிவரி! உடனே ஆர்டர் செய்யுங்கள்!" style="font-size: 12.5px; background: #0f172a; border-color: #334155; color: #fff; border-radius: 8px; width: 100%; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word; resize: vertical;"></textarea>
             </div>
 
             <!-- Schedule Options -->
@@ -3929,13 +3891,13 @@
                   </div>
                 </div>
 
-                <div style="background: rgba(0,0,0,0.12); padding: 8px; border-radius: 8px; border: 1px dashed #202020; margin-top: 6px;">
-                  <p style="font-weight: 700; font-size: 9.5px; color: #fff; margin-bottom: 6px; text-transform: uppercase;">➕ புதிய தூர மண்டலம் சேர்க்க / Add Zone</p>
+                <div style="background: rgba(0,0,0,0.12); padding: 8px; border-radius: 8px; border: 1px dashed var(--border-color, #202020); margin-top: 6px;">
+                  <p style="font-weight: 700; font-size: 9.5px; color: var(--text-primary, #fff); margin-bottom: 6px; text-transform: uppercase;">➕ புதிய தூர மண்டலம் சேர்க்க / Add Zone</p>
                   <div style="display: flex; gap: 4px; flex-direction: column;">
                     <div style="display: flex; gap: 4px;">
-                      <input type="text" id="new-zone-name" class="form-control" placeholder="Zone (e.g. Town)" style="flex: 2; font-size: 11px; height: 32px; background: #000; padding: 4px 6px;">
-                      <input type="number" id="new-zone-max" class="form-control" placeholder="Km limit" style="flex: 1.2; font-size: 11px; height: 32px; background: #000; padding: 4px 6px;" step="0.1">
-                      <input type="number" id="new-zone-charge" class="form-control" placeholder="Price (₹)" style="flex: 1.2; font-size: 11px; height: 32px; background: #000; padding: 4px 6px;">
+                      <input type="text" id="new-zone-name" class="form-control" placeholder="Zone (e.g. Town)" style="flex: 2; font-size: 11px; height: 32px; background: var(--bg-input, rgba(15,23,42,0.8)); color: var(--text-primary, #fff); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding: 4px 6px;">
+                      <input type="number" id="new-zone-max" class="form-control" placeholder="Km limit" style="flex: 1.2; font-size: 11px; height: 32px; background: var(--bg-input, rgba(15,23,42,0.8)); color: var(--text-primary, #fff); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding: 4px 6px;" step="0.1">
+                      <input type="number" id="new-zone-charge" class="form-control" placeholder="Price (₹)" style="flex: 1.2; font-size: 11px; height: 32px; background: var(--bg-input, rgba(15,23,42,0.8)); color: var(--text-primary, #fff); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding: 4px 6px;">
                     </div>
                     <button type="button" onclick="handleAddDeliveryZone(event)" class="btn btn-primary" style="height: 28px; font-size: 11px; font-weight: 800; padding: 0; line-height:28px; margin-top: 2px;">
                       மண்டலத்தைச் சேர் / Add Zone ✨
@@ -3946,147 +3908,161 @@
             </div>
           </div>
 
+          <!-- Rain Surcharge Panel -->
+          <div style="background: rgba(59,130,246,0.06); border: 1.2px dashed rgba(59,130,246,0.3); border-radius: 12px; padding: 12px; margin-top: 10px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <label style="font-size: 11.5px; font-weight: 800; color: #60a5fa; display: flex; align-items: center; gap: 6px; margin: 0;">
+                🌧️ மழைக்கால கூடுதல் கட்டணம் / Rain Weather Surge Fee
+              </label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="setting-rain-mode" onchange="saveAdminSettings()" style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;">
+                <span style="font-size: 11px; font-weight: 700; color: #fff;">செயலில் (Active)</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span style="font-size: 11px; color: var(--text-secondary); flex: 1;">மழை / மோசமான காலநிலையில் சேர்க்கப்பட வேண்டிய கூடுதல் தொகை (₹):</span>
+              <input type="number" id="setting-rain-charge" class="form-control" value="20" placeholder="20" style="height: 38px; width: 90px; font-size: 14px; font-weight: 850; text-align: center; background: #000; border: 1px solid #3b82f6; color: #fff; border-radius: 8px; padding: 0;" onchange="saveAdminSettings()">
+            </div>
+            <p style="font-size: 10px; color: var(--text-muted); margin-top: 6px; line-height: 1.35;">⚡ இந்நிலை செயல்பாட்டில் உள்ள போது வாடிக்கையாளரின் ஆர்டர் தொகையில் இந்நிதி தானாகவே டெலிவரி கட்டணத்தில் சேர்க்கப்படும்.</p>
+          </div>
+
           <div class="form-group">
-            <label>Minimum Permitted Order Weight (Grams)</label>
+            <label style="font-size: 11px; font-weight: 700; color: #fff;">Minimum Permitted Order Weight (Grams)</label>
             <input type="number" id="setting-min-weight" class="form-control" value="50" onchange="saveAdminSettings()">
           </div>
 
           <div class="form-group">
-            <label>குறைந்தபட்ச ஆர்டர் தொகை / Minimum Order Amount (₹)</label>
+            <label style="font-size: 11px; font-weight: 700; color: #fff;">குறைந்தபட்ச ஆர்டர் தொகை / Minimum Order Amount (₹)</label>
             <input type="number" id="setting-min-amount" class="form-control" value="0" placeholder="e.g. 200" onchange="saveAdminSettings()">
           </div>
-
-          <input type="hidden" id="setting-merchant-upi" value="einsteinananth24@okaxis">
 
           <p style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 12px;">Auto saved upon value modification • Configures global client checkouts.</p>
         </div>
 
-        <!-- ADMIN MANAGE CATEGORIES CARD -->
-        <div class="card" style="margin-top: 16px;">
-          <h4 onclick="toggleSectionCollapse('categories')" style="cursor: pointer; font-size: 14px; text-transform: uppercase; color: var(--accent-orange); margin-bottom: 0; padding-bottom: 6px; display: flex; align-items: center; gap: 8px; user-select: none;">
-            <span>🌿</span> <span>வகை மேலாண்மை / Manage Categories</span>
-            <span id="admin-categories-count-badge" style="font-size: 11px; background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,255,255,0.12); padding: 2px 10px; border-radius: 12px; font-weight: 700; color: var(--text-secondary); text-transform: none; margin-left: 6px;">0 Categories</span>
-            <span id="admin-categories-collapse-arrow" style="margin-left: auto; font-size: 14px; transition: transform 250ms ease; color: var(--text-secondary);">▼</span>
+        <!-- CATEGORY MANAGEMENT CARD -->
+        <div class="card" style="margin-top: 16px; border-color: rgba(46, 125, 50, 0.35); background: rgba(46, 125, 50, 0.02);" id="admin-categories-card">
+          <h4 onclick="toggleSectionCollapse('categories')" style="cursor: pointer; font-size: 14px; text-transform: uppercase; color: #4ade80; margin-bottom: 0; padding-bottom: 6px; display: flex; align-items: center; gap: 8px; user-select: none;">
+            <span>📦</span> <span>வகைப்பாடுகள் மேலாண்மை / Category Management</span>
+            <span id="admin-categories-count-badge" style="font-size: 11px; background: rgba(16,185,129,0.1); border: 1.5px solid rgba(16,185,129,0.2); padding: 2px 10px; border-radius: 12px; font-weight: 700; color: #10b981; text-transform: none; margin-left: 6px;">0 Categories</span>
+            <span id="categories-collapse-arrow" style="margin-left: auto; font-size: 14px; transition: transform 250ms ease; color: var(--text-secondary);">▼</span>
           </h4>
 
           <div id="categories-collapse-container" style="max-height: 0; overflow: hidden; transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1); margin-top: 0;">
             <div style="padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px;">
-              <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;">
-                கேட்டகிரிகளை மறைக்க/காண்பிக்க மற்றும் அவற்றின் வரிசையை மாற்றலாம் / Hide or show core shopping categories, and click buttons to swap their visual ordering sequence.
+              <p style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;">
+                கடையில் உள்ள அனைத்து வகைப்பாடுகளையும் (Categories) நிர்வகிக்கலாம், புதிய வகைப்பாடு உருவாக்கலாம் அல்லது வரிசையை மாற்றிமைக்கலாம்.
               </p>
 
-              <div id="admin-categories-list" style="display: flex; flex-direction: column; gap: 4px;">
-                <!-- Rendered dynamically by JS -->
-              </div>
+              <!-- ADD NEW CATEGORY FORM -->
+              <form onsubmit="handleCreateCategory(event)" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 12px; margin-bottom: 14px;">
+                <p style="font-weight: 800; font-size: 11px; text-transform: uppercase; color: #4ade80; margin-bottom: 10px;">➕ புதிய வகைப்பாடு சேர்க்க / Add New Category</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">English Name *</label>
+                    <input type="text" id="new-cat-en" class="form-control" placeholder="e.g. Sea Fish" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));" required>
+                  </div>
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Tamil Name (தமிழ்) *</label>
+                    <input type="text" id="new-cat-ta" class="form-control" placeholder="எ.கா: கடல் மீன்" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));" required>
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Icon / Emoji</label>
+                    <input type="text" id="new-cat-icon" class="form-control" placeholder="e.g. 🐟" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); text-align: center;">
+                  </div>
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Accent Color (Hex)</label>
+                    <input type="text" id="new-cat-accent" class="form-control" placeholder="#2E7D32" value="#2E7D32" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));">
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; height: 38px; font-size: 12px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; border-radius: 8px; cursor: pointer;">
+                  ✨ உருவாக்கு / Create Category
+                </button>
+              </form>
 
-              <div style="margin-top: 14px; padding-top: 14px; border-top: 1.5px dashed rgba(255,255,255,0.08);">
-                <h5 style="font-size: 11px; font-weight: 850; letter-spacing: 0.3px; text-transform: uppercase; margin-bottom: 10px; color: var(--accent-orange); display: flex; align-items: center; gap: 4px;">
-                  <span>➕ புதிய பிரிவு சேர்க்க / Add Custom Category</span>
-                </h5>
-                <form onsubmit="handleCreateCategory(event)" style="display: flex; flex-direction: column; gap: 10px;">
-                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <input type="text" id="new-cat-en" class="form-control" placeholder="English (e.g. Fish)" style="flex: 1; min-width: 120px; font-size: 12px; height: 38px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; padding: 6px 12px; box-sizing: border-box;" required>
-                    <input type="text" id="new-cat-ta" class="form-control" placeholder="தமிழ் (எ.கா. மீன்)" style="flex: 1; min-width: 120px; font-size: 12px; height: 38px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; padding: 6px 12px; box-sizing: border-box;" required>
-                  </div>
-                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <input type="text" id="new-cat-icon" class="form-control" placeholder="Emoji (🐟)" style="width: 80px; font-size: 12px; height: 38px; text-align: center; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; padding: 6px; box-sizing: border-box;" required>
-                    <input type="text" id="new-cat-accent" class="form-control" placeholder="Accent Hex (e.g. #0288D1)" style="flex: 1.5; min-width: 120px; font-size: 12px; height: 38px; background: #0f172a; border: 1.5px solid rgba(255,255,255,0.08); color: #ffffff; border-radius: 8px; padding: 6px 12px; box-sizing: border-box;">
-                    <button type="submit" class="btn" style="flex: 1; min-width: 110px; height: 38px; padding: 0; font-size: 11.5px; font-weight: 850; border-radius: 8px; margin: 0; background: linear-gradient(135deg, var(--accent-orange), #ea580c); border: none; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(245,158,11,0.2)';" onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                      ⚡ CREATE / உருவாக்கு
-                    </button>
-                  </div>
-                </form>
-              </div>
+              <!-- CATEGORIES LIST -->
+              <div id="admin-categories-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
             </div>
           </div>
         </div>
 
-        <!-- ADMIN ROTATING SLIDERS CONFIGURATION CARD (UP TO 10 BANNERS) -->
-        <div class="card" style="margin-top: 16px;">
-          <h4 onclick="toggleSectionCollapse('carousel')" style="cursor: pointer; font-size: 14px; text-transform: uppercase; color: var(--accent-orange); margin-bottom: 0; padding-bottom: 6px; display: flex; align-items: center; gap: 8px; user-select: none;">
-            <span>📸</span> <span>ஸ்லைடிங் பேனர் மேனேஜர் / Sliding Carousel Manager</span>
-            <span id="admin-carousel-count-badge" style="font-size: 11px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); padding: 2px 10px; border-radius: 12px; font-weight: 700; color: var(--text-secondary); text-transform: none; margin-left: 6px;">0 Slides</span>
-            <span id="admin-carousel-collapse-arrow" style="margin-left: auto; font-size: 14px; transition: transform 250ms ease; color: var(--text-secondary);">▼</span>
+        <!-- HERO SLIDING BANNER MANAGEMENT CARD -->
+        <div class="card" style="margin-top: 16px; border-color: rgba(59, 130, 246, 0.35); background: rgba(59, 130, 246, 0.02);" id="admin-carousel-card">
+          <h4 onclick="toggleSectionCollapse('carousel')" style="cursor: pointer; font-size: 14px; text-transform: uppercase; color: #60a5fa; margin-bottom: 0; padding-bottom: 6px; display: flex; align-items: center; gap: 8px; user-select: none;">
+            <span>🖼️</span> <span>ஹீரோ பேனர் மேலாண்மை / Hero Banner Management</span>
+            <span id="admin-carousel-count-badge" style="font-size: 11px; background: rgba(59, 130, 246, 0.1); border: 1.5px solid rgba(59, 130, 246, 0.2); padding: 2px 10px; border-radius: 12px; font-weight: 700; color: #60a5fa; text-transform: none; margin-left: 6px;">0 Slides</span>
+            <span id="carousel-collapse-arrow" style="margin-left: auto; font-size: 14px; transition: transform 250ms ease; color: var(--text-secondary);">▼</span>
           </h4>
 
           <div id="carousel-collapse-container" style="max-height: 0; overflow: hidden; transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1); margin-top: 0;">
             <div style="padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px;">
-              <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">
-                உங்களது வாடிக்கையாளர்களுக்கு காட்டப்படும் முகப்புத் திரையின் மேல் சுழலும் ஸ்லைடிங் பேனர்களை அட்மினில் இருந்து மாற்றலாம் (அதிகபட்சம்: 10 விளம்பரப் படங்கள்). / Manage the interactive home screen carousel sliders (Max 10 banners).
+              <p style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;">
+                ஹோம் ஸ்கிரீனில் சுழலும் விளம்பரப் படங்களை (Sliding Hero Banners) மேலாண்மை செய்ய அல்லது புதிய படங்களை பதிவேற்றலாம்.
               </p>
 
-              <!-- Add / Edit Banner Form (Glassmorphic) -->
-              <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px; margin-bottom: 16px;">
-                <h5 id="admin-banner-form-title" style="margin-top: 0; margin-bottom: 8px; font-size: 11.5px; color: var(--accent-orange);">⚡ புதிய பேனர் சேர்க்க / Add New Slide</h5>
+              <!-- ADD / EDIT SLIDING BANNER FORM -->
+              <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 12px; margin-bottom: 14px;">
+                <p id="admin-banner-form-title" style="font-weight: 800; font-size: 11px; text-transform: uppercase; color: #60a5fa; margin-bottom: 10px;">⚡ புதிய பேனர் சேர்க்க / Add New Slide</p>
 
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">விளம்பரப் படம் / Choose Local Photo (HD Optimized):</label>
-                    <input type="file" id="admin-banner-file-input" class="form-control" accept="image/*" onchange="compressAndCacheBannerImage(event)" style="font-size: 11px; padding: 4px; height: auto;">
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 4px;">Banner Image File / URL *</label>
+                  <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                    <input type="text" id="admin-banner-url-input" class="form-control" placeholder="https://images.unsplash.com/... or upload" style="height: 36px; font-size: 11.5px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); flex: 1;" onchange="updateAdminBannerUrlPreview()">
+                    <label class="btn" style="height: 36px; padding: 0 12px; font-size: 11px; font-weight: 700; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; flex-shrink: 0;">
+                      📷 Upload
+                      <input type="file" id="admin-banner-file-input" accept="image/*" style="display: none;" onchange="compressAndCacheBannerImage(event)">
+                    </label>
                   </div>
+                </div>
 
-                  <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">அல்லது நேரடிப் படம் URL / Or Paste Direct Image URL:</label>
-                    <input type="url" id="admin-banner-url-input" class="form-control" placeholder="https://images.unsplash.com/photo-..." style="font-size: 11.5px; height: 32px; padding: 4px 8px;" oninput="updateAdminBannerUrlPreview()">
-                  </div>
+                <!-- PREVIEW CONTAINER -->
+                <div id="admin-banner-preview-container" style="display: none; margin-bottom: 10px; text-align: center; position: relative;">
+                  <img id="admin-banner-preview-img" src="" style="max-height: 120px; width: 100%; object-fit: cover; border-radius: 8px; border: 1.5px solid rgba(59, 130, 246, 0.4);" />
+                  <button type="button" onclick="deleteSelectedBannerPhoto()" style="position: absolute; top: 6px; right: 6px; background: rgba(239, 68, 68, 0.85); color: #fff; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; font-weight: bold; cursor: pointer;">✕</button>
+                </div>
 
-                  <!-- Banner Image Preview Container -->
-                  <div id="admin-banner-preview-container" style="display: none; text-align: center; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 10px; border: 1px dashed rgba(255,255,255,0.12); margin-top: 4px;">
-                    <p style="font-size: 9px; color: var(--text-secondary); margin-bottom: 4px;">Selected Banner Preview / விளம்பரப் படம்:</p>
-                    <img id="admin-banner-preview-img" src="" style="width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-orange); display: inline-block;" loading="lazy">
-                    <div style="margin-top: 4px;">
-                      <button type="button" class="btn" onclick="deleteSelectedBannerPhoto()" style="padding: 4px 10px; font-size: 10px; font-weight: 700; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--accent-red); color: #ff5a5a; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s; cursor: pointer; height: auto;">
-                        <span>🗑️</span> Remove Image
-                      </button>
-                    </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Title (Tamil)</label>
+                    <input type="text" id="admin-banner-title-ta" class="form-control" placeholder="எ.கா: பிரஷ் கடல் மீன்" style="height: 34px; font-size: 11.5px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));">
                   </div>
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Title (English)</label>
+                    <input type="text" id="admin-banner-title-en" class="form-control" placeholder="e.g. Fresh Sea Fish" style="height: 34px; font-size: 11.5px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));">
+                  </div>
+                </div>
 
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">தலைப்பு (தமிழ்) / Title (Tamil):</label>
-                      <input type="text" id="admin-banner-title-ta" class="form-control" placeholder="நாட்டு ஆட்டுக்கறி பிரஷ்ஷாக!" style="font-size: 11.5px; height: 32px; padding: 4px 8px;">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">தலைப்பு (English) / Title (English):</label>
-                      <input type="text" id="admin-banner-title-en" class="form-control" placeholder="Premium Mutton Cuts" style="font-size: 11.5px; height: 32px; padding: 4px 8px;">
-                    </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Subtitle (Tamil)</label>
+                    <input type="text" id="admin-banner-sub-ta" class="form-control" placeholder="எ.கா: 100% தூய்மையானவை" style="height: 34px; font-size: 11.5px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));">
                   </div>
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Subtitle (English)</label>
+                    <input type="text" id="admin-banner-sub-en" class="form-control" placeholder="e.g. 100% Fresh Guaranteed" style="height: 34px; font-size: 11.5px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));">
+                  </div>
+                </div>
 
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">துணைத்தலைப்பு (தமிழ்) / Subtitle (Tamil):</label>
-                      <input type="text" id="admin-banner-sub-ta" class="form-control" placeholder="இடப்பாடியில் இல்லத்திற்கே நேரடி டெலிவரி!" style="font-size: 11.5px; height: 32px; padding: 4px 8px;">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">துணைத்தலைப்பு (English) / Subtitle (English):</label>
-                      <input type="text" id="admin-banner-sub-en" class="form-control" placeholder="Express door delivery in Idappadi town." style="font-size: 11.5px; height: 32px; padding: 4px 8px;">
-                    </div>
-                  </div>
-
-                  <div id="admin-banner-actions" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
-                    <button id="admin-banner-submit-btn" class="btn btn-primary" onclick="addNewSlidingBanner()" style="flex: 2; min-width: 150px; height: 40px; min-height: 40px; padding: 0 16px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 10px !important; background: linear-gradient(135deg, var(--accent-orange), #ea580c); border: none; color: #ffffff; cursor: pointer; transition: all 0.2s;">
-                      <span>➕ ADD TO CAROUSEL</span>
-                    </button>
-                    <button id="admin-banner-cancel-btn" class="btn" onclick="cancelEditSlidingBanner()" style="display: none; flex: 1; min-width: 100px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; height: 40px; min-height: 40px; padding: 0 12px; font-size: 11.5px; font-weight: 700; border-radius: 10px !important; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
-                      <span>❌ Cancel / ரத்து</span>
-                    </button>
-                  </div>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" id="admin-banner-submit-btn" onclick="addNewSlidingBanner()" class="btn btn-primary" style="flex: 1; height: 38px; font-size: 12px; font-weight: 800; background: linear-gradient(135deg, #3b82f6, #2563eb); border: none; color: #fff; border-radius: 8px; cursor: pointer;">
+                    <span>➕ ADD TO CAROUSEL</span>
+                  </button>
+                  <button type="button" id="admin-banner-cancel-btn" onclick="cancelEditSlidingBanner()" class="btn" style="display: none; height: 38px; font-size: 12px; font-weight: 800; background: rgba(255,255,255,0.08); color: #ccc; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; cursor: pointer;">
+                    <span>Cancel</span>
+                  </button>
                 </div>
               </div>
 
-              <!-- Existing Slide List -->
-              <h5 style="margin-top: 0; margin-bottom: 8px; font-size: 11.5px; color: var(--accent-orange); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 4px;">📂 நடப்பு விளம்பரங்கள் / Live Active Carousel (Max 10)</h5>
-
-              <div id="admin-banner-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 2px;">
-                <!-- Rendered by JS -->
-              </div>
+              <!-- SLIDING BANNERS LIST -->
+              <div id="admin-banner-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
             </div>
           </div>
         </div>
 
-        <!-- UPI PAYMENT MANAGEMENT CARD -->
-        <div class="card" style="margin-top: 16px;" id="admin-upi-card">
-          <h4 onclick="toggleSectionCollapse('upi-config')" style="cursor: pointer; font-size: 14px; text-transform: uppercase; color: var(--accent-orange); margin-bottom: 0; padding-bottom: 6px; display: flex; align-items: center; gap: 8px; user-select: none;">
+        <!-- CONSOLIDATED UPI PAYMENT MANAGEMENT CARD -->
+        <div class="card" style="margin-top: 16px; border-color: rgba(168,85,247,0.35); background: rgba(168,85,247,0.02);" id="admin-upi-card">
+          <h4 onclick="toggleSectionCollapse('upi-config')" style="cursor: pointer; font-size: 14px; text-transform: uppercase; color: #c084fc; margin-bottom: 0; padding-bottom: 6px; display: flex; align-items: center; gap: 8px; user-select: none;">
             <span>📱</span> <span>UPI செலுத்துதல் மேலாண்மை / UPI Payment Management</span>
             <span id="admin-upi-status-badge" style="font-size: 11px; background: rgba(16,185,129,0.1); border: 1.5px solid rgba(16,185,129,0.2); padding: 2px 10px; border-radius: 12px; font-weight: 700; color: #10b981; text-transform: none; margin-left: 6px;">Enabled</span>
             <span id="admin-upi-config-collapse-arrow" style="margin-left: auto; font-size: 14px; transition: transform 250ms ease; color: var(--text-secondary);">▼</span>
@@ -4095,11 +4071,11 @@
           <div id="upi-config-collapse-container" style="max-height: 0; overflow: hidden; transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1); margin-top: 0;">
             <div style="padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px;">
               <p style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;">
-                சூப்பர் அட்மின் மட்டுமே இந்த UPI கணக்கு அமைப்புகளை மாற்ற முடியும். / Super Admin can configure up to 3 UPI payment destinations with automated failover support. Only active destinations will be used at customer checkout.
+                சூப்பர் அட்மின் மட்டுமே இந்த UPI கணக்கு அமைப்புகளை மாற்ற முடியும். / Super Admin can configure up to 3 UPI payment destinations (Primary, Backup 1, Backup 2) with automated failover support.
               </p>
 
               <!-- Global settings: Enable/Disable, Currency -->
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; background: rgba(255,255,255,0.02); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <label style="font-size: 10.5px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">UPI Payments Option</label>
                   <select id="upi-global-enabled" class="form-control" style="font-size: 12px; height: 38px; background: #0f172a;" onchange="saveAdminUpiSettings()">
@@ -4113,9 +4089,55 @@
                 </div>
               </div>
 
+              <!-- Quick handle presets for Primary account -->
+              <div style="margin-bottom: 12px; background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                  <span style="font-size: 10.5px; font-weight: 700; color: #c084fc;">முதன்மை கணக்கு விரைவு வங்கி தேர்வு:</span>
+                  <button type="button" onclick="setAdminUpiPreset('@ptyes')" style="padding: 3px 8px; font-size: 10px; background: #111; border: 1px solid #333; color: #c084fc; border-radius: 6px; cursor: pointer;">@ptyes</button>
+                  <button type="button" onclick="setAdminUpiPreset('@okaxis')" style="padding: 3px 8px; font-size: 10px; background: #111; border: 1px solid #333; color: #60a5fa; border-radius: 6px; cursor: pointer;">@okaxis</button>
+                  <button type="button" onclick="setAdminUpiPreset('@okicici')" style="padding: 3px 8px; font-size: 10px; background: #111; border: 1px solid #333; color: #f472b6; border-radius: 6px; cursor: pointer;">@okicici</button>
+                  <button type="button" onclick="setAdminUpiPreset('@ybl')" style="padding: 3px 8px; font-size: 10px; background: #111; border: 1px solid #333; color: #34d399; border-radius: 6px; cursor: pointer;">@ybl</button>
+                  <button type="button" onclick="setAdminUpiPreset('@paytm')" style="padding: 3px 8px; font-size: 10px; background: #111; border: 1px solid #333; color: #fbbf24; border-radius: 6px; cursor: pointer;">@paytm</button>
+                </div>
+              </div>
+
               <!-- List of UPI Accounts (Primary, Backup 1, Backup 2) -->
-              <div id="upi-accounts-container" style="display: flex; flex-direction: column; gap: 12px;">
+              <div id="upi-accounts-container" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
                 <!-- Filled dynamically by JavaScript -->
+              </div>
+
+              <!-- Custom UPI QR Image URL -->
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="font-size: 10.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">சுய விவர QR பட URL (விருப்பத்தேர்வு) / Custom UPI QR Image URL</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="setting-upi-qr-url" class="form-control" placeholder="https://example.com/my-upi-qr.jpg" style="height: 38px; font-size: 11.5px; background: #000; flex: 1;" onchange="saveAdminUpiSettings(); updateAdminUpiQrPreview();">
+                  <button type="button" class="btn btn-primary" onclick="generateAdminUpiQrPreview()" style="height: 38px; padding: 0 12px; font-size: 11px; font-weight: 800; border-radius: 8px; margin: 0; width: auto; background: linear-gradient(135deg, #a855f7, #7e22ce); border: none; color: #fff; cursor: pointer;">
+                    📷 QR உருவாக்கு
+                  </button>
+                </div>
+              </div>
+
+              <!-- UPI QR Code Live Preview Section -->
+              <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; text-align: center; margin-top: 10px;">
+                <span style="font-size: 10.5px; font-weight: 700; color: #c084fc; display: block; margin-bottom: 8px;">📷 வாடிக்கையாளர்களுக்கு தோன்றும் முதன்மை UPI QR குறியீடு Preview</span>
+                <div style="display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <div id="admin-upi-qr-box" style="background: #fff; padding: 8px; border-radius: 12px; border: 2px solid #a855f7; display: inline-block;">
+                    <img id="admin-upi-qr-preview-img" src="https://api.qrserver.com/v1/create-qr-code/?data=upi%3A%2F%2Fpay%3Fpa%3D8778148899%40ptyes%26pn%3DEdappadi%2520Kadai%26cu%3DINR&size=160x160" alt="UPI QR Preview" style="width: 140px; height: 140px; display: block;" onerror="this.src='https://api.qrserver.com/v1/create-qr-code/?data=upi%3A%2F%2Fpay%3Fpa%3D8778148899%40ptyes%26pn%3DEdappadi%2520Kadai&size=160x160'">
+                  </div>
+                  <div style="text-align: left; max-width: 220px;">
+                    <p id="admin-upi-qr-id-lbl" style="font-size: 12px; font-weight: 800; color: #fff; margin: 0 0 4px 0; word-break: break-all;">8778148899@ptyes</p>
+                    <p id="admin-upi-qr-name-lbl" style="font-size: 11px; color: var(--text-secondary); margin: 0 0 8px 0;">Edappadi Kadai</p>
+                    <button type="button" class="btn" onclick="testAdminUpiPay()" style="padding: 6px 12px; font-size: 11px; font-weight: 800; background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); border-radius: 6px; cursor: pointer; width: auto; margin: 0;">
+                      ⚡ UPI இணைப்பு சோதனை
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top: 14px; text-align: right;">
+                <button type="button" class="btn btn-primary" onclick="saveAdminUpiSettings(true)" style="height: 40px; padding: 0 20px; font-size: 12px; font-weight: 850; border-radius: 8px; margin: 0; width: auto; background: linear-gradient(135deg, var(--accent-orange), #ea580c); color: #000; cursor: pointer;">
+                  💾 அமைப்புகளைச் சேமி / Save UPI Settings
+                </button>
               </div>
             </div>
           </div>
@@ -4409,17 +4431,17 @@
       </div>
 
       <!-- Sticky Mini Draft Cart Panel -->
-      <div id="lyo-ai-draft-cart-bar" style="display: none; background: linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(245,158,11,0.12) 100%) !important; border-top: 1.5px solid rgba(16,185,129,0.3) !important; border-bottom: 1.5px solid rgba(245,158,11,0.25) !important; backdrop-filter: blur(20px) saturate(175%) !important; -webkit-backdrop-filter: blur(20px) saturate(175%) !important; padding: 10px 16px; margin: 0; align-items: center; justify-content: space-between; width: 100%; max-width: 100%; box-sizing: border-box;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 16px;">🛒</span>
+      <div id="lyo-ai-draft-cart-bar" style="display: none; background: linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(245,158,11,0.12) 100%) !important; border-top: 1px solid rgba(16,185,129,0.3) !important; border-bottom: 1px solid rgba(245,158,11,0.25) !important; backdrop-filter: blur(20px) saturate(175%) !important; -webkit-backdrop-filter: blur(20px) saturate(175%) !important; padding: 4px 12px; margin: 0; align-items: center; justify-content: space-between; width: 100%; max-width: 100%; box-sizing: border-box;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 14px;">🛒</span>
           <div>
-            <p id="lyo-ai-draft-cart-title" style="margin: 0; font-size: 11.5px; font-weight: 700; color: #fff;"></p>
-            <p id="lyo-ai-draft-cart-sub" style="margin: 0; font-size: 10px; color: var(--text-muted);"></p>
+            <p id="lyo-ai-draft-cart-title" style="margin: 0; font-size: 11px; font-weight: 700; color: #fff;"></p>
+            <p id="lyo-ai-draft-cart-sub" style="margin: 0; font-size: 9.5px; color: var(--text-muted);"></p>
           </div>
         </div>
-        <div style="display: flex; gap: 8px;">
-          <button onclick="clearLyoAiCart()" class="btn btn-secondary" style="width: auto; padding: 6px 10px; font-size: 11px; font-weight: 700; border-radius: 8px; border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.08); color: #ef4444; height: auto; min-height: auto;">Clear</button>
-          <button id="lyo-ai-place-order-btn" onclick="checkoutLyoAiOrder()" class="btn btn-primary" style="width: auto; padding: 6px 14px; font-size: 11px; font-weight: 800; border-radius: 8px; background: linear-gradient(135deg, var(--accent-orange), #10b981); border: none; box-shadow: 0 2px 8px rgba(16,185,129,0.25); height: auto; min-height: auto;">Place Order ✅</button>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button onclick="clearLyoAiCart()" class="btn btn-secondary" style="height: 28px; min-height: 28px; padding: 2px 10px; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 11px; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.15); color: #ef4444; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">Clear</button>
+          <button id="lyo-ai-place-order-btn" onclick="checkoutLyoAiOrder()" class="btn btn-primary" style="height: 28px; min-height: 28px; padding: 2px 12px; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 800; font-size: 11.5px; background: linear-gradient(135deg, var(--accent-orange), #10b981); border: none; color: #ffffff; box-shadow: 0 2px 8px rgba(16,185,129,0.3); display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">Place Order ✅</button>
         </div>
       </div>
 
@@ -4530,41 +4552,20 @@
 
 <script>
 async function initializeApplicationStartup() {
-  debugLog("[STARTUP] Running fast parallel startup sequence...");
+  debugLog("[STARTUP] Running full application startup sequence...");
   try {
     if (typeof syncSessionKeysFromAndroidStorage === 'function') syncSessionKeysFromAndroidStorage();
   } catch (e) {}
 
   try {
-    if (typeof applyTranslations === 'function') applyTranslations();
-  } catch (e) {}
-
-  try {
-    if (typeof renderHomeScreen === 'function') renderHomeScreen();
-  } catch (e) {}
-
-  try {
-    const splash = document.getElementById('screen-splash');
-    if (splash && splash.classList.contains('active')) {
-      splash.classList.remove('active');
-      const home = document.getElementById('screen-home');
-      if (home) {
-        home.classList.add('active');
-        if (typeof currentScreen !== 'undefined') currentScreen = 'screen-home';
-      }
-      const bottomNav = document.getElementById('app-bottom-nav');
-      if (bottomNav) bottomNav.style.display = 'flex';
+    if (typeof safeBootstrap === 'function') {
+      safeBootstrap();
+    } else if (typeof bootstrapApplication === 'function') {
+      bootstrapApplication();
     }
-  } catch (e) {}
-
-  Promise.allSettled([
-    typeof fetchSettingsOnce === 'function' ? fetchSettingsOnce() : Promise.resolve(),
-    typeof fetchProductsOnce === 'function' ? fetchProductsOnce() : Promise.resolve()
-  ]).then(() => {
-    debugLog("[STARTUP] Parallel background fetches complete ✓");
-  }).catch(err => {
-    console.warn("[STARTUP] Parallel background fetch notice:", err);
-  });
+  } catch (e) {
+    console.error("[STARTUP] Application bootstrap execution error:", e);
+  }
 }
 
 if (document.readyState === 'loading') {
@@ -4737,41 +4738,41 @@ function printCustomerInvoice(orderId) {
   `).join('');
 
   printWindow.document.write(`
-    <html>
-      <head>
-        <title>Invoice - ${order.id}</title>
-        <style>
+    \x3Chtml>
+      \x3Chead>
+        \x3Ctitle>Invoice - ${order.id}\x3C/title>
+        \x3Cstyle>
           body { font-family: sans-serif; padding: 20px; color: #111; }
           h2 { margin-bottom: 4px; color: #10b981; }
           table { width: 100%; border-collapse: collapse; margin-top: 15px; }
           th { background: #f3f4f6; text-align: left; padding: 8px; border-bottom: 2px solid #ccc; }
           .total-row { font-weight: bold; font-size: 16px; text-align: right; margin-top: 15px; }
-        </style>
-      </head>
-      <body>
-        <h2>எடப்பாடி கடை / Edappadi Kadai</h2>
-        <p><strong>Order ID:</strong> ${order.id}</p>
-        <p><strong>Customer:</strong> ${order.customerName || 'வாடிக்கையாளர்'} (${order.customerPhone || ''})</p>
-        <p><strong>Address:</strong> ${order.address || 'நடைபெறும் முகவரி'}</p>
-        <hr/>
-        <table>
-          <thead>
-            <tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr>
-          </thead>
-          <tbody>
+        \x3C/style>
+      \x3C/head>
+      \x3Cbody>
+        \x3Ch2>எடப்பாடி கடை / Edappadi Kadai\x3C/h2>
+        \x3Cp>\x3Cstrong>Order ID:\x3C/strong> ${order.id}\x3C/p>
+        \x3Cp>\x3Cstrong>Customer:\x3C/strong> ${order.customerName || 'வாடிக்கையாளர்'} (${order.customerPhone || ''})\x3C/p>
+        \x3Cp>\x3Cstrong>Address:\x3C/strong> ${order.address || 'நடைபெறும் முகவரி'}\x3C/p>
+        \x3Chr/>
+        \x3Ctable>
+          \x3Cthead>
+            \x3Ctr>\x3Cth>Item\x3C/th>\x3Cth style="text-align:center;">Qty\x3C/th>\x3Cth style="text-align:right;">Price\x3C/th>\x3C/tr>
+          \x3C/thead>
+          \x3Ctbody>
             ${itemsHtml}
-          </tbody>
-        </table>
-        <div class="total-row">
-          <p>Subtotal: ₹${order.subtotal || 0}</p>
-          <p>Delivery Fee: ₹${order.deliveryFee || 0}</p>
-          <p style="color:#10b981; font-size:18px;">Total: ₹${order.total || 0}</p>
-        </div>
-        <script>
+          \x3C/tbody>
+        \x3C/table>
+        \x3Cdiv class="total-row">
+          \x3Cp>Subtotal: ₹${order.subtotal || 0}\x3C/p>
+          \x3Cp>Delivery Fee: ₹${order.deliveryFee || 0}\x3C/p>
+          \x3Cp style="color:#10b981; font-size:18px;">Total: ₹${order.total || 0}\x3C/p>
+        \x3C/div>
+        \x3Cscript>
           window.onload = function() { window.print(); };
         <\/script>
-      </body>
-    </html>
+      \x3C/body>
+    \x3C/html>
   `);
   printWindow.document.close();
 }
@@ -4780,31 +4781,222 @@ function printKOTTicket(orderId) {
   printCustomerInvoice(orderId);
 }
 
+function updateAdminUpiQrPreview() {
+  const primaryUpiEl = document.getElementById("upi-acc-primary-upi-id") || document.getElementById("setting-merchant-upi");
+  const primaryNameEl = document.getElementById("upi-acc-primary-merchant-name") || document.getElementById("setting-merchant-name");
+  const urlEl = document.getElementById("setting-upi-qr-url");
+  const imgEl = document.getElementById("admin-upi-qr-preview-img");
+  const idLbl = document.getElementById("admin-upi-qr-id-lbl");
+  const nameLbl = document.getElementById("admin-upi-qr-name-lbl");
+
+  const upiId = primaryUpiEl ? primaryUpiEl.value.trim() || '8778148899@ptyes' : '8778148899@ptyes';
+  const merchantName = primaryNameEl ? primaryNameEl.value.trim() || 'Edappadi Kadai' : 'Edappadi Kadai';
+  const customUrl = urlEl ? urlEl.value.trim() : '';
+
+  if (idLbl) idLbl.innerText = upiId;
+  if (nameLbl) nameLbl.innerText = merchantName;
+
+  if (imgEl) {
+    if (customUrl) {
+      imgEl.src = customUrl;
+    } else {
+      const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(merchantName)}&cu=INR`;
+      imgEl.src = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(upiUri)}&size=180x180`;
+    }
+  }
+}
+
+function generateAdminUpiQrPreview() {
+  updateAdminUpiQrPreview();
+  if (typeof showToast === 'function') showToast("யுபிஐ QR குறியீடு உருவாக்கப்பட்டது! 📷", "success");
+}
+
+function setAdminUpiPreset(handle) {
+  const upiIdEl = document.getElementById("upi-acc-primary-upi-id") || document.getElementById("setting-merchant-upi");
+  if (!upiIdEl) return;
+  let curr = upiIdEl.value.trim();
+  const baseNum = curr.split('@')[0] || '8778148899';
+  upiIdEl.value = baseNum + handle;
+  saveAdminUpiSettings(false);
+  updateAdminUpiQrPreview();
+}
+
+function testAdminUpiPay() {
+  const primaryUpiEl = document.getElementById("upi-acc-primary-upi-id") || document.getElementById("setting-merchant-upi");
+  const primaryNameEl = document.getElementById("upi-acc-primary-merchant-name") || document.getElementById("setting-merchant-name");
+  const upiId = primaryUpiEl ? primaryUpiEl.value.trim() || '8778148899@ptyes' : '8778148899@ptyes';
+  const merchantName = primaryNameEl ? primaryNameEl.value.trim() || 'Edappadi Kadai' : 'Edappadi Kadai';
+  const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(merchantName)}&am=10.00&tn=TestPay&cu=INR`;
+  
+  if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.startUpiPayment === 'function') {
+    AndroidStorage.startUpiPayment(upiUri);
+  } else {
+    window.open(upiUri, '_blank');
+    if (typeof showToast === 'function') showToast(`UPI URI: ${upiId}`, "info");
+  }
+}
+
 // --- 5. Admin Settings & Delivery Handlers ---
+function saveAdminUpiSettings(showToastNotify = true) {
+  const currentSettings = typeof getData === 'function' ? getData('ek_settings', {}) : {};
+
+  const globalEnabledEl = document.getElementById("upi-global-enabled");
+  const isEnabled = globalEnabledEl ? (globalEnabledEl.value === 'true') : (currentSettings.upiEnabled !== false);
+
+  const qrUrlEl = document.getElementById("setting-upi-qr-url");
+  const upiQrUrl = qrUrlEl ? qrUrlEl.value.trim() : (currentSettings.upiQrUrl || '');
+
+  const getAccInput = (id, field, defVal) => {
+    const el = document.getElementById(`upi-acc-${id}-${field}`);
+    if (!el) return defVal;
+    if (el.type === 'checkbox') return el.checked;
+    return el.value.trim();
+  };
+
+  const primaryActive = getAccInput('primary', 'active', true);
+  const primaryUpiId = getAccInput('primary', 'upi-id', '8778148899@ptyes');
+  const primaryMerchantName = getAccInput('primary', 'merchant-name', 'Edappadi Kadai');
+  const primaryDisplayName = getAccInput('primary', 'display-name', 'Anantharaj Primary');
+  const primaryNote = getAccInput('primary', 'note', 'Order {id} - Edappadi Kadai');
+
+  const backup1Active = getAccInput('backup1', 'active', true);
+  const backup1UpiId = getAccInput('backup1', 'upi-id', 'einsteinananth24-4@okicici');
+  const backup1MerchantName = getAccInput('backup1', 'merchant-name', 'Edappadi Kadai');
+  const backup1DisplayName = getAccInput('backup1', 'display-name', 'Backup UPI 1');
+  const backup1Note = getAccInput('backup1', 'note', 'Order {id} - Edappadi Kadai');
+
+  const backup2Active = getAccInput('backup2', 'active', false);
+  const backup2UpiId = getAccInput('backup2', 'upi-id', '');
+  const backup2MerchantName = getAccInput('backup2', 'merchant-name', 'Edappadi Kadai');
+  const backup2DisplayName = getAccInput('backup2', 'display-name', 'Backup UPI 2');
+  const backup2Note = getAccInput('backup2', 'note', 'Order {id} - Edappadi Kadai');
+
+  const upiSettings = {
+    upiEnabled: isEnabled,
+    currency: 'INR',
+    accounts: [
+      {
+        id: 'primary',
+        label: 'Primary UPI',
+        upiId: primaryUpiId,
+        merchantName: primaryMerchantName,
+        displayName: primaryDisplayName,
+        note: primaryNote,
+        isActive: primaryActive
+      },
+      {
+        id: 'backup1',
+        label: 'Backup UPI 1',
+        upiId: backup1UpiId,
+        merchantName: backup1MerchantName,
+        displayName: backup1DisplayName,
+        note: backup1Note,
+        isActive: backup1Active
+      },
+      {
+        id: 'backup2',
+        label: 'Backup UPI 2',
+        upiId: backup2UpiId,
+        merchantName: backup2MerchantName,
+        displayName: backup2DisplayName,
+        note: backup2Note,
+        isActive: backup2Active
+      }
+    ]
+  };
+
+  const cleanData = typeof cleanFirestoreData === 'function' ? cleanFirestoreData : (d => d);
+
+  const newSettings = {
+    ...currentSettings,
+    updatedAt: new Date().toISOString(),
+    _isAdminModified: true,
+    upiEnabled: isEnabled,
+    merchantUpiId: primaryUpiId || '8778148899@ptyes',
+    merchantName: primaryMerchantName || 'Edappadi Kadai',
+    backupUpi1: backup1UpiId || 'einsteinananth24-4@okicici',
+    backupUpi2: backup2UpiId || '',
+    upiQrUrl: upiQrUrl,
+    upiSettings: upiSettings
+  };
+
+  if (typeof saveData === 'function') {
+    saveData('ek_settings', newSettings);
+  }
+
+  window.adminSettings = newSettings;
+  localStorage.setItem("edappadi_admin_settings", JSON.stringify(newSettings));
+
+  if (typeof db !== 'undefined' && db) {
+    try {
+      db.collection('ek_settings').doc('global').set(cleanData(newSettings), { merge: true });
+    } catch(e) {
+      console.warn("Firestore settings sync error:", e);
+    }
+  }
+
+  const badgeEl = document.getElementById('admin-upi-status-badge');
+  if (badgeEl) {
+    if (isEnabled) {
+      badgeEl.innerText = 'Enabled';
+      badgeEl.style.background = 'rgba(16,185,129,0.1)';
+      badgeEl.style.borderColor = 'rgba(16,185,129,0.2)';
+      badgeEl.style.color = '#10b981';
+    } else {
+      badgeEl.innerText = 'Disabled';
+      badgeEl.style.background = 'rgba(239,68,68,0.1)';
+      badgeEl.style.borderColor = 'rgba(239,68,68,0.2)';
+      badgeEl.style.color = '#ef4444';
+    }
+  }
+
+  updateAdminUpiQrPreview();
+  if (showToastNotify && typeof showToast === 'function') {
+    showToast("UPI அமைப்புகள் வெற்றிகரமாக சேமிக்கப்பட்டன 📱", "success");
+  }
+}
+
 function saveAdminSettings() {
   const shopOpenEl = document.getElementById("setting-shop-open");
   const leaveModeEl = document.getElementById("setting-leave-mode");
+  const leaveNoticeEl = document.getElementById("setting-leave-notice");
   const deliveryChargeEl = document.getElementById("setting-delivery-charge");
+  const dynDelEl = document.getElementById("setting-dynamic-delivery");
   const basePriceEl = document.getElementById("setting-delivery-base-price");
   const kmMultEl = document.getElementById("setting-delivery-km-multiplier");
+  const rainModeEl = document.getElementById("setting-rain-mode");
+  const rainChargeEl = document.getElementById("setting-rain-charge");
   const minWeightEl = document.getElementById("setting-min-weight");
   const minAmountEl = document.getElementById("setting-min-amount");
-  const merchantUpiEl = document.getElementById("setting-merchant-upi");
   const smsProviderEl = document.getElementById("setting-sms-provider");
   const fast2smsKeyEl = document.getElementById("setting-fast2sms-key");
   const twilioSidEl = document.getElementById("setting-twilio-sid");
   const twilioTokenEl = document.getElementById("setting-twilio-token");
   const twilioFromEl = document.getElementById("setting-twilio-from");
 
-  window.adminSettings = {
-    isShopOpen: shopOpenEl ? shopOpenEl.checked : true,
-    isLeaveMode: leaveModeEl ? leaveModeEl.checked : false,
+  if (document.getElementById("upi-acc-primary-upi-id")) {
+    saveAdminUpiSettings(false);
+  }
+
+  const currentSettings = typeof getData === 'function' ? getData('ek_settings', {}) : {};
+  const cleanData = typeof cleanFirestoreData === 'function' ? cleanFirestoreData : (d => d);
+
+  const newSettings = {
+    ...currentSettings,
+    updatedAt: new Date().toISOString(),
+    _isAdminModified: true,
+    shopOpen: shopOpenEl ? shopOpenEl.checked : true,
+    leaveMode: leaveModeEl ? leaveModeEl.checked : false,
+    leaveNotice: leaveNoticeEl ? leaveNoticeEl.value.trim() : '',
     deliveryCharge: deliveryChargeEl ? parseInt(deliveryChargeEl.value) || 40 : 40,
+    useDynamicDistancePricing: dynDelEl ? dynDelEl.checked : true,
     deliveryBasePrice: basePriceEl ? parseInt(basePriceEl.value) || 20 : 20,
     deliveryKmMultiplier: kmMultEl ? parseInt(kmMultEl.value) || 12 : 12,
-    minOrderWeightGrams: minWeightEl ? parseInt(minWeightEl.value) || 50 : 50,
+    rainMode: rainModeEl ? rainModeEl.checked : false,
+    rainSurchargeEnabled: rainModeEl ? rainModeEl.checked : false,
+    rainCharge: rainChargeEl ? parseInt(rainChargeEl.value) || 20 : 20,
+    minOrderWeight: minWeightEl ? parseInt(minWeightEl.value) || 50 : 50,
     minOrderAmount: minAmountEl ? parseInt(minAmountEl.value) || 0 : 0,
-    merchantUpi: merchantUpiEl ? merchantUpiEl.value : "einsteinananth24@okaxis",
     smsProvider: smsProviderEl ? smsProviderEl.value : "fast2sms",
     fast2smsKey: fast2smsKeyEl ? fast2smsKeyEl.value : "",
     twilioSid: twilioSidEl ? twilioSidEl.value : "",
@@ -4812,12 +5004,23 @@ function saveAdminSettings() {
     twilioFrom: twilioFromEl ? twilioFromEl.value : ""
   };
 
-  localStorage.setItem("edappadi_admin_settings", JSON.stringify(window.adminSettings));
-  if (typeof showToast === 'function') showToast("நிர்வாக அமைப்புகள் சேமிக்கப்பட்டன ⚙️", "success");
-}
+  if (typeof saveData === 'function') {
+    saveData('ek_settings', newSettings);
+  }
 
-function saveAdminUpiSettings() {
-  saveAdminSettings();
+  window.adminSettings = newSettings;
+  localStorage.setItem("edappadi_admin_settings", JSON.stringify(newSettings));
+
+  if (typeof db !== 'undefined' && db) {
+    try {
+      db.collection('ek_settings').doc('global').set(cleanData(newSettings), { merge: true });
+    } catch(e) {
+      console.warn("Firestore settings sync error:", e);
+    }
+  }
+
+  updateAdminUpiQrPreview();
+  if (typeof showToast === 'function') showToast("நிர்வாக அமைப்புகள் வெற்றிகரமாக சேமிக்கப்பட்டன ⚙️", "success");
 }
 
 function toggleSmsFormFields() {
@@ -4933,73 +5136,25 @@ function presetDeliveryFee(fee) {
 }
 
 function applyDeliveryZoneTemplate(templateName) {
-  if (typeof showToast === 'function') showToast(`Delivery template "${templateName}" applied.`, "info");
-}
-
-function initAdminZonesMap() {
-  const mapContainer = document.getElementById("admin-zones-map");
-  if (mapContainer) {
-    mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981;">📍 எடப்பாடி விநியோக பகுதி வரைபடம் தயார்</div>';
+  if (typeof window.applyDeliveryZoneTemplate === 'function' && window.applyDeliveryZoneTemplate !== applyDeliveryZoneTemplate) {
+    return window.applyDeliveryZoneTemplate(templateName);
   }
 }
 
-function handleAddDeliveryZone() {
-  if (typeof showToast === 'function') showToast("புதிய விநியோக பகுதி சேர்க்கப்பட்டது", "success");
+function initAdminZonesMap(resetCenter = false) {
+  if (typeof window.initAdminZonesMap === 'function' && window.initAdminZonesMap !== initAdminZonesMap) {
+    return window.initAdminZonesMap(resetCenter);
+  }
+}
+
+function handleAddDeliveryZone(e) {
+  if (typeof window.handleAddDeliveryZone === 'function' && window.handleAddDeliveryZone !== handleAddDeliveryZone) {
+    return window.handleAddDeliveryZone(e);
+  }
 }
 
 // --- 6. Banner Photo Management Handlers ---
-function compressAndCacheBannerImage(event) {
-  const file = event?.target?.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const previewEl = document.getElementById("banner-preview-img");
-    const inputEl = document.getElementById("banner-url-input");
-    if (previewEl) previewEl.src = e.target.result;
-    if (inputEl) inputEl.value = e.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-
-function updateAdminBannerUrlPreview() {
-  const inputEl = document.getElementById("banner-url-input");
-  const previewEl = document.getElementById("banner-preview-img");
-  if (inputEl && previewEl) {
-    previewEl.src = inputEl.value;
-  }
-}
-
-function deleteSelectedBannerPhoto() {
-  const previewEl = document.getElementById("banner-preview-img");
-  const inputEl = document.getElementById("banner-url-input");
-  if (previewEl) previewEl.src = "";
-  if (inputEl) inputEl.value = "";
-}
-
-function addNewSlidingBanner() {
-  const inputEl = document.getElementById("banner-url-input");
-  if (!inputEl || !inputEl.value) {
-    if (typeof showToast === 'function') showToast("தயவுசெய்து பானர் பட லிங்க் உள்ளிடவும்", "warning");
-    return;
-  }
-  if (!window.slidingBanners) window.slidingBanners = [];
-  window.slidingBanners.push({ id: Date.now().toString(), url: inputEl.value });
-  deleteSelectedBannerPhoto();
-  if (typeof renderAdminBanners === 'function') renderAdminBanners();
-  if (typeof showToast === 'function') showToast("புதிய பானர் விளம்பரம் சேர்க்கப்பட்டது 🖼️", "success");
-}
-
-function cancelEditSlidingBanner() {
-  deleteSelectedBannerPhoto();
-}
-
-function deleteSlidingBanner(bannerId) {
-  if (window.slidingBanners) {
-    window.slidingBanners = window.slidingBanners.filter(b => b.id !== bannerId);
-    if (typeof renderAdminBanners === 'function') renderAdminBanners();
-    if (typeof showToast === 'function') showToast("பானர் நீக்கப்பட்டது", "info");
-  }
-}
+// Handled directly by products.js (compressAndCacheBannerImage, updateAdminBannerUrlPreview, deleteSelectedBannerPhoto, addNewSlidingBanner, editSlidingBanner, cancelEditSlidingBanner, deleteSlidingBanner)
 
 // --- 7. Order History & Accordion Handlers ---
 function handleClearOrderHistory() {

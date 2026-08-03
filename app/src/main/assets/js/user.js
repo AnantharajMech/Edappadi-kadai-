@@ -1237,12 +1237,33 @@
         if (!token) return;
 
         const user = getActiveUser();
+        if (user) {
+          user.fcmToken = token;
+          user.realFcmToken = token;
+          saveData('ek_active_user', user);
+
+          const users = getData('ek_users', []);
+          const idx = users.findIndex(u => u && (u.id === user.id || u.phone === user.phone));
+          if (idx !== -1) {
+            users[idx].fcmToken = token;
+            users[idx].realFcmToken = token;
+            saveData('ek_users', users);
+          }
+        }
+
         if (!user || !db) return;
 
         await db.collection('ek_users').doc(user.id).set({
+          fcmToken: token,
           realFcmToken: token,
           fcmTokenUpdatedAt: new Date().toISOString()
-        }, { merge: true });
+        }, { merge: true }).catch(err => console.warn('[FCM] ek_users set error:', err));
+
+        await db.collection('ek_customers').doc(user.id).set({
+          fcmToken: token,
+          realFcmToken: token,
+          fcmTokenUpdatedAt: new Date().toISOString()
+        }, { merge: true }).catch(err => console.warn('[FCM] ek_customers set error:', err));
 
         debugLog('[FCM] Real token registered for user:', user.id);
       } catch (err) {
@@ -1250,9 +1271,80 @@
       }
     }
 
+    async function getCustomerFcmToken(target) {
+      if (!target) return null;
+      if (typeof target === 'object') {
+        if (target.customerFcmToken) return target.customerFcmToken;
+        if (target.fcmToken) return target.fcmToken;
+        if (target.realFcmToken) return target.realFcmToken;
+
+        const targetId = target.customerId || target.userId || target.id;
+        const targetPhone = target.customerPhone || target.phone;
+
+        const users = getDataCached('ek_users', []);
+        const foundUser = users.find(u => u && ((targetId && u.id === targetId) || (targetPhone && u.phone === targetPhone)));
+        if (foundUser && (foundUser.fcmToken || foundUser.realFcmToken)) {
+          return foundUser.fcmToken || foundUser.realFcmToken;
+        }
+
+        if (typeof db !== 'undefined' && db && targetId) {
+          try {
+            const userDoc = await db.collection('ek_users').doc(targetId).get();
+            if (userDoc.exists) {
+              const data = userDoc.data();
+              if (data && (data.fcmToken || data.realFcmToken)) {
+                return data.fcmToken || data.realFcmToken;
+              }
+            }
+          } catch (e) {
+            console.warn("[getCustomerFcmToken] Firestore ek_users lookup error:", e);
+          }
+        }
+        return null;
+      }
+
+      if (typeof target === 'string') {
+        const users = getDataCached('ek_users', []);
+        const foundUser = users.find(u => u && (u.id === target || u.phone === target));
+        if (foundUser && (foundUser.fcmToken || foundUser.realFcmToken)) {
+          return foundUser.fcmToken || foundUser.realFcmToken;
+        }
+        if (typeof db !== 'undefined' && db) {
+          try {
+            const userDoc = await db.collection('ek_users').doc(target).get();
+            if (userDoc.exists) {
+              const data = userDoc.data();
+              if (data && (data.fcmToken || data.realFcmToken)) {
+                return data.fcmToken || data.realFcmToken;
+              }
+            }
+          } catch (e) {
+            console.warn("[getCustomerFcmToken] Firestore lookup error:", e);
+          }
+        }
+      }
+      return null;
+    }
+
+    window.getCustomerFcmToken = getCustomerFcmToken;
+
     window.onAndroidFcmTokenReceived = function(token) {
       debugLog("[FCM] Received token from native Android wrapper:", token);
       if (token) {
+        const user = getActiveUser();
+        if (user) {
+          user.fcmToken = token;
+          user.realFcmToken = token;
+          saveData('ek_active_user', user);
+
+          const users = getData('ek_users', []);
+          const idx = users.findIndex(u => u && (u.id === user.id || u.phone === user.phone));
+          if (idx !== -1) {
+            users[idx].fcmToken = token;
+            users[idx].realFcmToken = token;
+            saveData('ek_users', users);
+          }
+        }
         registerRealFcmToken();
       }
     };
@@ -2074,15 +2166,17 @@
       }
     }
 
-    const DEFAULT_CATEGORIES = [
-      { id: 'fruits', nameEn: 'Fruits', nameTa: 'பழங்கள்', en: 'Fruits', ta: 'பழங்கள்', icon: '🍎', accentColor: '#2E7D32', order: 0 },
-      { id: 'veg', nameEn: 'Veg', nameTa: 'காய்கறி', en: 'Veg', ta: 'காய்கறி', icon: '🥦', accentColor: '#4CAF50', order: 1 },
-      { id: 'fish', nameEn: 'Fish', nameTa: 'மீன்வகை', en: 'Fish', ta: 'மீன்வகை', icon: '🐟', accentColor: '#0288D1', order: 2 },
-      { id: 'meat', nameEn: 'Meat', nameTa: 'கறிவகை', en: 'Meat', ta: 'கறிவகை', icon: '🥩', accentColor: '#C62828', order: 3 },
-      { id: 'dairy', nameEn: 'Dairy & Eggs', nameTa: 'பால் & முட்டை', en: 'Dairy & Eggs', ta: 'பால் & முட்டை', icon: '🥛', accentColor: '#FFB300', order: 4 },
-      { id: 'bakery', nameEn: 'Bakery', nameTa: 'பேக்கரி', en: 'Bakery', ta: 'பேக்கரி', icon: '🍞', accentColor: '#8D6E63', order: 5 },
-      { id: 'groceries', nameEn: 'Grocery', nameTa: 'மளிகை', en: 'Grocery', ta: 'மளிகை', icon: '🥫', accentColor: '#008080', order: 6 }
-    ];
+    if (typeof DEFAULT_CATEGORIES === 'undefined') {
+      window.DEFAULT_CATEGORIES = [
+        { id: 'fruits', nameEn: 'Fruits', nameTa: 'பழங்கள்', en: 'Fruits', ta: 'பழங்கள்', icon: '🍎', accentColor: '#2E7D32', order: 0 },
+        { id: 'veg', nameEn: 'Veg', nameTa: 'காய்கறி', en: 'Veg', ta: 'காய்கறி', icon: '🥦', accentColor: '#4CAF50', order: 1 },
+        { id: 'fish', nameEn: 'Fish', nameTa: 'மீன்வகை', en: 'Fish', ta: 'மீன்வகை', icon: '🐟', accentColor: '#0288D1', order: 2 },
+        { id: 'meat', nameEn: 'Meat', nameTa: 'கறிவகை', en: 'Meat', ta: 'கறிவகை', icon: '🥩', accentColor: '#C62828', order: 3 },
+        { id: 'dairy', nameEn: 'Dairy & Eggs', nameTa: 'பால் & முட்டை', en: 'Dairy & Eggs', ta: 'பால் & முட்டை', icon: '🥛', accentColor: '#FFB300', order: 4 },
+        { id: 'bakery', nameEn: 'Bakery', nameTa: 'பேக்கரி', en: 'Bakery', ta: 'பேக்கரி', icon: '🍞', accentColor: '#8D6E63', order: 5 },
+        { id: 'groceries', nameEn: 'Grocery', nameTa: 'மளிகை', en: 'Grocery', ta: 'மளிகை', icon: '🥫', accentColor: '#008080', order: 6 }
+      ];
+    }
 
     function getCategoryConfig(catId) {
       const cid = String(catId || '').toLowerCase().trim();
@@ -2106,19 +2200,21 @@
     }
 
     function getCategoriesList() {
-      if (_categoriesListCachedValue && Array.isArray(_categoriesListCachedValue) && _categoriesListCachedValue.length > 0) {
-        return _categoriesListCachedValue;
+      if (window._categoriesListCachedValue && Array.isArray(window._categoriesListCachedValue) && window._categoriesListCachedValue.length > 0) {
+        return window._categoriesListCachedValue;
       }
       let catList = getData('ek_categories');
+      const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
       if (!Array.isArray(catList) || catList.length === 0) {
-        if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
+        if (!isCloudSynced && typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
           catList = DEFAULT_CATEGORIES.map((c, idx) => ({ ...c, isAvailable: true, order: (c.order !== undefined ? c.order : idx) }));
+          try { saveData('ek_categories', catList); } catch (e) {}
         } else {
           catList = [];
         }
       }
 
-      catList = catList.filter(c => c && c.id);
+      catList = (catList || []).filter(c => c && c.id);
       let needsStorageSave = false;
       catList.forEach((c) => {
         if (c.order === undefined || c.order === null) {
@@ -2129,26 +2225,6 @@
             c.order = 999;
           }
           needsStorageSave = true;
-        }
-        if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
-          const defaultCat = DEFAULT_CATEGORIES.find(d => String(d.id).toLowerCase() === String(c.id).toLowerCase());
-          if (defaultCat) {
-            let healed = false;
-            if (!c.nameTa && defaultCat.nameTa) { c.nameTa = defaultCat.nameTa; healed = true; }
-            if (!c.nameEn && defaultCat.nameEn) { c.nameEn = defaultCat.nameEn; healed = true; }
-            if (!c.icon && defaultCat.icon) { c.icon = defaultCat.icon; healed = true; }
-            if (!c.accentColor && defaultCat.accentColor) { c.accentColor = defaultCat.accentColor; healed = true; }
-            if (healed) {
-              needsStorageSave = true;
-              if (typeof db !== 'undefined' && db) {
-                try {
-                  const dataToSync = typeof cleanFirestoreData === 'function' ? cleanFirestoreData(c) : { ...c };
-                  db.collection('ek_categories').doc(c.id).set(dataToSync, { merge: true })
-                    .catch(e => console.warn(`Failed to sync healed category ${c.id}:`, e));
-                } catch(e) {}
-              }
-            }
-          }
         }
       });
 
@@ -2163,8 +2239,8 @@
         saveData('ek_categories', catList);
       }
 
-      _categoriesListCachedValue = catList;
-      return _categoriesListCachedValue;
+      window._categoriesListCachedValue = catList;
+      return window._categoriesListCachedValue;
     }
 
     function getCategoryName(cat) {
@@ -2260,8 +2336,9 @@
         const visibleCategories = catList.filter(c => c && !c.isHidden && (c.isScheduled ? c.isAvailable === true : true));
         debugLog(`[DEBUG renderCategoryPills] catList.length: ${catList.length}, visibleCategories.length: ${visibleCategories.length}`);
 
+        const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
         let allProducts = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
-        if (!getData('ek_db_initialized') && (!allProducts || allProducts.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+        if (!isCloudSynced && typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!allProducts || allProducts.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
           const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
           allProducts = DEMO_PRODUCTS.filter(p => p && p.id && !deletedProdIds.includes(p.id));
         }
@@ -2285,7 +2362,7 @@
         }
 
         let catsToRender = visibleCategories;
-        if ((!catsToRender || catsToRender.length === 0) && typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
+        if (!isCloudSynced && typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!catsToRender || catsToRender.length === 0) && typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
           catsToRender = DEFAULT_CATEGORIES;
         }
 
@@ -2306,6 +2383,8 @@
         if (!CATEGORIES.some(cat => String(cat.id) === String(activeCategory))) {
           activeCategory = 'all';
         }
+
+        window._currentHomeCategories = CATEGORIES;
 
         const pillsHash = isTa + '::' + activeCategory + '::' + CATEGORIES.map(c => `${c.id}:${c.name}:${c.id === 'all' ? totalCount : (c.id === 'favorites' ? favCount : (counts[String(c.id).toLowerCase().trim()] || 0))}`).join('|');
         if (pillsHash === _lastCategoryPillsHash && pillsContainer.querySelectorAll('.pill').length > 0) {

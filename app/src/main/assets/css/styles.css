@@ -1164,7 +1164,6 @@
       border-radius: 50%;
       box-shadow: 0 0 3px rgba(16, 185, 129, 0.6);
     }
-    }
 
     .lyo-msg-row {
     }
@@ -1203,7 +1202,7 @@
       -webkit-overflow-scrolling: touch;
       scroll-behavior: smooth;
       pointer-events: auto !important;
-      touch-action: manipulation;
+      touch-action: pan-x;
       position: relative;
       z-index: 100;
     }
@@ -1219,6 +1218,7 @@
       padding-left: 16px;
       padding-right: 16px;
       border-bottom: none !important;
+      touch-action: pan-x !important;
     }
     #home-search-wrapper {
       position: -webkit-sticky;
@@ -1411,6 +1411,7 @@
       display: flex !important;
       flex-direction: column !important;
       gap: 9px !important;
+      touch-action: pan-y !important;
     }
 
     .category-sticky-header {
@@ -2130,6 +2131,7 @@
       margin-bottom: 8px !important;
       -webkit-overflow-scrolling: touch !important;
       scrollbar-width: none !important;
+      touch-action: pan-x !important;
     }
     #screen-home .filter-pills::-webkit-scrollbar {
       display: none !important;
