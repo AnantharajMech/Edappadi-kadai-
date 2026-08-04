@@ -55,10 +55,10 @@
 
             <!-- ROW 3: Core Action Buttons (Generous Touch Targets!) -->
             <div style="display: flex; gap: 10px; width: 100%; box-sizing: border-box; margin-top: 4px;">
-              <button class="btn" style="flex: 1; font-size: 12.5px; font-weight: 800; height: 42px; min-height: 42px; border-radius: 12px; background: ${isHidden ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)'}; color: ${isHidden ? '#ef4444' : '#10b981'}; border: 1.5px solid ${isHidden ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)'}; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;" onclick="toggleCategoryVisibility('${c.id}')">
+              <button class="btn" style="flex: 1; font-size: 12.5px; font-weight: 800; min-height: 42px; height: auto; padding: 10px 14px; border-radius: 12px; background: ${isHidden ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)'}; color: ${isHidden ? '#ef4444' : '#10b981'}; border: 1.5px solid ${isHidden ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)'}; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;" onclick="toggleCategoryVisibility('${c.id}')">
                 <span>${isHidden ? '👁️ Show / காட்டு' : '🙈 Hide / மறை'}</span>
               </button>
-              <button class="btn" style="flex: 1; font-size: 12.5px; font-weight: 800; height: 42px; min-height: 42px; border-radius: 12px; background: rgba(255,255,255,0.06); color: #ffffff; border: 1.5px solid rgba(255,255,255,0.12); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;" onclick="toggleCategoryEditForm('${c.id}')">
+              <button class="btn" style="flex: 1; font-size: 12.5px; font-weight: 800; min-height: 42px; height: auto; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.06); color: #ffffff; border: 1.5px solid rgba(255,255,255,0.12); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;" onclick="toggleCategoryEditForm('${c.id}')">
                 <span>⚙️ Edit / திருத்து</span>
               </button>
             </div>
@@ -91,13 +91,13 @@
               </div>
 
               <div style="display: flex; gap: 8px; margin-top: 4px; width: 100%; box-sizing: border-box; flex-wrap: wrap;">
-                <button class="btn btn-primary" style="flex: 2; min-width: 140px; height: 42px; min-height: 42px; font-size: 13px; font-weight: 800; margin: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; cursor: pointer; transition: all 0.2s;" onclick="saveEditedCategory('${c.id}')">
+                <button class="btn btn-primary" style="flex: 2; min-width: 140px; min-height: 42px; height: auto; padding: 10px 14px; font-size: 13px; font-weight: 800; margin: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; cursor: pointer; transition: all 0.2s;" onclick="saveEditedCategory('${c.id}')">
                   <span>💾 Save / சேமி</span>
                 </button>
-                <button class="btn" style="flex: 1.2; min-width: 100px; height: 42px; min-height: 42px; font-size: 13px; font-weight: 800; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1.5px solid rgba(239, 68, 68, 0.25); margin: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: all 0.2s;" onclick="deleteCategoryItem('${c.id}')">
+                <button class="btn" style="flex: 1.2; min-width: 100px; min-height: 42px; height: auto; padding: 10px 14px; font-size: 13px; font-weight: 800; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1.5px solid rgba(239, 68, 68, 0.25); margin: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: all 0.2s;" onclick="deleteCategoryItem('${c.id}')">
                   <span>🗑️ Delete / நீக்கு</span>
                 </button>
-                <button class="btn" style="flex: 1; min-width: 90px; height: 42px; min-height: 42px; font-size: 13px; font-weight: 800; background: rgba(255, 255, 255, 0.06); color: #ccc; border: 1.5px solid rgba(255, 255, 255, 0.12); margin: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: all 0.2s;" onclick="toggleCategoryEditForm('${c.id}')">
+                <button class="btn" style="flex: 1; min-width: 90px; min-height: 42px; height: auto; padding: 10px 14px; font-size: 13px; font-weight: 800; background: rgba(255, 255, 255, 0.06); color: #ccc; border: 1.5px solid rgba(255, 255, 255, 0.12); margin: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: all 0.2s;" onclick="toggleCategoryEditForm('${c.id}')">
                   <span>❌ Cancel / ரத்து</span>
                 </button>
               </div>
@@ -136,99 +136,111 @@
     }
 
     function saveEditedCategory(id) {
-      const enVal = document.getElementById(`edit-cat-en-${id}`).value.trim();
-      const taVal = document.getElementById(`edit-cat-ta-${id}`).value.trim();
-      const iconVal = document.getElementById(`edit-cat-icon-${id}`).value.trim() || '📦';
-      const accentVal = document.getElementById(`edit-cat-accent-${id}`).value.trim() || '#2E7D32';
-      const orderVal = parseInt(document.getElementById(`edit-cat-order-${id}`).value.trim()) || 0;
+      const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector(`button[onclick*="saveEditedCategory('${id}')"]`);
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+      try {
+        const enVal = document.getElementById(`edit-cat-en-${id}`).value.trim();
+        const taVal = document.getElementById(`edit-cat-ta-${id}`).value.trim();
+        const iconVal = document.getElementById(`edit-cat-icon-${id}`).value.trim() || '📦';
+        const accentVal = document.getElementById(`edit-cat-accent-${id}`).value.trim() || '#2E7D32';
+        const orderVal = parseInt(document.getElementById(`edit-cat-order-${id}`).value.trim()) || 0;
 
-      if (!enVal || !taVal) {
-        showToast("Please enter English and Tamil names", "error");
-        return;
-      }
+        if (!enVal || !taVal) {
+          showToast("Please enter English and Tamil names", "error");
+          return;
+        }
 
-      const catList = getCategoriesList();
-      const matched = catList.find(c => c.id === id);
-      if (matched) {
-        matched.nameEn = enVal;
-        matched.en = enVal;
-        matched.nameTa = taVal;
-        matched.ta = taVal;
-        matched.icon = iconVal;
-        matched.accentColor = accentVal;
-        matched.order = orderVal;
-        matched.updatedAt = new Date().toISOString();
+        const catList = getCategoriesList();
+        const matched = catList.find(c => c.id === id);
+        if (matched) {
+          matched.nameEn = enVal;
+          matched.en = enVal;
+          matched.nameTa = taVal;
+          matched.ta = taVal;
+          matched.icon = iconVal;
+          matched.accentColor = accentVal;
+          matched.order = orderVal;
+          matched.updatedAt = new Date().toISOString();
 
-        catList.sort((a, b) => {
-          const orderA = Number(a.order !== undefined && a.order !== null ? a.order : 999);
-          const orderB = Number(b.order !== undefined && b.order !== null ? b.order : 999);
-          if (orderA !== orderB) return orderA - orderB;
-          return String(a.id || "").localeCompare(String(b.id || ""));
-        });
-        catList.forEach((c, idx) => {
-          c.order = idx;
-        });
+          catList.sort((a, b) => {
+            const orderA = Number(a.order !== undefined && a.order !== null ? a.order : 999);
+            const orderB = Number(b.order !== undefined && b.order !== null ? b.order : 999);
+            if (orderA !== orderB) return orderA - orderB;
+            return String(a.id || "").localeCompare(String(b.id || ""));
+          });
+          catList.forEach((c, idx) => {
+            c.order = idx;
+          });
 
-        saveData('ek_categories', catList);
-        invalidateDataCache('ek_categories');
+          saveData('ek_categories', catList);
+          invalidateDataCache('ek_categories');
 
-        if (typeof db !== 'undefined' && db) {
-          try {
-            const batch = db.batch();
-            catList.forEach(c => {
-              const ref = db.collection('ek_categories').doc(c.id);
-              batch.set(ref, cleanFirestoreData(c));
-            });
-            batch.commit()
-              .then(() => debugLog("[Cloud Sync] Category order batch write success on save"))
-              .catch(e => console.error("[Cloud Sync] Category batch failed on save:", e));
-          } catch(batchErr) {
-            catList.forEach(c => {
-              db.collection('ek_categories').doc(c.id).set(cleanFirestoreData(c)).catch(e => {});
-            });
+          if (typeof db !== 'undefined' && db) {
+            try {
+              const batch = db.batch();
+              catList.forEach(c => {
+                const ref = db.collection('ek_categories').doc(c.id);
+                batch.set(ref, cleanFirestoreData(c));
+              });
+              batch.commit()
+                .then(() => debugLog("[Cloud Sync] Category order batch write success on save"))
+                .catch(e => console.error("[Cloud Sync] Category batch failed on save:", e));
+            } catch(batchErr) {
+              catList.forEach(c => {
+                db.collection('ek_categories').doc(c.id).set(cleanFirestoreData(c)).catch(e => {});
+              });
+            }
+          }
+
+          showToast("Category updated successfully!", "success");
+          renderAdminDashboard();
+          renderCategoryPills();
+          if (typeof populateProductCategoryOptions === 'function') {
+            populateProductCategoryOptions();
           }
         }
-
-        showToast("Category updated successfully!", "success");
-        renderAdminDashboard();
-        renderCategoryPills();
-        if (typeof populateProductCategoryOptions === 'function') {
-          populateProductCategoryOptions();
-        }
+      } finally {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
     }
 
     function deleteCategoryItem(id) {
-      const products = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
-      const hasProducts = products.some(p => String(p.category || '').toLowerCase().trim() === String(id).toLowerCase().trim());
-      if (hasProducts) {
-        showToast("Cannot delete category because products are associated with it!", "error");
-        showAdminSuccessModal(
-          "⚠️ நீக்க முடியாது! / Cannot Delete",
-          `இந்த பிரிவில் தயாரிப்புகள் (Products) இருப்பதால் இதை நீக்க முடியாது. தயவுசெய்து தயாரிப்புகளை வேறு பிரிவிற்கு மாற்றிய பின் நீக்கவும்.<br><br><span style="font-size:11.5px;color:var(--text-muted);">This category contains active products and cannot be deleted.</span>`
-        );
-        return;
-      }
-
-      const catList = getCategoriesList();
-      const idx = catList.findIndex(c => c.id === id);
-      if (idx !== -1) {
-        const deleted = catList.splice(idx, 1);
-        saveData('ek_categories', catList);
-        _categoriesListCachedValue = null; // Clear cache
-
-        if (typeof db !== 'undefined' && db) {
-          db.collection('ek_categories').doc(id).delete()
-            .then(() => debugLog(`[Cloud Sync] Category ${id} deleted from Firestore`))
-            .catch(e => console.error(e));
+      const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector(`button[onclick*="deleteCategoryItem('${id}')"]`);
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+      try {
+        const products = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
+        const hasProducts = products.some(p => String(p.category || '').toLowerCase().trim() === String(id).toLowerCase().trim());
+        if (hasProducts) {
+          showToast("Cannot delete category because products are associated with it!", "error");
+          showAdminSuccessModal(
+            "⚠️ நீக்க முடியாது! / Cannot Delete",
+            `இந்த பிரிவில் தயாரிப்புகள் (Products) இருப்பதால் இதை நீக்க முடியாது. தயவுசெய்து தயாரிப்புகளை வேறு பிரிவிற்கு மாற்றிய பின் நீக்கவும்.<br><br><span style="font-size:11.5px;color:var(--text-muted);">This category contains active products and cannot be deleted.</span>`
+          );
+          return;
         }
 
-        showToast("Category deleted successfully!", "success");
-        renderAdminDashboard();
-        renderCategoryPills();
-        if (typeof populateProductCategoryOptions === 'function') {
-          populateProductCategoryOptions();
+        const catList = getCategoriesList();
+        const idx = catList.findIndex(c => c.id === id);
+        if (idx !== -1) {
+          const deleted = catList.splice(idx, 1);
+          saveData('ek_categories', catList);
+          _categoriesListCachedValue = null; // Clear cache
+
+          if (typeof db !== 'undefined' && db) {
+            db.collection('ek_categories').doc(id).delete()
+              .then(() => debugLog(`[Cloud Sync] Category ${id} deleted from Firestore`))
+              .catch(e => console.error(e));
+          }
+
+          showToast("Category deleted successfully!", "success");
+          renderAdminDashboard();
+          renderCategoryPills();
+          if (typeof populateProductCategoryOptions === 'function') {
+            populateProductCategoryOptions();
+          }
         }
+      } finally {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
     }
 
@@ -431,6 +443,7 @@
       }, 250);
     }
 
+    let _homeSearchDebounceTimer = null;
     function onHomeSearchInput() {
       if (window.homeSuggestionsTimeoutId) {
         clearTimeout(window.homeSuggestionsTimeoutId);
@@ -444,20 +457,26 @@
         clearBtn.style.display = searchBox.value ? 'block' : 'none';
       }
 
-      const query = searchBox.value.trim().toLowerCase();
-      const suggestionsDiv = document.getElementById('home-search-suggestions');
-      if (!suggestionsDiv) return;
-
-      renderHomeScreenProducts();
-
-      if (!query) {
-        suggestionsDiv.style.display = 'none';
-        return;
+      if (_homeSearchDebounceTimer) {
+        clearTimeout(_homeSearchDebounceTimer);
       }
 
-      const products = getDataCached('ek_products', []).filter(p => !p.isHidden);
+      _homeSearchDebounceTimer = setTimeout(() => {
+        const query = searchBox.value.trim().toLowerCase();
+        const suggestionsDiv = document.getElementById('home-search-suggestions');
 
-      const matches = products.filter(p => {
+        renderHomeScreenProducts();
+
+        if (!suggestionsDiv) return;
+
+        if (!query) {
+          suggestionsDiv.style.display = 'none';
+          return;
+        }
+
+        const products = getDataCached('ek_products', []).filter(p => !p.isHidden);
+
+        const matches = products.filter(p => {
         const enName = (p.englishName || '').toLowerCase();
         const taName = (p.tamilName || '').toLowerCase();
         const cat = (p.category || '').toLowerCase();
@@ -516,7 +535,8 @@
 
       suggestionsDiv.innerHTML = html;
       suggestionsDiv.style.display = 'block';
-    }
+    }, 200);
+  }
 
     function selectHomeSearchSuggestion(productId, name) {
       const searchBox = document.getElementById('home-product-search');
@@ -551,12 +571,12 @@ function renderSlidingBanners() {
   const outerWrapper = document.getElementById('carousel-outer-wrapper');
   if (!container) return;
 
-  const isCloudSynced = window._hasFreshCloudData || window._hasFreshSettings || getData('ek_settings_synced') === true || getData('ek_cloud_synced') === true;
-  const settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
+  const settings = (typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS)) || {};
   let banners = [];
-  if (settings && Array.isArray(settings.slidingBanners)) {
+  if (settings && Array.isArray(settings.slidingBanners) && settings.slidingBanners.length > 0) {
     banners = settings.slidingBanners;
-  } else if (!isCloudSynced && typeof DEFAULT_SETTINGS !== 'undefined' && Array.isArray(DEFAULT_SETTINGS.slidingBanners)) {
+  }
+  if ((!banners || banners.length === 0) && typeof DEFAULT_SETTINGS !== 'undefined' && Array.isArray(DEFAULT_SETTINGS.slidingBanners)) {
     banners = DEFAULT_SETTINGS.slidingBanners;
   }
 
@@ -847,42 +867,48 @@ function cancelEditSlidingBanner() {
 }
 
 function deleteSlidingBanner(bannerId) {
-  let settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
-  if (!settings) settings = { ...DEFAULT_SETTINGS };
-  if (!Array.isArray(settings.slidingBanners)) settings.slidingBanners = [];
+  const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector(`button[onclick*="deleteSlidingBanner('${bannerId}')"]`);
+  if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+  try {
+    let settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
+    if (!settings) settings = { ...DEFAULT_SETTINGS };
+    if (!Array.isArray(settings.slidingBanners)) settings.slidingBanners = [];
 
-  settings.slidingBanners = settings.slidingBanners.map((b, i) => {
-    if (!b) return null;
-    return {
-      ...b,
-      id: b.id || ('b_' + (i + 1))
-    };
-  }).filter(Boolean);
+    settings.slidingBanners = settings.slidingBanners.map((b, i) => {
+      if (!b) return null;
+      return {
+        ...b,
+        id: b.id || ('b_' + (i + 1))
+      };
+    }).filter(Boolean);
 
-  settings.slidingBanners = settings.slidingBanners.filter(b => b.id !== bannerId && String(b.id) !== String(bannerId));
-  settings.updatedAt = new Date().toISOString();
-  settings._isAdminModified = true;
+    settings.slidingBanners = settings.slidingBanners.filter(b => b.id !== bannerId && String(b.id) !== String(bannerId));
+    settings.updatedAt = new Date().toISOString();
+    settings._isAdminModified = true;
 
-  saveData('ek_settings', settings);
-  if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_settings');
-  window._lastBannersHash = '';
+    saveData('ek_settings', settings);
+    if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_settings');
+    window._lastBannersHash = '';
 
-  if (typeof db !== 'undefined' && db) {
-    try {
-      db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings))
-        .then(() => debugLog('[Banner Admin] Saved banner deletion to Firestore'))
-        .catch(err => console.error('[Banner Admin] Firestore deletion save error:', err));
-    } catch(e) {}
+    if (typeof db !== 'undefined' && db) {
+      try {
+        db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings))
+          .then(() => debugLog('[Banner Admin] Saved banner deletion to Firestore'))
+          .catch(err => console.error('[Banner Admin] Firestore deletion save error:', err));
+      } catch(e) {}
+    }
+
+    if (window._editingBannerId === bannerId) {
+      cancelEditSlidingBanner();
+    }
+
+    renderAdminBannerList(true);
+    renderSlidingBanners();
+
+    showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "பானர் நீக்கப்பட்டது ✓" : "Banner removed ✓", "info");
+  } finally {
+    if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
   }
-
-  if (window._editingBannerId === bannerId) {
-    cancelEditSlidingBanner();
-  }
-
-  renderAdminBannerList(true);
-  renderSlidingBanners();
-
-  showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "பானர் நீக்கப்பட்டது ✓" : "Banner removed ✓", "info");
 }
 
 window.compressAndCacheBannerImage = compressAndCacheBannerImage;
@@ -1294,9 +1320,13 @@ function renderHomeScreen(forceReRender = false) {
       }
       const grid = document.getElementById('home-product-grid');
       let rawLocalProducts = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
-      const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
-      const demoList = (!isCloudSynced && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) ? DEMO_PRODUCTS : [];
-      if (!isCloudSynced && (!rawLocalProducts || rawLocalProducts.length === 0) && demoList.length > 0) {
+      const isDemoEnabled = typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA === true;
+      if (!isDemoEnabled && Array.isArray(rawLocalProducts) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+        const demoIds = new Set(DEMO_PRODUCTS.map(p => p.id));
+        rawLocalProducts = rawLocalProducts.filter(p => p && p.id && !demoIds.has(p.id));
+      }
+      const demoList = (isDemoEnabled && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) ? DEMO_PRODUCTS : [];
+      if ((!rawLocalProducts || rawLocalProducts.length === 0) && demoList.length > 0) {
         rawLocalProducts = demoList.filter(p => p && p.id && !deletedProdIds.includes(p.id));
         if (rawLocalProducts.length > 0) {
           saveData('ek_products', rawLocalProducts);
@@ -1333,7 +1363,7 @@ function renderHomeScreen(forceReRender = false) {
         const catList = getCategoriesList() || [];
         const grid = document.getElementById('home-product-grid');
 
-        if (!isCloudSynced && typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!products || products.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+        if ((!products || products.length === 0) && isDemoEnabled && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
           products = DEMO_PRODUCTS.filter(p => p && p.id && !deletedProdIds.includes(p.id));
           if (products.length > 0) {
             saveData('ek_products', products);
@@ -1441,7 +1471,7 @@ function renderHomeScreen(forceReRender = false) {
                       </div>
                       <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-top: auto; padding-top: 2px;">
                         <strong style="font-size:11.5px; color:var(--text-primary); font-weight: 700;">${getProductPriceText(p, currentLang)}</strong>
-                        <button class="btn btn-primary" style="width:auto !important; min-width:unset !important; height:26px !important; min-height:auto !important; padding:0 10px !important; font-size:10.5px !important; font-weight:800; border-radius:12px !important; display:inline-flex; align-items:center; justify-content:center; gap:2px; backdrop-filter:blur(10px) !important; -webkit-backdrop-filter:blur(10px) !important; background: linear-gradient(135deg, #06b6d4 0%, #0d9488 100%) !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; box-shadow: 0 4px 10px rgba(6, 182, 212, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important; color:#ffffff !important; text-shadow: 0 1px 1px rgba(0,0,0,0.15) !important;" ${isOutOfStock ? 'disabled' : ''} onclick="openProductModalDetail('${pidStr}')">
+                        <button class="btn btn-primary" style="width:auto !important; min-width:unset !important; min-height:28px !important; height:auto !important; padding:4px 10px !important; font-size:10.5px !important; font-weight:800; border-radius:12px !important; display:inline-flex; align-items:center; justify-content:center; gap:2px; backdrop-filter:blur(10px) !important; -webkit-backdrop-filter:blur(10px) !important; background: linear-gradient(135deg, #06b6d4 0%, #0d9488 100%) !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; box-shadow: 0 4px 10px rgba(6, 182, 212, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important; color:#ffffff !important; text-shadow: 0 1px 1px rgba(0,0,0,0.15) !important;" ${isOutOfStock ? 'disabled' : ''} onclick="openProductModalDetail('${pidStr}')">
                           <span>Buy ➔</span>
                         </button>
                       </div>
@@ -1533,8 +1563,10 @@ function renderHomeScreen(forceReRender = false) {
           lazyLoadImages();
           return;
         }
-        const isFilterChange = (grid.dataset.filterKey !== filterKey);
-        grid.dataset.filterKey = filterKey;
+        const prevKey = (grid.dataset && grid.dataset.filterKey) || grid.getAttribute('data-filter-key');
+        const isFilterChange = (prevKey !== filterKey);
+        if (grid.dataset) grid.dataset.filterKey = filterKey;
+        grid.setAttribute('data-filter-key', filterKey);
         _lastDataSnapshotHash = combinedKey;
         _currentRenderedCount = 0;
         _currentFilteredProducts = buildGroupedRenderList(filtered);
@@ -1679,8 +1711,13 @@ function renderHomeScreen(forceReRender = false) {
 
               const addBtn = existingCard.querySelector('.btn-add-orange');
               if (addBtn) {
-                if (isOutOfStock) addBtn.setAttribute('disabled', 'true');
-                else addBtn.removeAttribute('disabled');
+                if (isOutOfStock) {
+                  addBtn.disabled = true;
+                  if (typeof addBtn.setAttribute === 'function') addBtn.setAttribute('disabled', 'true');
+                } else {
+                  addBtn.disabled = false;
+                  if (typeof addBtn.removeAttribute === 'function') addBtn.removeAttribute('disabled');
+                }
               }
 
               let overlayEl = existingCard.querySelector('.stock-overlay-light');
@@ -2743,75 +2780,81 @@ function renderHomeScreen(forceReRender = false) {
     }
 
     function addToCart() {
-      if (!activeProduct) return;
+      const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.getElementById('modal-add-btn');
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+      try {
+        if (!activeProduct) return;
 
-      const catList = getCategoriesList();
-      const unavailableCategoriesSet = new Set(catList.filter(c => c.isScheduled && c.isAvailable === false).map(c => c.id));
-      const isCategoryUnavailable = unavailableCategoriesSet.has(activeProduct.category);
-      const isOutOfStock = activeProduct.isOutOfStock || activeProduct.stockKg <= 0 || (activeProduct.isScheduled && activeProduct.isAvailable === false) || isCategoryUnavailable;
+        const catList = getCategoriesList();
+        const unavailableCategoriesSet = new Set(catList.filter(c => c.isScheduled && c.isAvailable === false).map(c => c.id));
+        const isCategoryUnavailable = unavailableCategoriesSet.has(activeProduct.category);
+        const isOutOfStock = activeProduct.isOutOfStock || activeProduct.stockKg <= 0 || (activeProduct.isScheduled && activeProduct.isAvailable === false) || isCategoryUnavailable;
 
-      if (isOutOfStock) {
-        showToast(currentLang === 'ta' ? "இந்த பொருள் தற்காலிகமாக ஸ்டாக்கில் இல்லை அல்லது நேரம் முடிந்துவிட்டது!" : "This product is currently out of stock or scheduled out!", "error");
-        return;
-      }
+        if (isOutOfStock) {
+          showToast(currentLang === 'ta' ? "இந்த பொருள் தற்காலிகமாக ஸ்டாக்கில் இல்லை அல்லது நேரம் முடிந்துவிட்டது!" : "This product is currently out of stock or scheduled out!", "error");
+          return;
+        }
 
-      if (typeof getActiveSession === 'function' && !getActiveSession()) {
-        showToast(currentLang === 'ta' ? "பொருட்களை வாங்க முதலில் லாகின் அல்லது பதிவு செய்யவும்! 🛍️" : "Please login or register first to purchase products! 🛍️", "warning");
-        closeProductModalDetail();
-        showScreen('screen-login');
-        return;
-      }
+        if (typeof getActiveSession === 'function' && !getActiveSession()) {
+          showToast(currentLang === 'ta' ? "பொருட்களை வாங்க முதலில் லாகின் அல்லது பதிவு செய்யவும்! 🛍️" : "Please login or register first to purchase products! 🛍️", "warning");
+          closeProductModalDetail();
+          showScreen('screen-login');
+          return;
+        }
 
-      const unit = activeProduct.sellingUnit || activeProduct.unit || 'kg';
-      const isWeight = isUnitWeight(unit);
+        const unit = activeProduct.sellingUnit || activeProduct.unit || 'kg';
+        const isWeight = isUnitWeight(unit);
 
-      const price = isWeight
-        ? Math.round((activeProduct.pricePerKg / 1000) * selectedWeight)
-        : Math.round(activeProduct.pricePerKg * selectedWeight);
+        const price = isWeight
+          ? Math.round((activeProduct.pricePerKg / 1000) * selectedWeight)
+          : Math.round(activeProduct.pricePerKg * selectedWeight);
 
-      const note = document.getElementById('modal-special-notes').value.trim();
+        const note = document.getElementById('modal-special-notes').value.trim();
 
-      const cartItem = {
-        productId: activeProduct.id,
-        tamilName: activeProduct.tamilName,
-        englishName: activeProduct.englishName,
-        weightGrams: selectedWeight,
-        unit: activeProduct.unit || 'kg',
-        sellingUnit: unit,
-        cutStyle: selectedCutStyle || 'Small Pieces',
-        category: activeProduct.category,
-        specialNote: note,
-        pricePerKg: activeProduct.pricePerKg,
-        imageUrl: activeProduct.imageUrl,
-        isFreeDeliveryEligible: Boolean(activeProduct.isFreeDeliveryEligible),
-        totalPrice: price
-      };
+        const cartItem = {
+          productId: activeProduct.id,
+          tamilName: activeProduct.tamilName,
+          englishName: activeProduct.englishName,
+          weightGrams: selectedWeight,
+          unit: activeProduct.unit || 'kg',
+          sellingUnit: unit,
+          cutStyle: selectedCutStyle || 'Small Pieces',
+          category: activeProduct.category,
+          specialNote: note,
+          pricePerKg: activeProduct.pricePerKg,
+          imageUrl: activeProduct.imageUrl,
+          isFreeDeliveryEligible: Boolean(activeProduct.isFreeDeliveryEligible),
+          totalPrice: price
+        };
 
-      cart.push(cartItem);
-      saveCart();
+        cart.push(cartItem);
+        saveCart();
 
-      const standardCard = document.getElementById(`card-prod-${activeProduct.id}`);
-      if (standardCard) {
-        standardCard.classList.remove('product-card-pop');
-        void standardCard.offsetWidth; // Force CSS reflow
-        standardCard.classList.add('product-card-pop');
-        setTimeout(() => {
+        const standardCard = document.getElementById(`card-prod-${activeProduct.id}`);
+        if (standardCard) {
           standardCard.classList.remove('product-card-pop');
-        }, 1200);
-      }
-      const specialCard = document.getElementById(`card-special-${activeProduct.id}`);
-      if (specialCard) {
-        specialCard.classList.remove('product-card-pop');
-        void specialCard.offsetWidth; // Force CSS reflow
-        specialCard.classList.add('product-card-pop');
-        setTimeout(() => {
+          void standardCard.offsetWidth; // Force CSS reflow
+          standardCard.classList.add('product-card-pop');
+          setTimeout(() => {
+            standardCard.classList.remove('product-card-pop');
+          }, 1200);
+        }
+        const specialCard = document.getElementById(`card-special-${activeProduct.id}`);
+        if (specialCard) {
           specialCard.classList.remove('product-card-pop');
-        }, 1200);
-      }
+          void specialCard.offsetWidth; // Force CSS reflow
+          specialCard.classList.add('product-card-pop');
+          setTimeout(() => {
+            specialCard.classList.remove('product-card-pop');
+          }, 1200);
+        }
 
-      showToast(`${activeProduct.englishName} added to checkout cart!`, "success");
-      closeProductModalDetail();
-      showAddConfirmation(cartItem);
+        showToast(`${activeProduct.englishName} added to checkout cart!`, "success");
+        closeProductModalDetail();
+        showAddConfirmation(cartItem);
+      } finally {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
+      }
     }
 
     let addConfTimer = null;

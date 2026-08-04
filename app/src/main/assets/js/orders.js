@@ -136,6 +136,8 @@
     }
 
     async function placeOrder() {
+      const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn, .btn-cart-primary') : document.querySelector('.btn-cart-primary, button[onclick*="placeOrder"]');
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
       try {
         const settings = getSettings();
         if (settings.leaveMode) {
@@ -143,14 +145,17 @@
             currentLang === 'ta' ? "🌴 விடுமுறை அறிவிப்பு" : "🌴 Holiday / Leave Notice",
             settings.leaveNotice || (currentLang === 'ta' ? "மன்னிக்கவும்! கடை தற்காலிகமாக விடுமுறையில் உள்ளது. ஆர்டர் செய்ய இயலாது." : "Sorry, the shop is currently closed on holiday. Ordering is temporarily paused.")
           );
+          if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
           return;
         }
         if (window.isPlacingOrder || window.isConfirmingOrder) {
           showToast(currentLang === 'ta' ? "மன்னிக்கவும்! ஒரு ஆர்டர் ஏற்கனவே செயலாக்கத்தில் உள்ளது." : "Please wait! Your order is already being processed.", "warning");
+          if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
           return;
         }
         if (cart.length === 0) {
           showToast("மன்னிக்கவும்! உங்கள் கார்ட் காலியாக உள்ளது. (Your checkout cart is completely empty!)", "error");
+          if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
           return;
         }
 
@@ -169,6 +174,7 @@
               : "Login Required\nPlease log in before placing an order.",
             "error"
           );
+          if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
           showScreen('screen-login');
           return;
         }
@@ -181,6 +187,7 @@
         window.isConfirmingOrder = false;
         console.error("Critical error in placeOrder:", err);
         showToast(currentLang === 'ta' ? "ஆர்டர் முயற்சியில் பிழை ஏற்பட்டது: " + err.message : "Error during order placement: " + err.message, "error");
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
     }
 
@@ -773,6 +780,8 @@
         showToast("ஆர்டர் செய்வதில் பிழை ஏற்பட்டது: " + err.message, "error");
       } finally {
         window.isPlacingOrder = false;
+        const confirmBtn = document.querySelector('.btn-cart-primary, button[onclick*="placeOrder"]');
+        if (confirmBtn && typeof setButtonLoading === 'function') setButtonLoading(confirmBtn, false);
         try { hideLoadingModal(); } catch(e) {}
         try { hideLyoTransitLoader(); } catch(e) {}
       }
@@ -1607,6 +1616,9 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
     }
 
     async function placeQuickOrder() {
+      const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector('button[onclick*="placeQuickOrder"]');
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+      try {
       if (quickOrderCart.length === 0) {
         showToast(currentLang === 'ta' ? "உங்களது ஆர்டர் பட்டியல் காலியாக உள்ளது!" : "Your order items list is empty!", "error");
         return;
@@ -1806,6 +1818,9 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
           try { hideLoadingModal(); } catch(e) {}
           try { hideLyoTransitLoader(); } catch(e) {}
         }
+      }
+      } finally {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
     }
 
@@ -2186,34 +2201,40 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
     }
 
     function applyCartCouponCode() {
-      const inp = document.getElementById('cart-coupon-input');
-      if (!inp) return;
-      const code = inp.value.trim().toUpperCase();
-      if (!code) {
-        showToast(currentLang === 'ta' ? "மன்னிக்கவும்! கூப்பன் குறியீடு காலியாக உள்ளது." : "Please enter a coupon code!", "warning");
-        return;
+      const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector('button[onclick*="applyCartCouponCode"]');
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+      try {
+        const inp = document.getElementById('cart-coupon-input');
+        if (!inp) return;
+        const code = inp.value.trim().toUpperCase();
+        if (!code) {
+          showToast(currentLang === 'ta' ? "மன்னிக்கவும்! கூப்பன் குறியீடு காலியாக உள்ளது." : "Please enter a coupon code!", "warning");
+          return;
+        }
+
+        const coupons = getCoupons();
+        const match = coupons.find(c => c.code === code);
+        if (!match) {
+          showToast(currentLang === 'ta' ? "தவறான கூப்பன் குறியீடு! WELCOME10, FREEFRESH அல்லது SAVEMORE முயற்சிக்கவும்." : "Invalid Coupon Code! Try WELCOME10, FREEFRESH or SAVEMORE.", "error");
+          return;
+        }
+
+        const subtotal = cart.reduce((acc, curr) => acc + curr.totalPrice, 0);
+        if (subtotal < match.minAmount) {
+          showToast(currentLang === 'ta' ? `மன்னிக்கவும்! இந்த கூப்பனைப் பயன்படுத்த குறைந்தபட்ச ஆர்டர் ₹${match.minAmount} தேவை.` : `This coupon requires a minimum subtotal of ₹${match.minAmount}!`, "warning");
+          return;
+        }
+
+        appliedCouponCode = code;
+        recalculateBill();
+        showToast(currentLang === 'ta' ? `கூப்பன் '${code}' வெற்றிகரமாக சேர்க்கப்பட்டது! 🎉` : `Coupon ${code} applied successfully! 🎉`, "success");
+        inp.value = '';
+
+        triggerConfettiExplosion();
+        playCelebrationSound();
+      } finally {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
-
-      const coupons = getCoupons();
-      const match = coupons.find(c => c.code === code);
-      if (!match) {
-        showToast(currentLang === 'ta' ? "தவறான கூப்பன் குறியீடு! WELCOME10, FREEFRESH அல்லது SAVEMORE முயற்சிக்கவும்." : "Invalid Coupon Code! Try WELCOME10, FREEFRESH or SAVEMORE.", "error");
-        return;
-      }
-
-      const subtotal = cart.reduce((acc, curr) => acc + curr.totalPrice, 0);
-      if (subtotal < match.minAmount) {
-        showToast(currentLang === 'ta' ? `மன்னிக்கவும்! இந்த கூப்பனைப் பயன்படுத்த குறைந்தபட்ச ஆர்டர் ₹${match.minAmount} தேவை.` : `This coupon requires a minimum subtotal of ₹${match.minAmount}!`, "warning");
-        return;
-      }
-
-      appliedCouponCode = code;
-      recalculateBill();
-      showToast(currentLang === 'ta' ? `கூப்பன் '${code}' வெற்றிகரமாக சேர்க்கப்பட்டது! 🎉` : `Coupon ${code} applied successfully! 🎉`, "success");
-      inp.value = '';
-
-      triggerConfettiExplosion();
-      playCelebrationSound();
     }
 
     function playCelebrationSound() {
@@ -2451,50 +2472,55 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
 
     function handleCouponSave(event) {
       if (event) event.preventDefault();
+      const btn = document.getElementById('coupon-submit-btn');
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+      try {
+        const id = document.getElementById('edit-coupon-id').value;
+        const code = document.getElementById('add-coupon-code').value.trim().toUpperCase();
+        const type = document.getElementById('add-coupon-type').value;
+        const rate = parseInt(document.getElementById('add-coupon-rate').value) || 0;
+        const minAmount = parseInt(document.getElementById('add-coupon-min').value) || 0;
+        const descEn = document.getElementById('add-coupon-desc-en').value.trim();
+        const descTa = document.getElementById('add-coupon-desc-ta').value.trim();
 
-      const id = document.getElementById('edit-coupon-id').value;
-      const code = document.getElementById('add-coupon-code').value.trim().toUpperCase();
-      const type = document.getElementById('add-coupon-type').value;
-      const rate = parseInt(document.getElementById('add-coupon-rate').value) || 0;
-      const minAmount = parseInt(document.getElementById('add-coupon-min').value) || 0;
-      const descEn = document.getElementById('add-coupon-desc-en').value.trim();
-      const descTa = document.getElementById('add-coupon-desc-ta').value.trim();
-
-      if (!code || !descEn || !descTa) {
-        showToast("Please enter all required fields", "warning");
-        return;
-      }
-
-      let coupons = getCoupons();
-
-      if (id) {
-        const idx = coupons.findIndex(c => c.id === id);
-        if (idx !== -1) {
-          coupons[idx] = { id, code, type, rate, minAmount, descEn, descTa };
-          showToast(currentLang === 'ta' ? "கூப்பன் வெற்றிகரமாக புதுப்பிக்கப்பட்டது!" : "Coupon updated successfully!", "success");
-        }
-      } else {
-        const existing = coupons.find(c => c.code === code);
-        if (existing) {
-          showToast(currentLang === 'ta' ? "மன்னிக்கவும்! இந்த கூப்பன் குறியீடு ஏற்கனவே உள்ளது." : "This Coupon code already exists!", "error");
+        if (!code || !descEn || !descTa) {
+          showToast("Please enter all required fields", "warning");
           return;
         }
-        const newC = {
-          id: 'CP' + Math.floor(100000 + Math.random() * 900000),
-          code,
-          type,
-          rate,
-          minAmount,
-          descEn,
-          descTa
-        };
-        coupons.push(newC);
-        showToast(currentLang === 'ta' ? "கூப்பன் வெற்றிகரமாக சேர்க்கப்பட்டது!" : "Coupon added successfully!", "success");
-      }
 
-      saveCoupons(coupons);
-      renderAdminCoupons();
-      resetCouponForm();
+        let coupons = getCoupons();
+
+        if (id) {
+          const idx = coupons.findIndex(c => c.id === id);
+          if (idx !== -1) {
+            coupons[idx] = { id, code, type, rate, minAmount, descEn, descTa };
+            showToast(currentLang === 'ta' ? "கூப்பன் வெற்றிகரமாக புதுப்பிக்கப்பட்டது!" : "Coupon updated successfully!", "success");
+          }
+        } else {
+          const existing = coupons.find(c => c.code === code);
+          if (existing) {
+            showToast(currentLang === 'ta' ? "மன்னிக்கவும்! இந்த கூப்பன் குறியீடு ஏற்கனவே உள்ளது." : "This Coupon code already exists!", "error");
+            return;
+          }
+          const newC = {
+            id: 'CP' + Math.floor(100000 + Math.random() * 900000),
+            code,
+            type,
+            rate,
+            minAmount,
+            descEn,
+            descTa
+          };
+          coupons.push(newC);
+          showToast(currentLang === 'ta' ? "கூப்பன் வெற்றிகரமாக சேர்க்கப்பட்டது!" : "Coupon added successfully!", "success");
+        }
+
+        saveCoupons(coupons);
+        renderAdminCoupons();
+        resetCouponForm();
+      } finally {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
+      }
     }
 
     function resetCouponForm() {
@@ -2814,7 +2840,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
 
       if (!activeSession) {
         box.innerHTML = `
-          <button onclick="showScreen('screen-login')" class="btn btn-primary" style="height: 42px; min-height: 42px; width: 100%; border-radius: 12px; background: linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.1) 100%) !important; color:#ffffff !important; text-shadow:0 1px 1px rgba(0,0,0,0.5) !important; border:1px solid rgba(245,158,11,0.4) !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important; font-weight:800; font-size:12px;">
+          <button onclick="showScreen('screen-login')" class="btn btn-primary" style="min-height: 42px; height: auto; padding: 10px 16px; width: 100%; border-radius: 12px; background: linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.1) 100%) !important; color:#ffffff !important; text-shadow:0 1px 1px rgba(0,0,0,0.5) !important; border:1px solid rgba(245,158,11,0.4) !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important; font-weight:800; font-size:12px;">
             🔒 LOGIN TO CLAIM DAILY BONUS • உள்நுழைக
           </button>
         `;
@@ -2830,13 +2856,13 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
 
         box.innerHTML = `
-          <button class="btn btn-secondary" style="height: 42px; min-height: 42px; width: 100%; border-radius: 12px !important; background: rgba(255,255,255,0.02) !important; border: 1.5px solid rgba(255,255,255,0.08) !important; color: #777 !important; font-weight:800; font-size:11.5px; cursor: not-allowed; width: 100%;" disabled>
+          <button class="btn btn-secondary" style="min-height: 42px; height: auto; padding: 10px 16px; width: 100%; border-radius: 12px !important; background: rgba(255,255,255,0.02) !important; border: 1.5px solid rgba(255,255,255,0.08) !important; color: #777 !important; font-weight:800; font-size:11.5px; cursor: not-allowed; width: 100%;" disabled>
             ⌛ CLAIMED TODAY • ${remainingHours}h REMAINING (₹0.00)
           </button>
         `;
       } else {
         box.innerHTML = `
-          <button onclick="claimDailyBonusReward()" class="btn btn-success" style="height: 42px; min-height: 42px; width: 100%; border-radius: 12px; background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; border:1px solid rgba(255,255,255,0.2) !important; box-shadow:0 6px 14px rgba(16,185,129,0.2) !important; color:#ffffff !important; text-shadow:0 1px 1px rgba(0,0,0,0.2) !important; font-weight:800; font-size:12px;">
+          <button onclick="claimDailyBonusReward()" class="btn btn-success" style="min-height: 42px; height: auto; padding: 10px 16px; width: 100%; border-radius: 12px; background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; border:1px solid rgba(255,255,255,0.2) !important; box-shadow:0 6px 14px rgba(16,185,129,0.2) !important; color:#ffffff !important; text-shadow:0 1px 1px rgba(0,0,0,0.2) !important; font-weight:800; font-size:12px;">
             🪙 CLAIM FREE DAILY POINTS • இப்போதே பெறுங்கள்!
           </button>
         `;
@@ -2844,8 +2870,11 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
     }
 
     function claimDailyBonusReward() {
+      const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : null;
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
       const activeSession = getActiveSession();
       if (!activeSession) {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
         showToast(currentLang === 'ta' ? "போனஸ் பெற முதலில் உள்நுழையவும்! 🔐" : "Please login first to claim daily bonuses! 🔐", "warning");
         showScreen('screen-login');
         return;
@@ -2856,6 +2885,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
       const twentyFourHours = 24 * 60 * 60 * 1000;
 
       if (lastClaimTime && (now - parseInt(lastClaimTime) < twentyFourHours)) {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
         showToast(currentLang === 'ta' ? "மன்னிக்கவும்! நீங்கள் ஏற்கனவே இன்று போனஸை பெற்றுள்ளீர்கள்." : "Already claimed today! Try again tomorrow.", "warning");
         return;
       }
@@ -2866,6 +2896,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
       db.collection('users').doc(activeSession.id).update({
         walletPoints: firebase.firestore.FieldValue.increment(bonusPct)
       }).then(() => {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
         activeSession.walletPoints = (activeSession.walletPoints || 0) + bonusPct;
         localStorage.setItem('ek_active_session', JSON.stringify(activeSession));
         localStorage.setItem(`ek_last_daily_claim_time_${activeSession.id}`, now.toString());
@@ -2875,6 +2906,7 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         }
         showToast(currentLang === 'ta' ? `வாழ்த்துகள்! ${bonusPct} வாலட் புள்ளிகள் வெற்றிகரமாக சேர்க்கப்பட்டது! 🎉🪙` : `Success! ${bonusPct} bonus points added to your loyalty wallet! 🎉🪙`, "success");
       }).catch(err => {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
         console.error("claimDailyBonusReward error:", err);
         activeSession.walletPoints = (activeSession.walletPoints || 0) + bonusPct;
         localStorage.setItem('ek_active_session', JSON.stringify(activeSession));

@@ -13,6 +13,66 @@ window.checkAndUpdateFreshCloudData = function() {
 window.syncWithCloud = window.syncWithCloud || async function() {};
 window.triggerGlobalScreenRefresh = window.triggerGlobalScreenRefresh || function() {};
 window.triggerGlobalScreenRefreshActual = window.triggerGlobalScreenRefreshActual || function() {};
+
+window.setButtonLoading = function(btn, isLoading, loadingText = '') {
+  if (typeof btn === 'string') btn = document.getElementById(btn);
+  if (!btn && typeof event !== 'undefined' && event && event.target) {
+    try { btn = event.target.closest('button, .btn'); } catch(e) {}
+  }
+  if (!btn) return;
+  if (isLoading) {
+    if (btn.dataset.isBtnLoading === 'true') return;
+    btn.dataset.isBtnLoading = 'true';
+    btn.dataset.originalHtml = btn.innerHTML;
+    btn.dataset.originalDisabled = btn.disabled ? 'true' : 'false';
+    try {
+      const rect = btn.getBoundingClientRect();
+      if (rect && rect.width > 0) {
+        btn.style.minWidth = `${Math.ceil(rect.width)}px`;
+      }
+    } catch(e) {}
+    btn.disabled = true;
+    btn.style.opacity = '0.75';
+    btn.style.cursor = 'wait';
+    btn.style.pointerEvents = 'none';
+    const spinner = `<span class="btn-spinner"></span>`;
+    if (loadingText) {
+      btn.innerHTML = `${spinner}<span>${loadingText}</span>`;
+    } else {
+      btn.innerHTML = `${spinner}${btn.dataset.originalHtml}`;
+    }
+  } else {
+    if (btn.dataset.isBtnLoading !== 'true') return;
+    if (btn.dataset.originalHtml !== undefined) {
+      btn.innerHTML = btn.dataset.originalHtml;
+    }
+    btn.disabled = btn.dataset.originalDisabled === 'true';
+    btn.style.opacity = '';
+    btn.style.cursor = '';
+    btn.style.pointerEvents = '';
+    btn.style.minWidth = '';
+    delete btn.dataset.isBtnLoading;
+    delete btn.dataset.originalHtml;
+    delete btn.dataset.originalDisabled;
+  }
+};
+
+window.withButtonLoading = async function(btn, asyncFn, options = {}) {
+  if (typeof btn === 'string') btn = document.getElementById(btn);
+  if (!btn && typeof event !== 'undefined' && event && event.target) {
+    try { btn = event.target.closest('button, .btn'); } catch(e) {}
+  }
+  if (btn) {
+    window.setButtonLoading(btn, true, options.loadingText);
+  }
+  try {
+    return await asyncFn();
+  } finally {
+    if (btn) {
+      window.setButtonLoading(btn, false);
+    }
+  }
+};
 let _realtimeUnsubscribers = {
   settings: null,
   categories: null,
@@ -83,7 +143,7 @@ window.setupCloudRealtimeListeners2 = function() {
   // 3. PRODUCTS REALTIME LISTENER
   if (!_realtimeUnsubscribers.products) {
     try {
-      _realtimeUnsubscribers.products = db.collection('ek_products').onSnapshot(snapshot => {
+      _realtimeUnsubscribers.products = db.collection('ek_products').limit(300).onSnapshot(snapshot => {
         if (snapshot) {
           let list = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
@@ -104,17 +164,28 @@ window.setupCloudRealtimeListeners2 = function() {
 
           window._hasFreshCloudData = true;
           saveData('ek_cloud_synced', true);
-          saveData('ek_products', list);
+          if (list && list.length > 0) {
+            saveData('ek_products', list);
+          } else {
+            let local = typeof getData === 'function' ? getData('ek_products', []) : [];
+            if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!local || local.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+              saveData('ek_products', DEMO_PRODUCTS);
+            }
+          }
           if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
           window._lastDataSnapshotHash = '';
           window._lastProductsHash = '';
           _lastDataSnapshotHash = null;
           if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
 
-          try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true); } catch(e) {}
-          try { if (typeof renderAdminProducts === 'function') renderAdminProducts(); } catch(e) {}
-          try { if (typeof renderAdminProductList === 'function') renderAdminProductList(true); } catch(e) {}
-          try { if (typeof renderHomeScreen === 'function') renderHomeScreen(true); } catch(e) {}
+          const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
+          if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
+            try { if (typeof renderHomeScreen === 'function') renderHomeScreen(true); else if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true); } catch(e) {}
+          }
+          if (curScreen === 'screen-admin') {
+            try { if (typeof renderAdminProducts === 'function') renderAdminProducts(); } catch(e) {}
+            try { if (typeof renderAdminProductList === 'function') renderAdminProductList(true); } catch(e) {}
+          }
           try { if (typeof updateCartBadge === 'function') updateCartBadge(); } catch(e) {}
         }
       }, err => console.warn("[Realtime Sync] Products listener notice:", err));
@@ -231,29 +302,39 @@ window.setupCloudRealtimeListeners2 = function() {
           saveData('ek_orders', mergedList);
           if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
 
+          const curScreen = window.currentScreen || (typeof currentScreen !== 'undefined' ? currentScreen : '');
+
           // Admin real-time updates
-          if (targetRole === 'admin' || (typeof currentScreen !== 'undefined' && currentScreen === 'screen-admin')) {
+          if (targetRole === 'admin' || curScreen === 'screen-admin') {
             if (snapshotList.length > prevOrders.length) {
               try { if (typeof showToast === 'function') showToast("🔔 புதிய ஆர்டர் வந்துள்ளது! New Order Received!", "info"); } catch(e) {}
               try { if (typeof playNotificationSound === 'function') playNotificationSound(); } catch(e) {}
             }
-            try { if (typeof renderAdminOrdersList === 'function') renderAdminOrdersList(true); } catch(e) {}
-            try { if (typeof renderAdminOrders === 'function') renderAdminOrders(); } catch(e) {}
-            try { if (typeof renderAdminDashboard === 'function') renderAdminDashboard(); } catch(e) {}
+            if (curScreen === 'screen-admin') {
+              try { if (typeof renderAdminOrdersList === 'function') renderAdminOrdersList(true); } catch(e) {}
+              try { if (typeof renderAdminOrders === 'function') renderAdminOrders(); } catch(e) {}
+              try { if (typeof renderAdminDashboard === 'function') renderAdminDashboard(); } catch(e) {}
+            }
           }
 
           // Rider real-time updates
-          if (targetRole === 'rider') {
-            try { if (typeof renderRiderOrders === 'function') renderRiderOrders(); } catch(e) {}
-            try { if (typeof renderRiderDashboard === 'function') renderRiderDashboard(); } catch(e) {}
-            try { if (typeof renderDeliveryScreen === 'function') renderDeliveryScreen(); } catch(e) {}
+          if (targetRole === 'rider' || curScreen === 'screen-delivery') {
+            if (curScreen === 'screen-delivery') {
+              try { if (typeof renderRiderOrders === 'function') renderRiderOrders(); } catch(e) {}
+              try { if (typeof renderRiderDashboard === 'function') renderRiderDashboard(); } catch(e) {}
+              try { if (typeof renderDeliveryScreen === 'function') renderDeliveryScreen(); } catch(e) {}
+            }
           }
 
           // Customer real-time updates
           if (targetRole === 'customer' || targetRole === 'guest') {
-            try { if (typeof renderMyOrdersList === 'function') renderMyOrdersList(); } catch(e) {}
-            try { if (typeof updateActiveOrderTrackingUI === 'function') updateActiveOrderTrackingUI(); } catch(e) {}
-            try { if (typeof renderTrackerScreen === 'function') renderTrackerScreen(); } catch(e) {}
+            if (curScreen === 'screen-my-orders' || curScreen === 'screen-orders') {
+              try { if (typeof renderMyOrdersList === 'function') renderMyOrdersList(); } catch(e) {}
+            }
+            if (curScreen === 'screen-tracker') {
+              try { if (typeof updateActiveOrderTrackingUI === 'function') updateActiveOrderTrackingUI(); } catch(e) {}
+              try { if (typeof renderTrackerScreen === 'function') renderTrackerScreen(); } catch(e) {}
+            }
           }
         }
       };
@@ -1374,6 +1455,12 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
 
     function getData(key, defaultVal = []) {
       try {
+        const now = Date.now();
+        const cachedTime = (typeof _cacheTimestamps !== 'undefined' && _cacheTimestamps) ? _cacheTimestamps.get(key) : null;
+        if (typeof _dataCache !== 'undefined' && _dataCache && _dataCache.has(key) && cachedTime && (now - cachedTime) < CACHE_TTL_MS) {
+          return _dataCache.get(key);
+        }
+
         let val = null;
         if (typeof AndroidStorage !== 'undefined') {
           val = AndroidStorage.getData(key, "");
@@ -1806,6 +1893,10 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
         }
 
         const jsonStr = JSON.stringify(data);
+        if (typeof _dataCache !== 'undefined' && _dataCache && typeof _cacheTimestamps !== 'undefined' && _cacheTimestamps) {
+          _dataCache.set(key, data);
+          _cacheTimestamps.set(key, Date.now());
+        }
         if (typeof AndroidStorage !== 'undefined') {
           AndroidStorage.saveData(key, jsonStr);
         }

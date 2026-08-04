@@ -4331,6 +4331,24 @@ ${o.items.map((it, idx) => {
       }, 100);
     }
 
+    let _adminOrdersSearchTimer = null;
+    function debouncedSearchAdminOrders() {
+      if (_adminOrdersSearchTimer) clearTimeout(_adminOrdersSearchTimer);
+      _adminOrdersSearchTimer = setTimeout(() => {
+        if (typeof renderAdminOrders === 'function') renderAdminOrders();
+      }, 200);
+    }
+
+    let _adminProductsSearchTimer = null;
+    function debouncedSearchProducts() {
+      if (_adminProductsSearchTimer) clearTimeout(_adminProductsSearchTimer);
+      _adminProductsSearchTimer = setTimeout(() => {
+        if (typeof renderAdminProducts === 'function') renderAdminProducts();
+      }, 200);
+    }
+
+    window.debouncedSearchAdminOrders = debouncedSearchAdminOrders;
+    window.debouncedSearchProducts = debouncedSearchProducts;
     window.updateDeliveryModeUI = updateDeliveryModeUI;
     window.toggleDeliveryMode = toggleDeliveryMode;
     window.renderAdminZonesTable = renderAdminZonesTable;

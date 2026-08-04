@@ -434,9 +434,9 @@
           const messageText = currentLang === 'ta' ? "மெசேஜ்" : "Message";
           const dismissText = currentLang === 'ta' ? "மூடு" : "Dismiss";
           badgeActions.innerHTML = `
-            <a href="tel:${riderPhone}" class="btn" style="width:auto; min-width: 65px; height: 30px; padding:0 12px; font-size:11px; background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; font-weight:700; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 3px 8px rgba(16,185,129,0.25); transition: all 0.2s;">${callText}</a>
-            <a href="https://wa.me/${formatIndianPhoneForWhatsApp(riderPhone)}" target="_blank" class="btn" style="width:auto; min-width: 75px; height: 30px; padding:0 12px; font-size:11px; background:linear-gradient(135deg, #2563eb, #1d4ed8); color:#fff; border:none; font-weight:700; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 3px 8px rgba(37,99,235,0.25); transition: all 0.2s;">${messageText}</a>
-            <button onclick="document.getElementById('map-interactive-badge').style.display='none';" class="btn" style="width:auto; height: 30px; padding:0 12px; font-size:11px; background:rgba(255,255,255,0.06); border:none; color:#bbb; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s;">${dismissText}</button>
+            <a href="tel:${riderPhone}" class="btn" style="width:auto; min-width: 65px; min-height: 32px; height: auto; padding:6px 12px; font-size:11px; background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; font-weight:700; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 3px 8px rgba(16,185,129,0.25); transition: all 0.2s;">${callText}</a>
+            <a href="https://wa.me/${formatIndianPhoneForWhatsApp(riderPhone)}" target="_blank" class="btn" style="width:auto; min-width: 75px; min-height: 32px; height: auto; padding:6px 12px; font-size:11px; background:linear-gradient(135deg, #2563eb, #1d4ed8); color:#fff; border:none; font-weight:700; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 3px 8px rgba(37,99,235,0.25); transition: all 0.2s;">${messageText}</a>
+            <button onclick="document.getElementById('map-interactive-badge').style.display='none';" class="btn" style="width:auto; min-height: 32px; height: auto; padding:6px 12px; font-size:11px; background:rgba(255,255,255,0.06); border:none; color:#bbb; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s;">${dismissText}</button>
           `;
         } else {
           badgeStatus.innerText = currentLang === 'ta' ? "🏪 தயாரிப்பில் உள்ளது" : "🏪 Order In Preparation";
@@ -449,14 +449,14 @@
           if (order && order.status === 'pending') {
             const cancelBtnText = currentLang === 'ta' ? "ஆர்டரை ரத்து செய் 🛑" : "Cancel Order 🛑";
             cancelBtnHtml = `
-              <button onclick="customerCancelOrder('${order.id}')" class="btn" style="width:auto; height: 30px; padding:0 12px; font-size:11px; background:linear-gradient(135deg, #ef4444, #dc2626); color:#fff; border:none; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 3px 8px rgba(239,68,68,0.25); transition: all 0.2s; cursor: pointer;">${cancelBtnText}</button>
+              <button onclick="customerCancelOrder('${order.id}')" class="btn" style="width:auto; min-height: 32px; height: auto; padding:6px 12px; font-size:11px; background:linear-gradient(135deg, #ef4444, #dc2626); color:#fff; border:none; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 3px 8px rgba(239,68,68,0.25); transition: all 0.2s; cursor: pointer;">${cancelBtnText}</button>
             `;
           }
 
           const dismissText = currentLang === 'ta' ? "மூடு" : "Dismiss";
           badgeActions.innerHTML = `
             ${cancelBtnHtml}
-            <button onclick="document.getElementById('map-interactive-badge').style.display='none';" class="btn" style="width:auto; height: 30px; padding:0 12px; font-size:11px; background:rgba(255,255,255,0.06); border:none; color:#bbb; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; cursor: pointer;">${dismissText}</button>
+            <button onclick="document.getElementById('map-interactive-badge').style.display='none';" class="btn" style="width:auto; min-height: 32px; height: auto; padding:6px 12px; font-size:11px; background:rgba(255,255,255,0.06); border:none; color:#bbb; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; cursor: pointer;">${dismissText}</button>
           `;
         }
       }
@@ -1356,10 +1356,10 @@
 
                   <!-- Row 3: Call & WhatsApp Actions -->
                   <div style="display: flex; gap: 8px; width: 100%; margin-top: 12px; flex-wrap: wrap;">
-                    <a href="tel:${cleanPhone}" class="btn" style="flex: 1; min-width: 110px; height: 38px; font-size: 12px; font-weight: 750; border-radius: 10px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); color: var(--accent-green); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;" onclick="event.stopPropagation();">
+                    <a href="tel:${cleanPhone}" class="btn" style="flex: 1; min-width: 110px; min-height: 38px; height: auto; padding: 8px 12px; font-size: 12px; font-weight: 750; border-radius: 10px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); color: var(--accent-green); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;" onclick="event.stopPropagation();">
                       <span>📞</span> <span class="btn-text">${currentLang === 'ta' ? 'கால்' : 'Call'}</span>
                     </a>
-                    <a href="https://wa.me/${formatIndianPhoneForWhatsApp(rPhone)}?text=${encodeURIComponent('Hello, ' + rName + '! I am tracking my order (' + latestTrackable.id + ').')}" target="_blank" class="btn" style="flex: 1; min-width: 110px; height: 38px; font-size: 12px; font-weight: 750; border-radius: 10px; background: rgba(37,211,102,0.08); border: 1px solid rgba(37,211,102,0.3); color: #25d366; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;" onclick="event.stopPropagation();">
+                    <a href="https://wa.me/${formatIndianPhoneForWhatsApp(rPhone)}?text=${encodeURIComponent('Hello, ' + rName + '! I am tracking my order (' + latestTrackable.id + ').')}" target="_blank" class="btn" style="flex: 1; min-width: 110px; min-height: 38px; height: auto; padding: 8px 12px; font-size: 12px; font-weight: 750; border-radius: 10px; background: rgba(37,211,102,0.08); border: 1px solid rgba(37,211,102,0.3); color: #25d366; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;" onclick="event.stopPropagation();">
                       <span>💬</span> <span class="btn-text">${currentLang === 'ta' ? 'வாட்ஸ்அப்' : 'WhatsApp'}</span>
                     </a>
                   </div>
@@ -1488,7 +1488,7 @@
         }
 
         let actionButtonHtml = '';
-        const btnBaseStyle = "font-family:'Poppins',sans-serif; font-size:10px; font-weight:700; height:32px; border-radius:8px; border:none; display:flex; align-items:center; justify-content:center; gap:4px; cursor:pointer; transition:all 0.15s ease; box-sizing:border-box; text-transform:uppercase; letter-spacing:0.3px;";
+        const btnBaseStyle = "font-family:'Poppins',sans-serif; font-size:10px; font-weight:700; min-height:32px; height:auto; padding:6px 10px; border-radius:8px; border:none; display:flex; align-items:center; justify-content:center; gap:4px; cursor:pointer; transition:all 0.15s ease; box-sizing:border-box; text-transform:uppercase; letter-spacing:0.3px;";
 
         if (o.status === 'pending') {
           actionButtonHtml = `
@@ -3175,16 +3175,20 @@ function hideChangeEmailModal() {
   if (modal) modal.style.display = 'none';
 }
 async function submitChangeEmail() {
+  const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector('button[onclick*="submitChangeEmail"]');
+  if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
   const currentPass = document.getElementById('ce-current-password') ? document.getElementById('ce-current-password').value : '';
   const newEmail = document.getElementById('ce-new-email') ? document.getElementById('ce-new-email').value.trim().toLowerCase() : '';
   const isTa = currentLang === 'ta';
   
   if (!currentPass) {
     showToast(isTa ? "தற்போதைய கடவுச்சொல்லை உள்ளிடவும்." : "Please enter your current password.", "error");
+    if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
     return;
   }
   if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
     showToast(isTa ? "செல்லுபடியாகும் புதிய மின்னஞ்சலை உள்ளிடவும்." : "Please enter a valid new email address.", "error");
+    if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
     return;
   }
   
@@ -3225,6 +3229,8 @@ async function submitChangeEmail() {
   } catch (err) {
     console.error("submitChangeEmail error:", err);
     showToast(isTa ? "மின்னஞ்சல் மாற்ற தோல்வி: " + err.message : "Failed to change email: " + err.message, "error");
+  } finally {
+    if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
   }
 }
 
@@ -3387,10 +3393,10 @@ function saveProfileChanges() {
           <textarea id="partner-rating-feedback" placeholder="${feedbackPlaceholder}" style="width: 100%; height: 80px; min-height: 80px; background: #141416; border: 1.5px solid #2d2d2d; border-radius: 12px; padding: 12px; color: #fff; font-size: 13px; font-family: sans-serif; resize: none; box-sizing: border-box; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent-orange)'" onblur="this.style.borderColor='#2d2d2d'">${order.riderFeedback || ''}</textarea>
 
           <div style="display: flex; gap: 10px; width: 100%; margin-top: 4px;">
-            <button onclick="closeDeliveryPartnerRatingModal()" class="btn" style="flex: 1; height: 42px; background: rgba(255,255,255,0.04); border: 1.2px solid #2d2d2d; color: var(--text-secondary); font-size: 13px; font-weight: 750; border-radius: 12px; cursor: pointer;">
+            <button onclick="closeDeliveryPartnerRatingModal()" class="btn" style="flex: 1; min-height: 42px; height: auto; padding: 10px 16px; background: rgba(255,255,255,0.04); border: 1.2px solid #2d2d2d; color: var(--text-secondary); font-size: 13px; font-weight: 750; border-radius: 12px; cursor: pointer;">
               ${cancelText}
             </button>
-            <button id="partner-rating-submit-btn" onclick="submitDeliveryPartnerRating('${order.id}')" class="btn btn-primary" style="flex: 1.2; height: 42px; font-size: 13px; font-weight: 800; border-radius: 12px; cursor: pointer; ${window.selectedPartnerRating ? '' : 'opacity: 0.5; cursor: not-allowed;'}" ${window.selectedPartnerRating ? '' : 'disabled'}>
+            <button id="partner-rating-submit-btn" onclick="submitDeliveryPartnerRating('${order.id}')" class="btn btn-primary" style="flex: 1.2; min-height: 42px; height: auto; padding: 10px 16px; font-size: 13px; font-weight: 800; border-radius: 12px; cursor: pointer; ${window.selectedPartnerRating ? '' : 'opacity: 0.5; cursor: not-allowed;'}" ${window.selectedPartnerRating ? '' : 'disabled'}>
               ${submitText}
             </button>
           </div>
@@ -3505,7 +3511,7 @@ function saveProfileChanges() {
             <h4 style="color: #ffffff; font-size: 15px; font-weight: 800; margin: 0 0 6px 0;">${thankYouTitle}</h4>
             <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.45;">${successMessage}</p>
           </div>
-          <button onclick="closeRatingSuccessPopup()" class="btn btn-primary" style="height: 38px; font-size: 12.5px; font-weight: 800; border-radius: 10px; cursor: pointer; margin: 4px 0 0 0;">
+          <button onclick="closeRatingSuccessPopup()" class="btn btn-primary" style="min-height: 38px; height: auto; padding: 8px 16px; font-size: 12.5px; font-weight: 800; border-radius: 10px; cursor: pointer; margin: 4px 0 0 0;">
             ${okButtonText}
           </button>
         </div>
@@ -3903,3 +3909,12 @@ function saveProfileChanges() {
         modal.classList.add('active');
       }
     }
+
+    let _trackerSearchTimer = null;
+    function debouncedSearchTracker() {
+      if (_trackerSearchTimer) clearTimeout(_trackerSearchTimer);
+      _trackerSearchTimer = setTimeout(() => {
+        if (typeof renderTrackerScreen === 'function') renderTrackerScreen();
+      }, 200);
+    }
+    window.debouncedSearchTracker = debouncedSearchTracker;

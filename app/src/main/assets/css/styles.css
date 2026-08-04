@@ -141,17 +141,19 @@
 
     /* PREMIUM BUTTON STYLE AND CONSISTENCY FOR PROFILE & CARDS */
     .premium-btn {
-      height: 48px !important;
-      border-radius: 20px !important;
-      padding: 0 14px !important;
+      min-height: 34px !important;
+      height: auto !important;
+      border-radius: 12px !important;
+      padding: 6px 12px !important;
       font-family: 'Poppins', sans-serif !important;
-      font-size: 11.5px !important;
+      font-size: 11px !important;
       font-weight: 700 !important;
-      letter-spacing: 0.5px !important;
+      line-height: 1.25 !important;
+      letter-spacing: 0.4px !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
-      gap: 6px !important;
+      gap: 5px !important;
       box-sizing: border-box !important;
       cursor: pointer !important;
       border: none !important;
@@ -160,8 +162,6 @@
       text-transform: uppercase !important;
       text-decoration: none !important;
       white-space: nowrap !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
     }
     .premium-btn:active {
       transform: scale(0.96) !important;
@@ -675,29 +675,77 @@
       -webkit-user-select: none;
       font-weight: 800;
       border-radius: 12px !important;
-      padding: 12px 20px;
-      min-height: 48px; /* High tactile hit rate target */
+      padding: 10px 18px;
+      min-height: 44px; /* High tactile hit rate target */
+      height: auto;
+      line-height: 1.3;
+      box-sizing: border-box !important;
       border: 1px solid rgba(0, 0, 0, 0.08) !important;
       cursor: pointer;
       transition: all 0.2s ease;
-      gap: 10px;
+      gap: 8px;
       font-size: 13.5px;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.3px;
       width: 100%;
       outline: none;
       position: relative;
       overflow: hidden;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+      text-align: center;
     }
-    .btn[style*="height"],
-    .btn[style*="padding"],
-    .btn[style*="min-height"] {
-      min-height: 0 !important;
+    /* Standardized Button Size Variants across App */
+    .btn-sm, .btn-compact {
+      min-height: 32px !important;
+      height: auto !important;
+      padding: 6px 12px !important;
+      font-size: 11.5px !important;
+      line-height: 1.25 !important;
+      border-radius: 8px !important;
     }
-    .btn:active {
-      transform: scale(0.97) translateY(1px) !important;
-      filter: brightness(1.1);
+    .btn-md {
+      min-height: 40px !important;
+      height: auto !important;
+      padding: 8px 16px !important;
+      font-size: 12.5px !important;
+      line-height: 1.3 !important;
+      border-radius: 10px !important;
+    }
+    .btn-lg {
+      min-height: 48px !important;
+      height: auto !important;
+      padding: 12px 20px !important;
+      font-size: 14px !important;
+      line-height: 1.35 !important;
+      border-radius: 12px !important;
+    }
+    /* Ensure buttons always size to fit content comfortably */
+    button, input[type="button"], input[type="submit"] {
+      box-sizing: border-box !important;
+    }
+    .btn:active, button:active, input[type="button"]:active, input[type="submit"]:active, .pill:active, .premium-btn:active, a.btn:active, [role="button"]:active {
+      transform: scale(0.96) translateY(1px) !important;
+      filter: brightness(1.15) !important;
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05) !important;
+      transition: transform 0.04s ease, filter 0.04s ease !important;
+    }
+    @keyframes btnSpin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .btn-spinner {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: btnSpin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 5px;
+      flex-shrink: 0;
+    }
+    button:disabled, .btn:disabled, button[disabled] {
+      cursor: not-allowed !important;
     }
     .btn-primary {
       background: linear-gradient(135deg, var(--accent-green) 0%, #1E824C 100%) !important;
@@ -1635,6 +1683,12 @@
       transform: translate3d(0, 0, 0);
       -webkit-transform: translate3d(0, 0, 0);
       will-change: transform, opacity;
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .img-placeholder, .lazy-image-container, .product-card-img-container, .banner-slide, .sliding-banner-item, .special-card, .category-img-container, .cart-item-img {
+      background: linear-gradient(110deg, rgba(255, 255, 255, 0.03) 8%, rgba(255, 255, 255, 0.08) 18%, rgba(255, 255, 255, 0.03) 33%);
+      background-size: 200% 100%;
     }
 
     .lazy-image-container {
@@ -2386,17 +2440,17 @@
     /* BOTTOM CART ACTION BAR BUTTONS REDESIGN */
     .btn-cart-secondary {
       flex: 1;
-      height: 40px !important;
       min-height: 40px !important;
-      max-height: 40px !important;
-      padding: 0 10px !important;
+      height: auto !important;
+      padding: 8px 12px !important;
       border-radius: 12px !important;
       background: rgba(255, 255, 255, 0.03) !important;
       border: 1px solid rgba(255, 255, 255, 0.16) !important;
       color: #e5e7eb !important;
       font-family: 'Inter', 'Poppins', system-ui, -apple-system, sans-serif !important;
-      font-size: 13px !important;
-      font-weight: 500 !important;
+      font-size: 12.5px !important;
+      font-weight: 600 !important;
+      line-height: 1.25 !important;
       letter-spacing: 0.2px !important;
       cursor: pointer;
       display: flex;
@@ -2415,10 +2469,9 @@
 
     .btn-cart-primary {
       flex: 1.8;
-      height: 40px !important;
       min-height: 40px !important;
-      max-height: 40px !important;
-      padding: 0 14px !important;
+      height: auto !important;
+      padding: 8px 14px !important;
       border-radius: 12px !important;
       background: linear-gradient(135deg, #16C47F 0%, #0F9D58 100%) !important;
       border: none !important;
@@ -2426,6 +2479,7 @@
       font-family: 'Inter', 'Poppins', system-ui, -apple-system, sans-serif !important;
       font-size: 13px !important;
       font-weight: 600 !important;
+      line-height: 1.25 !important;
       letter-spacing: 0.2px !important;
       cursor: pointer;
       display: flex;

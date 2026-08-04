@@ -818,24 +818,24 @@ function updateRiderLiveLocation() {
         let actionBtn = '';
         if (currentDeliveryFilter === 'ready') {
           actionBtn = `
-            <button class="btn" style="background: #f59e0b; border: none; color: #000; font-size: 14px; font-weight: bold; height: 46px; border-radius: 12px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(245,158,11,0.25); box-sizing: border-box;" onclick="claimOrderForDelivery('${o.id}')">
+            <button class="btn" style="background: #f59e0b; border: none; color: #000; font-size: 14px; font-weight: bold; min-height: 46px; height: auto; padding: 10px 16px; border-radius: 12px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(245,158,11,0.25); box-sizing: border-box;" onclick="claimOrderForDelivery('${o.id}')">
               🙋‍♂️ Claim Order
             </button>
           `;
         } else if (currentDeliveryFilter === 'assigned') {
           if (o.status === 'ready') {
             actionBtn = `
-              <button class="btn" style="background: #3b82f6; border: none; color: #fff; font-size: 14px; font-weight: bold; height: 46px; border-radius: 12px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(59,130,246,0.25); box-sizing: border-box;" onclick="updateDeliveryOrderStatus('${o.id}', 'delivering')">
+              <button class="btn" style="background: #3b82f6; border: none; color: #fff; font-size: 14px; font-weight: bold; min-height: 46px; height: auto; padding: 10px 16px; border-radius: 12px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(59,130,246,0.25); box-sizing: border-box;" onclick="updateDeliveryOrderStatus('${o.id}', 'delivering')">
                 🚴‍♂️ Start Delivery
               </button>
             `;
           } else if (o.status === 'delivering') {
             actionBtn = `
               <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
-                <button class="btn" style="background: #2ecc71; border: none; color: #fff; font-size: 14px; font-weight: bold; height: 48px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(46,204,113,0.3); box-sizing: border-box;" onclick="quickCompleteDelivery('${o.id}')">
+                <button class="btn" style="background: #2ecc71; border: none; color: #fff; font-size: 14px; font-weight: bold; min-height: 48px; height: auto; padding: 12px 18px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(46,204,113,0.3); box-sizing: border-box;" onclick="quickCompleteDelivery('${o.id}')">
                   📦 Mark Delivered
                 </button>
-                <button class="btn" style="background: #1a1a2e; border: 1px solid #444; color: #fff; font-size: 13px; font-weight: 600; height: 42px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;" onclick="openDeliveryVerification('${o.id}')">
+                <button class="btn" style="background: #1a1a2e; border: 1px solid #444; color: #fff; font-size: 13px; font-weight: 600; min-height: 42px; height: auto; padding: 10px 16px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;" onclick="openDeliveryVerification('${o.id}')">
                   ✍️ Customer Signature
                 </button>
               </div>
@@ -950,9 +950,9 @@ function updateRiderLiveLocation() {
               </div>
 
               <div style="display:flex; gap:8px; margin-bottom:10px;">
-                <a href="tel:${o.customerPhone}" class="btn" style="flex:1; height:40px; border-radius:10px; background:#1a73e8; border:none; color:#fff; font-size:13px; font-weight:600; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; padding: 0 16px; white-space: nowrap; box-shadow:0 3px 8px rgba(26,115,232,0.25);" onclick="event.stopPropagation();">📞 Call</a>
-                <a href="https://wa.me/${formatIndianPhoneForWhatsApp(o.customerPhone)}?text=${encodeURIComponent('Hello ' + o.customerName + ', your order (' + o.id + ') from Edappadi Chicken & Mutton is out for delivery! 🏍️💨')}" target="_blank" class="btn" style="flex:1; height:40px; border-radius:10px; background:#25D366; border:none; color:#fff; font-size:13px; font-weight:600; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; padding: 0 16px; white-space: nowrap; box-shadow:0 3px 8px rgba(37,211,102,0.25);" onclick="event.stopPropagation();">💬 WA</a>
-                <button onclick="event.stopPropagation(); openGoogleMapsNavigation('${o.id}')" class="btn" style="flex:1; height:40px; border-radius:10px; background:#FFA500; border:none; color:#000; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px; padding: 0 16px; white-space: nowrap; box-shadow:0 3px 8px rgba(255,165,0,0.25); cursor:pointer;">📍 Map</button>
+                <a href="tel:${o.customerPhone}" class="btn" style="flex:1; min-height:40px; height:auto; border-radius:10px; background:#1a73e8; border:none; color:#fff; font-size:13px; font-weight:600; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; padding: 8px 12px; white-space: nowrap; box-shadow:0 3px 8px rgba(26,115,232,0.25);" onclick="event.stopPropagation();">📞 Call</a>
+                <a href="https://wa.me/${formatIndianPhoneForWhatsApp(o.customerPhone)}?text=${encodeURIComponent('Hello ' + o.customerName + ', your order (' + o.id + ') from Edappadi Chicken & Mutton is out for delivery! 🏍️💨')}" target="_blank" class="btn" style="flex:1; min-height:40px; height:auto; border-radius:10px; background:#25D366; border:none; color:#fff; font-size:13px; font-weight:600; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; padding: 8px 12px; white-space: nowrap; box-shadow:0 3px 8px rgba(37,211,102,0.25);" onclick="event.stopPropagation();">💬 WA</a>
+                <button onclick="event.stopPropagation(); openGoogleMapsNavigation('${o.id}')" class="btn" style="flex:1; min-height:40px; height:auto; border-radius:10px; background:#FFA500; border:none; color:#000; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px; padding: 8px 12px; white-space: nowrap; box-shadow:0 3px 8px rgba(255,165,0,0.25); cursor:pointer;">📍 Map</button>
               </div>
 
               ${o.status !== 'delivered' ? `

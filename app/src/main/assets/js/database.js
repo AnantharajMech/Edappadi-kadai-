@@ -101,7 +101,8 @@
       }
     };
 
-    const ENABLE_DEMO_SEED_DATA = true;
+    // MUST stay false - showing demo/placeholder products to real customers risks them ordering something that doesn't exist. Only true for local dev testing.
+    const ENABLE_DEMO_SEED_DATA = false;
     const DEMO_PRODUCTS = [
       {
         id: "mutton_head_curry",
@@ -603,34 +604,35 @@
       const isDbInitialized = getData('ek_db_initialized') === true;
       const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
       debugLog(`[DEBUG seedDatabase] existingProds count: ${Array.isArray(existingProds) ? existingProds.length : 'non-array'}, existingCats count: ${Array.isArray(existingCats) ? existingCats.length : 'non-array'}, isDbInitialized: ${isDbInitialized}, isCloudSynced: ${isCloudSynced}`);
-      if (!isCloudSynced && (!Array.isArray(existingProds) || existingProds === null || existingProds.length === 0)) {
-        if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
-          const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
-          const seededProducts = DEMO_PRODUCTS
-            .filter(p => !deletedProdIds.includes(p.id))
-            .map(p => ({
-              ...p,
-              updatedAt: p.createdAt || new Date().toISOString()
-            }));
-          saveData('ek_products', seededProducts);
-          seededProducts.forEach(p => {
-            logProductWriteAudit('seed', p.id, 'seedDatabase');
-          });
-        } else {
-          saveData('ek_products', []);
+      if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA) {
+        if (!Array.isArray(existingProds) || existingProds === null || existingProds.length === 0) {
+          if (typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS) && DEMO_PRODUCTS.length > 0) {
+            const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
+            const seededProducts = DEMO_PRODUCTS
+              .filter(p => !deletedProdIds.includes(p.id))
+              .map(p => ({
+                ...p,
+                updatedAt: p.createdAt || new Date().toISOString()
+              }));
+            saveData('ek_products', seededProducts);
+            seededProducts.forEach(p => {
+              logProductWriteAudit('seed', p.id, 'seedDatabase');
+            });
+          }
         }
-      } else if (isCloudSynced && (!Array.isArray(existingProds) || existingProds === null)) {
-        saveData('ek_products', []);
+      } else if (Array.isArray(existingProds) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+        const demoIds = new Set(DEMO_PRODUCTS.map(p => p.id));
+        const cleaned = existingProds.filter(p => p && p.id && !demoIds.has(p.id));
+        if (cleaned.length !== existingProds.length) {
+          saveData('ek_products', cleaned);
+          if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
+        }
       }
 
-      if (!isCloudSynced && (!Array.isArray(existingCats) || existingCats === null || existingCats.length === 0)) {
-        if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
+      if (!Array.isArray(existingCats) || existingCats === null || existingCats.length === 0) {
+        if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES) && DEFAULT_CATEGORIES.length > 0) {
           saveData('ek_categories', DEFAULT_CATEGORIES.map(c => ({ ...c, isAvailable: true })));
-        } else {
-          saveData('ek_categories', []);
         }
-      } else if (isCloudSynced && (!Array.isArray(existingCats) || existingCats === null)) {
-        saveData('ek_categories', []);
       }
       saveData('ek_db_initialized', true);
       debugLog(`[DEBUG seedDatabase] finished. final ek_products count: ${getData('ek_products')?.length}, final ek_categories count: ${getData('ek_categories')?.length}`);
@@ -2166,15 +2168,15 @@
           } else if (screenId === 'screen-lyo-ai') {
             try {
               if (typeof initLyoAiChat === 'function') initLyoAiChat();
-              setTimeout(() => {
-                const lyoInput = document.getElementById('lyo-ai-input');
-                if (lyoInput) {
-                  const msgStream = document.getElementById('lyo-ai-messages');
-                  if (msgStream) {
-                    msgStream.scrollTop = msgStream.scrollHeight;
-                  }
-                }
-              }, 100);
+              const msgStream = document.getElementById('lyo-ai-messages');
+              if (msgStream) {
+                msgStream.style.scrollBehavior = 'auto';
+                msgStream.scrollTop = msgStream.scrollHeight;
+                requestAnimationFrame(() => {
+                  msgStream.scrollTop = msgStream.scrollHeight;
+                  msgStream.style.scrollBehavior = 'smooth';
+                });
+              }
 
               if (window.visualViewport && !window.lyoAiViewportResizeListener) {
                 window.lyoAiViewportResizeListener = function() {
@@ -2187,14 +2189,7 @@
                 window.visualViewport.addEventListener('resize', window.lyoAiViewportResizeListener);
               }
             } catch (lyoErr) {
-              console.warn('[showScreen] Lyo AI render retry scheduled:', lyoErr);
-              setTimeout(() => {
-                try {
-                  if (typeof initLyoAiChat === 'function') initLyoAiChat();
-                } catch(rErr) {
-                  console.warn('[showScreen] Lyo AI retry warning:', rErr);
-                }
-              }, 200);
+              console.warn('[showScreen] Lyo AI init error:', lyoErr);
             }
           } else if (screenId === 'screen-offers') {
             updateClaimBoxState();

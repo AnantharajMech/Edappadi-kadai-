@@ -506,16 +506,16 @@
 
           <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
             <div style="display: flex; gap: 8px;">
-              <button type="button" class="btn" onclick="triggerEditorGPS()" style="flex: 1; height: 44px; font-size: 12px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.25) !important; color: #10b981 !important; background: rgba(16, 185, 129, 0.05) !important; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 14px; box-sizing: border-box; cursor: pointer; transition: all 0.2s;">
+              <button type="button" class="btn" onclick="triggerEditorGPS()" style="flex: 1; min-height: 44px; height: auto; padding: 10px 14px; font-size: 12px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.25) !important; color: #10b981 !important; background: rgba(16, 185, 129, 0.05) !important; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 14px; box-sizing: border-box; cursor: pointer; transition: all 0.2s;">
                 <span>🛰️</span> <span>Use Current Location</span>
               </button>
 
-              <button type="button" class="btn" onclick="triggerEditorMap()" style="flex: 1; height: 44px; font-size: 12px; font-weight: 700; border: 1px solid rgba(249, 115, 22, 0.25) !important; color: var(--accent-orange) !important; background: rgba(249, 115, 22, 0.05) !important; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 14px; box-sizing: border-box; cursor: pointer; transition: all 0.2s;">
+              <button type="button" class="btn" onclick="triggerEditorMap()" style="flex: 1; min-height: 44px; height: auto; padding: 10px 14px; font-size: 12px; font-weight: 700; border: 1px solid rgba(249, 115, 22, 0.25) !important; color: var(--accent-orange) !important; background: rgba(249, 115, 22, 0.05) !important; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 14px; box-sizing: border-box; cursor: pointer; transition: all 0.2s;">
                 <span>🗺️</span> <span>Pick From Map</span>
               </button>
             </div>
 
-            <button type="button" class="btn" onclick="saveSimpleAddressFields()" style="height: 48px; font-size: 14px; font-weight: 700; border: none !important; background: linear-gradient(135deg, #059669 0%, #064e3b 100%) !important; color: #ffffff !important; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; box-sizing: border-box; cursor: pointer; margin-top: 4px; transition: all 0.2s; box-shadow: 0 4px 14px rgba(16,185,129,0.25);">
+            <button type="button" class="btn" onclick="saveSimpleAddressFields()" style="min-height: 48px; height: auto; padding: 12px 18px; font-size: 14px; font-weight: 700; border: none !important; background: linear-gradient(135deg, #059669 0%, #064e3b 100%) !important; color: #ffffff !important; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; box-sizing: border-box; cursor: pointer; margin-top: 4px; transition: all 0.2s; box-shadow: 0 4px 14px rgba(16,185,129,0.25);">
               <span>💾</span> <span style="font-family: 'Poppins', sans-serif;">SAVE</span>
             </button>
           </div>
@@ -794,7 +794,7 @@
 
           const actionRowHtml = `
             <div style="display: flex; align-items: center; justify-content: center; width: 100%; box-sizing: border-box; margin-top: 8px;">
-              <button type="button" onclick="openSimpleAddressEditor()" style="width: 100%; height: 38px; border-radius: 19px; background: rgba(249, 115, 22, 0.05); border: 1px solid rgba(249, 115, 22, 0.4); color: var(--accent-orange); font-size: 11.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Poppins', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s;" onmouseover="this.style.background='rgba(249, 115, 22, 0.15)'; this.style.borderColor='var(--accent-orange)'" onmouseout="this.style.background='rgba(249, 115, 22, 0.05)'; this.style.borderColor='rgba(249, 115, 22, 0.4)'">
+              <button type="button" onclick="openSimpleAddressEditor()" style="width: 100%; min-height: 38px; height: auto; padding: 8px 16px; border-radius: 19px; background: rgba(249, 115, 22, 0.05); border: 1px solid rgba(249, 115, 22, 0.4); color: var(--accent-orange); font-size: 11.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Poppins', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s;" onmouseover="this.style.background='rgba(249, 115, 22, 0.15)'; this.style.borderColor='var(--accent-orange)'" onmouseout="this.style.background='rgba(249, 115, 22, 0.05)'; this.style.borderColor='rgba(249, 115, 22, 0.4)'">
                 <span>✏️</span> <span>Edit Address</span>
               </button>
             </div>
@@ -911,7 +911,7 @@
             ${addressListHtml}
           </div>
 
-          <button type="button" class="btn" onclick="triggerAddNewAddressFromModal()" style="height: 46px; font-size: 12.5px; font-weight: 700; border: none !important; background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; color: #ffffff !important; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; box-sizing: border-box; cursor: pointer; margin-top: 4px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(16,185,129,0.2);">
+          <button type="button" class="btn" onclick="triggerAddNewAddressFromModal()" style="min-height: 46px; height: auto; padding: 10px 16px; font-size: 12.5px; font-weight: 700; border: none !important; background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; color: #ffffff !important; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; box-sizing: border-box; cursor: pointer; margin-top: 4px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(16,185,129,0.2);">
             <span>➕</span> <span style="font-family: 'Poppins', sans-serif; text-transform: uppercase; letter-spacing: 0.3px;">Add New Address</span>
           </button>
         </div>
@@ -1061,7 +1061,7 @@
                 ${item.label}
               </span>
               <div style="display:flex; gap:6px; margin-left:auto; align-items:center; flex-shrink:0;">
-                <button onclick="setSavedAddressAsPrimary('${item.id}')" style="font-size:10px; font-weight:800; padding:6px 10px; border-radius:8px; transition:all 0.15s; height:28px; display:flex; align-items:center; justify-content:center; box-sizing:border-box; ${badgeStyle}">
+                <button onclick="setSavedAddressAsPrimary('${item.id}')" style="font-size:10px; font-weight:800; padding:4px 10px; border-radius:8px; transition:all 0.15s; min-height:28px; height:auto; display:flex; align-items:center; justify-content:center; box-sizing:border-box; ${badgeStyle}">
                   ${badgeText}
                 </button>
                 <button onclick="deleteSavedAddress('${item.id}')" style="background:rgba(239,68,68,0.08); color:#ef4444; font-size:12px; border:1.2px solid rgba(239,68,68,0.25); width:28px; height:28px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; box-sizing:border-box;" title="Delete">
@@ -1777,10 +1777,10 @@
               <span style="position: absolute; right: 14px; top: 12px; font-size: 16px; cursor: pointer; color: var(--text-muted);" onclick="togglePasswordVisibility('reauth-password-input', this)">👁️</span>
             </div>
             <div style="display:flex; gap:12px; justify-content:center; width:100%;">
-              <button class="btn btn-secondary" style="flex:1; padding:10px 14px; font-size:12px; font-weight:bold; border-radius:14px; height:42px; background:#1c1c1e; color:#aeaea2; border:1px solid #2c2c2e;" id="reauth-cancel-btn">
+              <button class="btn btn-secondary" style="flex:1; padding:10px 14px; font-size:12px; font-weight:bold; border-radius:14px; min-height:42px; height:auto; background:#1c1c1e; color:#aeaea2; border:1px solid #2c2c2e;" id="reauth-cancel-btn">
                 \${currentLang === 'ta' ? "ரத்துசெய்" : "CANCEL"}
               </button>
-              <button class="btn" style="flex:1; padding:10px 14px; font-size:12px; font-weight:800; border-radius:14px; height:42px; background:#ef4444; color:#ffffff; border:1.5px solid #ef4444;" id="reauth-confirm-btn">
+              <button class="btn" style="flex:1; padding:10px 14px; font-size:12px; font-weight:800; border-radius:14px; min-height:42px; height:auto; background:#ef4444; color:#ffffff; border:1.5px solid #ef4444;" id="reauth-confirm-btn">
                 \${currentLang === 'ta' ? "உறுதிசெய்" : "CONFIRM"}
               </button>
             </div>
@@ -2090,8 +2090,8 @@
           </div>
 
           <div style="display: flex; gap: 8px; margin-top: 8px;">
-            <button onclick="closeRiderPasswordChangeModal()" class="btn btn-secondary" style="flex: 1; height: 42px; margin:0;">CANCEL</button>
-            <button onclick="submitRiderPasswordChange()" class="btn" style="flex: 1.5; height: 42px; margin:0; background: var(--accent-orange); color: #000; font-weight: 800; border: none; border-radius: 10px;">SAVE / சேமி 💾</button>
+            <button onclick="closeRiderPasswordChangeModal()" class="btn btn-secondary" style="flex: 1; min-height: 42px; height: auto; padding: 10px 14px; margin:0;">CANCEL</button>
+            <button onclick="submitRiderPasswordChange()" class="btn" style="flex: 1.5; min-height: 42px; height: auto; padding: 10px 14px; margin:0; background: var(--accent-orange); color: #000; font-weight: 800; border: none; border-radius: 10px;">SAVE / சேமி 💾</button>
           </div>
 
         </div>
