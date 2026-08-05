@@ -896,6 +896,11 @@
             <input type="text" id="add-prod-short-desc" class="form-control" placeholder="Short description, max 80 characters" maxlength="80">
           </div>
 
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 4px;">Aliases / Alternate Names (comma-separated)</label>
+            <input type="text" id="add-prod-aliases" class="form-control" placeholder="e.g. egg, muttai, முட்டை, fresh egg">
+          </div>
+
           <div class="form-group" style="margin-bottom: 12px; display: none;">
             <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 4px;">Veg / Non-Veg *</label>
             <div style="display: flex; gap: 20px; padding: 6px 0;">
@@ -1047,6 +1052,11 @@
           <div class="form-group" style="margin-bottom: 12px;">
             <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 4px;">Short Description</label>
             <input type="text" id="edit-prod-short-desc" class="form-control" placeholder="Short description, max 80 characters" maxlength="80">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-size: 11px; color: var(--text-secondary); font-weight: 600; display: block; margin-bottom: 4px;">Aliases / Alternate Names (comma-separated)</label>
+            <input type="text" id="edit-prod-aliases" class="form-control" placeholder="e.g. egg, muttai, முட்டை, fresh egg">
           </div>
 
           <div class="form-group" style="margin-bottom: 12px; display: none;">
@@ -1853,6 +1863,26 @@
           <button class="btn btn-secondary" onclick="hideForgotPasswordModal()" style="padding: 12px; width: 100%;" id="fp-btn-close-success">Close & Return to Login</button>
         </div>
 
+      </div>
+    </div>
+
+    <!-- CHANGE EMAIL MODAL -->
+    <div id="change-email-modal" class="modal-backdrop" onclick="hideChangeEmailModal()" style="align-items: center; padding: 20px; display: none; z-index: 10005;">
+      <div style="background: #111111; color: #ffffff; border: 1.5px solid var(--border-color); border-radius: 28px; width: 100%; max-width: 400px; padding: 24px; position: relative; box-shadow: 0 15px 35px rgba(0,0,0,0.85); display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 style="font-size: 16px; font-weight: 700; color: var(--accent-orange); margin: 0;">✉️ Change Email Address</h3>
+          <button onclick="hideChangeEmailModal()" style="background: #222222; color: #ffffff; width: 32px; height: 32px; border-radius: 50%; border: none; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">×</button>
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">Re-authenticate with your current password to update your registered email securely.</p>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Current Password</label>
+          <input type="password" id="ce-current-password" class="form-control" placeholder="Enter current password" style="margin-top: 4px; padding: 10px; font-size: 13px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">New Email Address</label>
+          <input type="email" id="ce-new-email" class="form-control" placeholder="Enter new email address" style="margin-top: 4px; padding: 10px; font-size: 13px;">
+        </div>
+        <button class="btn btn-primary" onclick="submitChangeEmail()" style="padding: 14px; width: 100%; font-weight: 700;">Update Email</button>
       </div>
     </div>
 
@@ -2825,7 +2855,7 @@
         <div class="form-group" style="margin-bottom: 0; display: flex; flex-direction: column; gap: 6px;">
           <label style="font-size: 12.5px; font-weight: 600; color: #9ca3af; font-family: 'Poppins', sans-serif;">Email Address</label>
           <div style="display: flex; gap: 8px;">
-            <input type="email" id="prof-edit-email" class="form-control" placeholder="Enter email address" style="font-size: 14px; height: 46px; padding: 0 16px; background: rgba(255, 255, 255, 0.02); border: 1.5px solid rgba(255, 255, 255, 0.08); border-radius: 12px; color: #ffffff; width: 100%; box-sizing: border-box; outline: none;" readonly />
+            <input type="email" id="prof-edit-email" class="form-control" placeholder="Enter email address" style="font-size: 14px; height: 46px; padding: 0 16px; background: rgba(255, 255, 255, 0.02); border: 1.5px solid rgba(255, 255, 255, 0.08); border-radius: 12px; color: #ffffff; width: 100%; box-sizing: border-box; outline: none; transition: all 0.2s ease; -webkit-user-select: text; user-select: text;" onfocus="this.style.borderColor='var(--accent-orange)'; this.style.background='rgba(255, 255, 255, 0.04)';" onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'; this.style.background='rgba(255, 255, 255, 0.02)';" />
             <button type="button" onclick="openChangeEmailModal()" style="padding: 0 14px; height: 46px; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; color: var(--accent-orange); font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer;">✉️ Change</button>
           </div>
         </div>
@@ -3194,7 +3224,7 @@
       <!-- ADMIN TAB 4: DELIVERY -->
       <div id="admin-tab-delivery" class="admin-subtab-container" style="display: none;">
         <!-- Add Delivery Person Form -->
-        <div class="card" style="border-color: var(--accent-orange); margin-bottom: 16px; background: #ffffff;">
+        <div class="card" style="border-color: var(--accent-orange); margin-bottom: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1);">
           <h4 style="color: var(--accent-orange); font-size: 14px; text-transform: uppercase; margin-bottom: 10px;" id="admin-delivery-form-title">Register New Delivery Partner</h4>
           <form id="admin-delivery-form" onsubmit="handleDeliverySave(event)">
             <input type="hidden" id="edit-exec-id" value="">
@@ -3265,7 +3295,7 @@
               <div class="grid-2col" style="gap: 10px;">
                 <div class="form-group">
                   <label style="font-size: 11.5px; font-weight: 700; color: var(--text-primary);">Payout Type / திட்ட வகை</label>
-                  <select id="add-exec-salary-type" class="form-control" style="background: #ffffff; border: 1.5px solid var(--border-color); color: var(--text-primary); padding: 10px; border-radius: 8px;" onchange="onSalaryTypeChange()">
+                  <select id="add-exec-salary-type" class="form-control" onchange="onSalaryTypeChange()">
                     <option value="per_order">Pay Per Order (கமிஷன்)</option>
                     <option value="fixed">Fixed Monthly Salary (மாதச் சம்பளம்)</option>
                     <option value="commission">Commission Based (சதவீதம்)</option>
@@ -3295,7 +3325,7 @@
 
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <button type="submit" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 850; padding: 12px; border-radius: 10px; font-size: 13.5px; box-shadow: 0 4px 15px rgba(245,158,11,0.2);" id="exec-submit-btn">Register Rider ✓</button>
-              <button type="button" class="btn" style="background: #ffffff; border: 1px solid var(--border-color); color: var(--text-secondary); display: none; padding: 10px;" id="exec-cancel-btn" onclick="resetDeliveryForm()">Cancel Edit / ரத்து செய்</button>
+              <button type="button" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; display: none; padding: 10px; border-radius: 10px; font-weight: 700;" id="exec-cancel-btn" onclick="resetDeliveryForm()">Cancel Edit / ரத்து செய்</button>
               <button type="button" class="btn" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; display: none; padding: 10px; margin-top: 4px;" id="exec-delete-btn" onclick="handleFormDeleteRider()">Delete Rider Completely ❌</button>
             </div>
           </form>
@@ -3434,10 +3464,10 @@
             </div>
 
             <!-- Schedule Options -->
-            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 10px 12px; border-radius: 10px; margin-bottom: 12px;">
-              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #e2e8f0; cursor: pointer; user-select: none;">
-                <input type="checkbox" id="push-form-schedule-toggle" onchange="togglePushScheduleDatetime(this.checked)" style="accent-color: #818cf8; width: 16px; height: 16px;">
-                <span>⏰ Schedule for Later (நேரத்தை திட்டமிடு)</span>
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; width: 100%; box-sizing: border-box;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #e2e8f0; cursor: pointer; user-select: none; width: 100%; box-sizing: border-box;">
+                <input type="checkbox" id="push-form-schedule-toggle" onchange="togglePushScheduleDatetime(this.checked)" style="accent-color: #818cf8; width: 18px; height: 18px; flex-shrink: 0; cursor: pointer;">
+                <span style="flex: 1; min-width: 0; overflow-wrap: break-word; word-break: break-word; line-height: 1.4;">⏰ Schedule for Later (நேரத்தை திட்டமிடு)</span>
               </label>
 
               <div id="push-schedule-datetime-box" style="display: none; margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1);">
@@ -3573,22 +3603,22 @@
         
         <!-- Preset Selector Buttons -->
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;" id="analytics-presets">
-          <button type="button" class="btn" style="padding: 5px 10px; font-size: 11px; font-weight: 700; background: var(--accent-orange); color: #000; border-radius: 8px;" onclick="setAnalyticsDatePreset('all')">All Time</button>
-          <button type="button" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px; font-weight: 600; border-radius: 8px;" onclick="setAnalyticsDatePreset('today')">Today / இன்று</button>
-          <button type="button" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px; font-weight: 600; border-radius: 8px;" onclick="setAnalyticsDatePreset('yesterday')">Yesterday / நேற்று</button>
-          <button type="button" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px; font-weight: 600; border-radius: 8px;" onclick="setAnalyticsDatePreset('this_week')">This Week / இந்த வாரம்</button>
-          <button type="button" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px; font-weight: 600; border-radius: 8px;" onclick="setAnalyticsDatePreset('this_month')">This Month / இந்த மாதம்</button>
+          <button type="button" class="btn analytics-preset-btn" data-preset="all" style="padding: 6px 12px; font-size: 11.5px; font-weight: 700; background: var(--accent-orange); color: #000; border-radius: 8px;" onclick="setAnalyticsDatePreset('all')">All Time</button>
+          <button type="button" class="btn btn-secondary analytics-preset-btn" data-preset="today" style="padding: 6px 12px; font-size: 11.5px; font-weight: 600; border-radius: 8px; background: rgba(255,255,255,0.08); color: #fff;" onclick="setAnalyticsDatePreset('today')">Today / இன்று</button>
+          <button type="button" class="btn btn-secondary analytics-preset-btn" data-preset="yesterday" style="padding: 6px 12px; font-size: 11.5px; font-weight: 600; border-radius: 8px; background: rgba(255,255,255,0.08); color: #fff;" onclick="setAnalyticsDatePreset('yesterday')">Yesterday / நேற்று</button>
+          <button type="button" class="btn btn-secondary analytics-preset-btn" data-preset="this_week" style="padding: 6px 12px; font-size: 11.5px; font-weight: 600; border-radius: 8px; background: rgba(255,255,255,0.08); color: #fff;" onclick="setAnalyticsDatePreset('this_week')">This Week / இந்த வாரம்</button>
+          <button type="button" class="btn btn-secondary analytics-preset-btn" data-preset="this_month" style="padding: 6px 12px; font-size: 11.5px; font-weight: 600; border-radius: 8px; background: rgba(255,255,255,0.08); color: #fff;" onclick="setAnalyticsDatePreset('this_month')">This Month / இந்த மாதம்</button>
         </div>
 
         <!-- Custom Date Input Pickers -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);">
           <div>
-            <label style="font-size: 10.5px; color: var(--text-muted); display: block; margin-bottom: 3px;">From Date (ஆரம்ப தேதி):</label>
-            <input type="date" id="analytics-start-date" class="form-control" style="font-size: 12px; height: 36px; padding: 0 8px; background: #111; border: 1px solid #333; color: #fff; border-radius: 8px;" onchange="onCustomAnalyticsDateChange()">
+            <label style="font-size: 11.5px; font-weight: 700; color: #ffffff; display: block; margin-bottom: 5px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">📅 From Date (ஆரம்ப தேதி):</label>
+            <input type="date" id="analytics-start-date" class="form-control" style="font-size: 12.5px; height: 40px; padding: 0 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.22); color: #ffffff; color-scheme: dark; border-radius: 9px; width: 100%; font-weight: 500; outline: none; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);" onchange="onCustomAnalyticsDateChange()">
           </div>
           <div>
-            <label style="font-size: 10.5px; color: var(--text-muted); display: block; margin-bottom: 3px;">To Date (முடிவு தேதி):</label>
-            <input type="date" id="analytics-end-date" class="form-control" style="font-size: 12px; height: 36px; padding: 0 8px; background: #111; border: 1px solid #333; color: #fff; border-radius: 8px;" onchange="onCustomAnalyticsDateChange()">
+            <label style="font-size: 11.5px; font-weight: 700; color: #ffffff; display: block; margin-bottom: 5px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">📅 To Date (முடிவு தேதி):</label>
+            <input type="date" id="analytics-end-date" class="form-control" style="font-size: 12.5px; height: 40px; padding: 0 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.22); color: #ffffff; color-scheme: dark; border-radius: 9px; width: 100%; font-weight: 500; outline: none; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);" onchange="onCustomAnalyticsDateChange()">
           </div>
         </div>
 
@@ -3877,17 +3907,22 @@
                 </div>
 
                 <!-- DYNAMIC SHADING BOUNDARY MAP -->
-                <div id="admin-zones-map-card" style="margin-top: 10px; margin-bottom: 10px; border-radius: 12px; border: 1.2px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.3); overflow: hidden; padding: 10px; box-shadow: inset 0 1px 1px rgba(255,255,255,0.05);">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div id="admin-zones-map-card" style="margin-top: 10px; margin-bottom: 10px; border-radius: 12px; border: 1.2px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); overflow: hidden; padding: 10px; box-shadow: inset 0 1px 1px rgba(255,255,255,0.05);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
                     <p style="font-weight: 850; font-size: 11px; text-transform: uppercase; color: var(--accent-orange); margin: 0; display: flex; align-items: center; gap: 4px;">
                       🗺️ மண்டல வரைபடம் / Live Zones Shading Map
                     </p>
-                    <span style="font-size: 9px; background: rgba(16,185,129,0.15); color: #10b981; padding: 2px 6px; border-radius: 6px; font-weight: 900; text-transform: uppercase; display: inline-block;">Leaflet Live</span>
+                    <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                      <button type="button" class="btn" style="padding: 3px 8px; font-size: 9.5px; font-weight: 700; background: rgba(255,255,255,0.12); color: #fff; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer;" onclick="changeAdminZonesMapLayer('google')">🗺️ Map</button>
+                      <button type="button" class="btn" style="padding: 3px 8px; font-size: 9.5px; font-weight: 700; background: rgba(255,255,255,0.12); color: #fff; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer;" onclick="changeAdminZonesMapLayer('satellite')">🛰️ Satellite</button>
+                      <button type="button" class="btn" style="padding: 3px 8px; font-size: 9.5px; font-weight: 700; background: rgba(255,255,255,0.12); color: #fff; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer;" onclick="changeAdminZonesMapLayer('carto')">🏙️ Standard</button>
+                      <button type="button" class="btn" style="padding: 3px 8px; font-size: 9.5px; font-weight: 700; background: rgba(245,158,11,0.25); color: var(--accent-orange); border-radius: 6px; border: 1px solid rgba(245,158,11,0.5); cursor: pointer;" onclick="initAdminZonesMap(true)">🔄 Reload</button>
+                    </div>
                   </div>
-                  <div id="admin-zones-leaflet-map" style="height: 220px; width: 100%; border-radius: 8px; border: 1.2px solid rgba(245,158,11,0.2); background: #111;"></div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 9px; color: var(--text-muted); font-family: 'Poppins', sans-serif;">
-                    <span>🏪 Edappadi Kadai Central Store Hub (11.5815, 77.8488)</span>
-                    <button type="button" onclick="initAdminZonesMap(true)" style="background: none; border: none; color: var(--accent-orange); font-size: 9px; font-weight: 800; cursor: pointer; padding: 0; text-decoration: underline; margin: 0;">🔄 Reset Center</button>
+                  <div id="admin-zones-leaflet-map" style="height: 250px; min-height: 250px; width: 100%; border-radius: 8px; border: 1.2px solid rgba(245,158,11,0.3); background: #111827; position: relative; z-index: 1;"></div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 9.5px; color: var(--text-muted); font-family: 'Poppins', sans-serif;">
+                    <span>🏪 Edappadi Kadai Central Hub (11.5815, 77.8488)</span>
+                    <span style="color: #10b981; font-weight: 700;">🟢 Interactive Live Map</span>
                   </div>
                 </div>
 
@@ -3959,21 +3994,21 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                   <div>
                     <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">English Name *</label>
-                    <input type="text" id="new-cat-en" class="form-control" placeholder="e.g. Sea Fish" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));" required>
+                    <input type="text" id="new-cat-en" class="form-control" placeholder="e.g. Sea Fish" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;" required>
                   </div>
                   <div>
                     <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Tamil Name (தமிழ்) *</label>
-                    <input type="text" id="new-cat-ta" class="form-control" placeholder="எ.கா: கடல் மீன்" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));" required>
+                    <input type="text" id="new-cat-ta" class="form-control" placeholder="எ.கா: கடல் மீன்" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;" required>
                   </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
                   <div>
                     <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Icon / Emoji</label>
-                    <input type="text" id="new-cat-icon" class="form-control" placeholder="e.g. 🐟" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); text-align: center;">
+                    <input type="text" id="new-cat-icon" class="form-control" placeholder="e.g. 🐟" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important; text-align: center;">
                   </div>
                   <div>
                     <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Accent Color (Hex)</label>
-                    <input type="text" id="new-cat-accent" class="form-control" placeholder="#2E7D32" value="#2E7D32" style="height: 36px; font-size: 12px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18));">
+                    <input type="text" id="new-cat-accent" class="form-control" placeholder="#2E7D32" value="#2E7D32" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;">
                   </div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; height: 38px; font-size: 12px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; border-radius: 8px; cursor: pointer;">
@@ -4007,9 +4042,9 @@
 
                 <div class="form-group" style="margin-bottom: 10px;">
                   <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 4px;">Banner Image File / URL *</label>
-                  <div style="display: flex; gap: 8px; margin-bottom: 6px;">
-                    <input type="text" id="admin-banner-url-input" class="form-control" placeholder="https://images.unsplash.com/... or upload" style="height: 36px; font-size: 11.5px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); flex: 1;" onchange="updateAdminBannerUrlPreview()">
-                    <label class="btn" style="height: 36px; padding: 0 12px; font-size: 11px; font-weight: 700; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; flex-shrink: 0;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <input type="text" id="admin-banner-url-input" class="form-control" placeholder="https://images.unsplash.com/... or upload" style="height: 38px; font-size: 11.5px; background: var(--bg-input, rgba(15,23,42,0.85)); color: var(--text-primary, #fff); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); flex: 1; min-width: 0;" onchange="updateAdminBannerUrlPreview()">
+                    <label class="btn" style="height: 38px; padding: 0 14px; font-size: 11px; font-weight: 700; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; flex-shrink: 0;">
                       📷 Upload
                       <input type="file" id="admin-banner-file-input" accept="image/*" style="display: none;" onchange="compressAndCacheBannerImage(event)">
                     </label>
@@ -4019,7 +4054,7 @@
                 <!-- PREVIEW CONTAINER -->
                 <div id="admin-banner-preview-container" style="display: none; margin-bottom: 10px; text-align: center; position: relative;">
                   <img id="admin-banner-preview-img" src="" style="max-height: 120px; width: 100%; object-fit: cover; border-radius: 8px; border: 1.5px solid rgba(59, 130, 246, 0.4);" />
-                  <button type="button" onclick="deleteSelectedBannerPhoto()" style="position: absolute; top: 6px; right: 6px; background: rgba(239, 68, 68, 0.85); color: #fff; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; font-weight: bold; cursor: pointer;">✕</button>
+                  <button type="button" onclick="deleteSelectedBannerPhoto()" style="position: absolute; top: 6px; right: 6px; background: rgba(239, 68, 68, 0.85); color: #fff; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">✕</button>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
@@ -4431,17 +4466,17 @@
       </div>
 
       <!-- Sticky Mini Draft Cart Panel -->
-      <div id="lyo-ai-draft-cart-bar" style="display: none; background: linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(245,158,11,0.12) 100%) !important; border-top: 1px solid rgba(16,185,129,0.3) !important; border-bottom: 1px solid rgba(245,158,11,0.25) !important; backdrop-filter: blur(20px) saturate(175%) !important; -webkit-backdrop-filter: blur(20px) saturate(175%) !important; padding: 4px 12px; margin: 0; align-items: center; justify-content: space-between; width: 100%; max-width: 100%; box-sizing: border-box;">
+      <div id="lyo-ai-draft-cart-bar" style="display: none; background: linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(245,158,11,0.12) 100%) !important; border-top: 1px solid rgba(16,185,129,0.3) !important; border-bottom: 1px solid rgba(245,158,11,0.25) !important; backdrop-filter: blur(20px) saturate(175%) !important; -webkit-backdrop-filter: blur(20px) saturate(175%) !important; padding: 6px 12px; margin: 0; align-items: center; justify-content: space-between; width: 100%; max-width: 100%; box-sizing: border-box; height: 42px;">
         <div style="display: flex; align-items: center; gap: 6px;">
           <span style="font-size: 14px;">🛒</span>
           <div>
-            <p id="lyo-ai-draft-cart-title" style="margin: 0; font-size: 11px; font-weight: 700; color: #fff;"></p>
-            <p id="lyo-ai-draft-cart-sub" style="margin: 0; font-size: 9.5px; color: var(--text-muted);"></p>
+            <p id="lyo-ai-draft-cart-title" style="margin: 0; font-size: 11px; font-weight: 700; color: #fff; line-height: 1.2;"></p>
+            <p id="lyo-ai-draft-cart-sub" style="margin: 0; font-size: 9.5px; color: var(--text-muted); line-height: 1.2;"></p>
           </div>
         </div>
-        <div style="display: flex; gap: 6px; align-items: center;">
-          <button onclick="clearLyoAiCart()" class="btn btn-secondary btn-compact" style="min-height: 30px; height: auto; padding: 6px 10px; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 11px; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.15); color: #ef4444; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">Clear</button>
-          <button id="lyo-ai-place-order-btn" onclick="checkoutLyoAiOrder()" class="btn btn-primary btn-compact" style="min-height: 30px; height: auto; padding: 6px 14px; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 800; font-size: 11.5px; background: linear-gradient(135deg, var(--accent-orange), #10b981); border: none; color: #ffffff; box-shadow: 0 2px 8px rgba(16,185,129,0.3); display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">Place Order ✅</button>
+        <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+          <button onclick="clearLyoAiCart()" type="button" style="height: 28px !important; min-height: 28px !important; max-height: 28px !important; padding: 0 10px !important; border-radius: 14px !important; font-family: 'Inter', sans-serif; font-weight: 700 !important; font-size: 11px !important; border: 1px solid rgba(239,68,68,0.35) !important; background: rgba(239,68,68,0.15) !important; color: #ef4444 !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; cursor: pointer !important; white-space: nowrap !important; margin: 0 !important; line-height: 1 !important;">Clear</button>
+          <button id="lyo-ai-place-order-btn" onclick="checkoutLyoAiOrder()" type="button" style="height: 28px !important; min-height: 28px !important; max-height: 28px !important; padding: 0 12px !important; border-radius: 14px !important; font-family: 'Inter', sans-serif; font-weight: 800 !important; font-size: 11px !important; background: linear-gradient(135deg, var(--accent-orange), #10b981) !important; border: none !important; color: #ffffff !important; box-shadow: 0 2px 6px rgba(16,185,129,0.25) !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important; margin: 0 !important; line-height: 1 !important;">Place Order ✅</button>
         </div>
       </div>
 
@@ -4669,32 +4704,68 @@ function debouncedSearchReviews() {
 // --- 4. Admin Analytics Handlers ---
 function setAnalyticsDatePreset(preset) {
   window.currentAnalyticsPreset = preset;
+
+  // Clear custom date inputs if selecting preset
+  if (preset !== 'custom') {
+    const sInput = document.getElementById('analytics-start-date');
+    const eInput = document.getElementById('analytics-end-date');
+    if (sInput) sInput.value = '';
+    if (eInput) eInput.value = '';
+  }
+
   const buttons = document.querySelectorAll('.analytics-preset-btn');
-  buttons.forEach(btn => btn.classList.remove('active'));
-  const activeBtn = document.querySelector(`[data-preset="${preset}"]`);
-  if (activeBtn) activeBtn.classList.add('active');
-  if (typeof renderAnalyticsReport === 'function') renderAnalyticsReport();
+  buttons.forEach(btn => {
+    if (btn.getAttribute('data-preset') === preset) {
+      btn.style.background = 'var(--accent-orange)';
+      btn.style.color = '#000';
+      btn.style.fontWeight = '700';
+    } else {
+      btn.style.background = 'rgba(255,255,255,0.08)';
+      btn.style.color = '#fff';
+      btn.style.fontWeight = '600';
+    }
+  });
+
+  if (typeof renderAdminAnalytics === 'function') {
+    renderAdminAnalytics();
+  } else if (typeof renderAnalyticsReport === 'function') {
+    renderAnalyticsReport();
+  }
 }
 
 function onCustomAnalyticsDateChange() {
-  if (typeof renderAnalyticsReport === 'function') renderAnalyticsReport();
+  window.currentAnalyticsPreset = 'custom';
+  const buttons = document.querySelectorAll('.analytics-preset-btn');
+  buttons.forEach(btn => {
+    btn.style.background = 'rgba(255,255,255,0.08)';
+    btn.style.color = '#fff';
+    btn.style.fontWeight = '600';
+  });
+  if (typeof renderAdminAnalytics === 'function') {
+    renderAdminAnalytics();
+  } else if (typeof renderAnalyticsReport === 'function') {
+    renderAnalyticsReport();
+  }
 }
 
 function exportOrdersToCSV() {
-  const ordersToExport = window.adminOrders || window.ordersHistory || [];
+  const ordersToExport = window._currentFilteredAnalyticsOrders || window.adminOrders || window.ordersHistory || (typeof getDataCached === 'function' ? getDataCached('ek_orders', []) : []);
   if (!ordersToExport || ordersToExport.length === 0) {
-    if (typeof showToast === 'function') showToast("ஏற்றுமதி செய்ய ஆர்டர்கள் எதுவும் இல்லை", "warning");
+    if (typeof showToast === 'function') showToast("ஏற்றுமதி செய்ய ஆர்டர்கள் எதுவும் இல்லை / No orders to export", "warning");
     return;
   }
-  let csvContent = "Order ID,Customer Name,Phone,Address,Subtotal,Delivery,Total,Status,Date\n";
+  let csvContent = "\uFEFF"; // UTF-8 BOM for Excel Tamil support
+  csvContent += "Order ID,Customer Name,Phone,Address,Items,Subtotal (INR),Delivery (INR),Total Amount (INR),Status,Date\n";
   ordersToExport.forEach(o => {
+    const itemsStr = Array.isArray(o.items) ? o.items.map(i => `${i.tamilName || i.englishName || 'Item'} x${i.quantity || 1}`).join(" | ") : "";
     const row = [
-      `"${o.id || ''}"`,
+      `"${o.id || o.orderId || ''}"`,
       `"${(o.customerName || '').replace(/"/g, '""')}"`,
-      `"${o.customerPhone || ''}"`,
+      `"${o.customerPhone || o.phone || ''}"`,
       `"${(o.address || '').replace(/"/g, '""')}"`,
+      `"${itemsStr.replace(/"/g, '""')}"`,
       o.subtotal || 0,
-      o.deliveryFee || 0,
+      o.deliveryFee || o.deliveryCharge || 0,
       o.total || 0,
       `"${o.status || ''}"`,
       `"${o.createdAt ? new Date(o.createdAt).toLocaleString() : ''}"`
@@ -4706,14 +4777,15 @@ function exportOrdersToCSV() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.setAttribute("href", url);
-  link.setAttribute("download", `Edappadi_Orders_${new Date().toISOString().slice(0,10)}.csv`);
+  link.setAttribute("download", `Edappadi_Kadai_Sales_Report_${new Date().toISOString().slice(0,10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  if (typeof showToast === 'function') showToast("CSV அறிக்கை பதிவிறக்கப்பட்டது 📥", "success");
+  if (typeof showToast === 'function') showToast("CSV விற்பனை அறிக்கை பதிவிறக்கப்பட்டது! 📥", "success");
 }
 
 function printAnalyticsReport() {
+  if (typeof renderAdminAnalytics === 'function') renderAdminAnalytics();
   window.print();
 }
 

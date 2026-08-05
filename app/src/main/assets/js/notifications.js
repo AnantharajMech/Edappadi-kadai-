@@ -1325,15 +1325,96 @@
     }
 
     function promptSendDirectAdminMessage(userId) {
-      const users = getDataCached('ek_users', []);
+      const users = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : [];
       const u = users.find(x => x && x.id === userId);
       const uName = u ? (u.name || u.phone || 'Customer') : 'Customer';
+      const uPhone = u && u.phone ? u.phone : '';
+      const safeName = typeof escapeHtml === 'function' ? escapeHtml(uName) : uName;
+      const safePhone = typeof escapeHtml === 'function' ? escapeHtml(uPhone) : uPhone;
 
-      const msg = prompt(currentLang === 'ta' ? `${uName}-க்கு அனுப்ப வேண்டிய நேரடி செய்தியை உள்ளிடவும்:` : `Enter direct support message to send to ${uName}:`);
-      if (!msg || !msg.trim()) return;
+      let existingModal = document.getElementById('admin-direct-msg-modal');
+      if (existingModal) existingModal.remove();
 
-      if (typeof sendDirectAdminCustomerMessage === 'function') {
-        sendDirectAdminCustomerMessage(u || userId, msg);
+      const modal = document.createElement('div');
+      modal.id = 'admin-direct-msg-modal';
+      modal.className = 'modal-backdrop active';
+      modal.style.zIndex = '99999';
+      modal.style.display = 'flex';
+      modal.style.justifyContent = 'center';
+      modal.style.alignItems = 'center';
+      modal.style.padding = '16px';
+      modal.style.position = 'fixed';
+      modal.style.top = '0';
+      modal.style.left = '0';
+      modal.style.right = '0';
+      modal.style.bottom = '0';
+      modal.style.background = 'rgba(0,0,0,0.75)';
+      modal.style.backdropFilter = 'blur(6px)';
+
+      const isTa = typeof currentLang !== 'undefined' && currentLang === 'ta';
+
+      modal.innerHTML = `
+        <div style="width: 100%; max-width: 420px; border-radius: 16px; border: 1.5px solid rgba(255,255,255,0.12); background: #111827; padding: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; gap: 14px;" onclick="event.stopPropagation()">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 20px;">💬</span>
+              <div>
+                <h4 style="color: #ffffff; font-size: 14px; font-weight: 800; margin: 0;">${isTa ? 'நேரடி வாடிக்கையாளர் செய்தி' : 'Direct Support Message'}</h4>
+                <p style="font-size: 11px; color: #10b981; margin: 2px 0 0 0; font-weight: 600;">👤 ${safeName} ${safePhone ? '(' + safePhone + ')' : ''}</p>
+              </div>
+            </div>
+            <button id="direct-msg-close-btn" style="background: transparent; border: none; color: #9ca3af; font-size: 18px; cursor: pointer; padding: 4px;">✕</button>
+          </div>
+
+          <div>
+            <label style="font-size: 11px; color: #9ca3af; font-weight: 700; display: block; margin-bottom: 6px;">
+              ${isTa ? 'செய்தியை உள்ளிடவும் / Message Content' : 'Support Message'}
+            </label>
+            <textarea id="direct-msg-textarea" class="form-control" rows="4" placeholder="${isTa ? 'வாடிக்கையாளருக்கு அனுப்ப வேண்டிய செய்தியை உள்ளிடவும்...' : 'Type direct support message for customer...'}" style="width: 100%; height: 90px !important; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important; border-radius: 10px; padding: 10px; font-size: 13px; resize: none; box-sizing: border-box;"></textarea>
+          </div>
+
+          <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px;">
+            <button id="direct-msg-cancel-btn" class="btn" style="padding: 8px 16px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.08); color: #e5e7eb; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; cursor: pointer;">
+              ${isTa ? 'ரத்து' : 'Cancel'}
+            </button>
+            <button id="direct-msg-send-btn" class="btn" style="padding: 8px 18px; font-size: 12px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <span>🚀</span> ${isTa ? 'அனுப்பு' : 'Send Message'}
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const closeModal = () => { modal.remove(); };
+      modal.onclick = closeModal;
+
+      const closeBtn = modal.querySelector('#direct-msg-close-btn');
+      if (closeBtn) closeBtn.onclick = closeModal;
+
+      const cancelBtn = modal.querySelector('#direct-msg-cancel-btn');
+      if (cancelBtn) cancelBtn.onclick = closeModal;
+
+      const sendBtn = modal.querySelector('#direct-msg-send-btn');
+      const textarea = modal.querySelector('#direct-msg-textarea');
+
+      if (textarea) setTimeout(() => textarea.focus(), 50);
+
+      if (sendBtn && textarea) {
+        sendBtn.onclick = () => {
+          const msg = textarea.value.trim();
+          if (!msg) {
+            if (typeof showToast === 'function') {
+              showToast(isTa ? "செய்தியை உள்ளிடவும்!" : "Please enter a message!", "warning");
+            }
+            textarea.focus();
+            return;
+          }
+          closeModal();
+          if (typeof sendDirectAdminCustomerMessage === 'function') {
+            sendDirectAdminCustomerMessage(u || userId, msg);
+          }
+        };
       }
     }
     window.promptSendDirectAdminMessage = promptSendDirectAdminMessage;

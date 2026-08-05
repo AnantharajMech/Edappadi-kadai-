@@ -208,6 +208,14 @@
             orders[idx].paymentMethod = 'UPI Payment (Verified)';
             orders[idx].updatedAt = new Date().toISOString();
             saveData('ek_orders', orders);
+
+            try {
+              if (typeof sendFcmPushNotification === 'function') {
+                sendFcmPushNotification(orders[idx], 'payment_pending_verification', 'pending');
+              }
+            } catch (fcmErr) {
+              console.warn("FCM push notify error on payment approval:", fcmErr);
+            }
           }
           showToast(currentLang === 'ta' ? "கட்டணம் வெற்றிகரமாக உறுதி செய்யப்பட்டது! ✓" : "Payment verified & approved successfully! ✓", "success");
           if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
@@ -254,9 +262,9 @@
         try { fetchAdminOrdersLive(); } catch(e) {}
       }
 
-      let orders = getDataCached('ek_orders', []);
+      let orders = getData('ek_orders', []);
       if (!orders || orders.length === 0) {
-        orders = getData('ek_orders', []);
+        orders = getDataCached('ek_orders', []);
       }
 
       const deletedOrderIds = getDeletedOrderIds();
@@ -268,7 +276,8 @@
       const currentYear = now.getFullYear();
 
       const todayOrders = validOrders.filter(o => {
-        const d = safeParseDate(o.createdAt);
+        const dateVal = o.createdAt || o.timestamp || o.orderDate || o.date;
+        const d = safeParseDate(dateVal);
         return d.toDateString() === todayStr;
       });
 
@@ -2200,6 +2209,8 @@ ${o.items.map((it, idx) => {
         const unit = document.getElementById('add-prod-unit')?.value || 'kg';
 
         const shortDescription = (document.getElementById('add-prod-short-desc')?.value || '').trim();
+        const aliasesRaw = (document.getElementById('add-prod-aliases')?.value || '').trim();
+        const aliasesList = aliasesRaw ? aliasesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
         const foodType = document.querySelector('input[name="add-prod-foodtype"]:checked')?.value || 'veg';
 
         const isSpecial = document.getElementById('add-prod-special')?.checked || false;
@@ -2287,7 +2298,7 @@ ${o.items.map((it, idx) => {
               stock: stockKg,
               isActive: true,
               status: "active",
-              shortDescription, foodType,
+              shortDescription, foodType, aliases: aliasesList,
               imageUrl: finalImg,
               isSpecial,
               isFreeDeliveryEligible,
@@ -2309,7 +2320,7 @@ ${o.items.map((it, idx) => {
             stock: stockKg,
             isActive: true,
             status: "active",
-            shortDescription, foodType,
+            shortDescription, foodType, aliases: aliasesList,
             imageUrl: finalImg,
             isSpecial,
             isFreeDeliveryEligible,
@@ -2529,6 +2540,10 @@ ${o.items.map((it, idx) => {
       if (editShortDesc) {
         editShortDesc.value = p.shortDescription || '';
       }
+      const editAliases = document.getElementById('edit-prod-aliases');
+      if (editAliases) {
+        editAliases.value = Array.isArray(p.aliases) ? p.aliases.join(', ') : (p.aliases || '');
+      }
       const fType = p.foodType || 'veg';
       const rButton = document.querySelector(`input[name="edit-prod-foodtype"][value="${fType}"]`);
       if (rButton) {
@@ -2582,6 +2597,9 @@ ${o.items.map((it, idx) => {
       const fileInput = document.getElementById('add-prod-file');
       if (fileInput) fileInput.value = '';
 
+      const addAliases = document.getElementById('add-prod-aliases');
+      if (addAliases) addAliases.value = '';
+
       document.getElementById('add-prod-unit').value = 'kg';
       onProductUnitChanged('kg', 'add-prod');
 
@@ -2617,6 +2635,8 @@ ${o.items.map((it, idx) => {
         const unit = document.getElementById('edit-prod-unit')?.value || 'kg';
 
         const shortDescription = (document.getElementById('edit-prod-short-desc')?.value || '').trim();
+        const aliasesRaw = (document.getElementById('edit-prod-aliases')?.value || '').trim();
+        const aliasesList = aliasesRaw ? aliasesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
         const foodType = document.querySelector('input[name="edit-prod-foodtype"]:checked')?.value || 'veg';
 
         const isSpecial = document.getElementById('edit-prod-special')?.checked || false;
@@ -2700,7 +2720,7 @@ ${o.items.map((it, idx) => {
           stock: stockKg,
           isActive: true,
           status: "active",
-          shortDescription, foodType,
+          shortDescription, foodType, aliases: aliasesList,
           imageUrl: finalImg,
           isSpecial,
           isFreeDeliveryEligible,
@@ -4256,12 +4276,25 @@ ${o.items.map((it, idx) => {
       if (typeof showToast === 'function') showToast(`டெம்ப்ளேட் (${chosen.toUpperCase()}) வெற்றிகரமாகப் பயன்படுத்தப்பட்டது! ⚡`, "success");
     }
 
+    function refreshAdminZonesMapSize() {
+      if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
+        try { window._adminZonesMapInstance.invalidateSize(); } catch(e) {}
+      }
+    }
+    window.refreshAdminZonesMapSize = refreshAdminZonesMapSize;
+
+    function changeAdminZonesMapLayer(type) {
+      window._adminZonesMapType = type;
+      if (typeof initAdminZonesMap === 'function') initAdminZonesMap(false);
+    }
+    window.changeAdminZonesMapLayer = changeAdminZonesMapLayer;
+
     function initAdminZonesMap(resetCenter = false) {
       const mapContainer = document.getElementById('admin-zones-leaflet-map');
       if (!mapContainer) return;
 
       if (typeof L === 'undefined') {
-        mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-size: 11px;">📍 எடப்பாடி விநியோக பகுதி வரைபடம் தயார்</div>';
+        mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#f59e0b; font-size: 11px;">⚠️ Leaflet வரைபட நூலகம் ஏற்றப்படவில்லை</div>';
         return;
       }
 
@@ -4277,16 +4310,51 @@ ${o.items.map((it, idx) => {
         const storeLat = 11.5815;
         const storeLng = 77.8488;
 
-        const map = L.map('admin-zones-leaflet-map').setView([storeLat, storeLng], 12);
+        const map = L.map('admin-zones-leaflet-map', {
+          zoomControl: true,
+          attributionControl: false
+        }).setView([storeLat, storeLng], 12);
         window._adminZonesMapInstance = map;
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 18,
-          attribution: '© OpenStreetMap'
-        }).addTo(map);
+        const layerType = window._adminZonesMapType || 'google';
+        let tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+        if (layerType === 'satellite') {
+          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+        } else if (layerType === 'carto') {
+          tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        } else if (layerType === 'dark') {
+          tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        }
 
-        L.marker([storeLat, storeLng]).addTo(map)
-          .bindPopup('<b style="color:#000;">🏪 எடப்பாடி கடை மையக் கிளை</b><br><span style="color:#333; font-size:11px;">Edappadi Kadai Central Store Hub</span>');
+        const primaryTiles = L.tileLayer(tileUrl, {
+          maxZoom: 19,
+          subdomains: ['a', 'b', 'c', 'd'],
+          attribution: 'Google / CartoDB'
+        });
+
+        primaryTiles.on('tileerror', function() {
+          console.warn("[Leaflet Admin Map] Primary tile error, falling back to CartoDB Voyager...");
+          try {
+            map.removeLayer(primaryTiles);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+              maxZoom: 19,
+              subdomains: ['a', 'b', 'c', 'd'],
+              attribution: '© CARTO © OpenStreetMap'
+            }).addTo(map);
+          } catch(err) {}
+        });
+
+        primaryTiles.addTo(map);
+
+        const storeIcon = L.divIcon({
+          className: 'custom-map-icon',
+          html: `<div style="background: #f59e0b; color: #000; padding: 4px 8px; border-radius: 12px; font-weight: 800; font-size: 10px; border: 2px solid #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 4px; white-space: nowrap;">🏪 எடப்பாடி கடை</div>`,
+          iconSize: [110, 30],
+          iconAnchor: [55, 15]
+        });
+
+        L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(map)
+          .bindPopup('<b style="color:#f59e0b; font-size:13px;">🏪 எடப்பாடி கடை மையக் கிளை</b><br><span style="color:#000; font-size:11px;">Central Store Hub | Lat: 11.5815, Lng: 77.8488</span>');
 
         const getZonesFn = typeof getDeliveryZones === 'function' ? getDeliveryZones : function() { return getData('ek_delivery_zones', []); };
         const zones = getZonesFn();
@@ -4300,26 +4368,41 @@ ${o.items.map((it, idx) => {
             radius: radiusMeters,
             color: color,
             fillColor: color,
-            fillOpacity: 0.12,
-            weight: 2
-          }).addTo(map).bindPopup(`<b style="color:#000;">${z.nameTa || z.nameEn}</b><br><span style="color:#333; font-size:11px;">வரம்பு: ${z.maxKm} Km | கட்டணம்: ₹${z.charge}</span>`);
+            fillOpacity: 0.18,
+            weight: 2.5
+          }).addTo(map).bindPopup(`<b style="color:${color}; font-size:13px;">${z.nameTa || z.nameEn}</b><br><span style="color:#000; font-size:11px;">வரம்பு: <b>${z.maxKm} Km</b> | கட்டணம்: <b>₹${z.charge}</b></span>`);
         });
 
-        setTimeout(() => {
-          if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
-            window._adminZonesMapInstance.invalidateSize();
-          }
-        }, 150);
+        const triggerInvalidate = () => {
+          try {
+            if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
+              window._adminZonesMapInstance.invalidateSize();
+            }
+          } catch(e) {}
+        };
 
-        setTimeout(() => {
-          if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
-            window._adminZonesMapInstance.invalidateSize();
-          }
-        }, 400);
+        [10, 50, 150, 300, 600, 1000, 2000].forEach(delay => setTimeout(triggerInvalidate, delay));
+
+        if (window.ResizeObserver && !mapContainer._hasResizeObserver) {
+          mapContainer._hasResizeObserver = true;
+          const ro = new ResizeObserver(() => triggerInvalidate());
+          ro.observe(mapContainer);
+        }
+
+        if (window.IntersectionObserver && !mapContainer._hasIntersectionObserver) {
+          mapContainer._hasIntersectionObserver = true;
+          const io = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                triggerInvalidate();
+              }
+            });
+          }, { threshold: 0.05 });
+          io.observe(mapContainer);
+        }
 
       } catch(mapErr) {
         console.error("initAdminZonesMap error:", mapErr);
-        mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#10b981; font-size: 11px;">📍 எடப்பாடி விநியோக பகுதி வரைபடம் தயார்</div>';
       }
     }
 
@@ -4329,6 +4412,9 @@ ${o.items.map((it, idx) => {
       setTimeout(() => {
         initAdminZonesMap();
       }, 100);
+      setTimeout(() => {
+        refreshAdminZonesMapSize();
+      }, 450);
     }
 
     let _adminOrdersSearchTimer = null;
@@ -4347,6 +4433,220 @@ ${o.items.map((it, idx) => {
       }, 200);
     }
 
+    function renderAdminAnalytics() {
+      let allOrders = [];
+      try {
+        const localCached = typeof getDataCached === 'function' ? getDataCached('ek_orders', []) : [];
+        const localDirect = typeof getData === 'function' ? getData('ek_orders', []) : [];
+        const memoryAdmin = window.adminOrders || [];
+        const memoryHistory = window.ordersHistory || [];
+
+        const orderMap = new Map();
+        [...localCached, ...localDirect, ...memoryAdmin, ...memoryHistory].forEach(o => {
+          if (o && (o.id || o.orderId)) {
+            const idKey = o.id || o.orderId;
+            orderMap.set(idKey, o);
+          }
+        });
+        allOrders = Array.from(orderMap.values());
+      } catch (err) {
+        console.error("[Analytics Engine] Error fetching orders:", err);
+        allOrders = window.adminOrders || [];
+      }
+
+      function isCompletedOrder(o) {
+        if (!o) return false;
+        const st = String(o.status || '').toLowerCase().trim();
+        if (["delivered", "completed", "done", "success", "finished"].includes(st)) return true;
+        if (typeof isDeliveredOrderStatus === 'function' && isDeliveredOrderStatus(st)) return true;
+        return false;
+      }
+
+      const preset = window.currentAnalyticsPreset || 'all';
+      const now = new Date();
+
+      const startDateInput = document.getElementById('analytics-start-date');
+      const endDateInput = document.getElementById('analytics-end-date');
+      let customStart = startDateInput && startDateInput.value ? new Date(startDateInput.value + 'T00:00:00') : null;
+      let customEnd = endDateInput && endDateInput.value ? new Date(endDateInput.value + 'T23:59:59.999') : null;
+
+      let filterStart = null;
+      let filterEnd = null;
+
+      if (customStart || customEnd) {
+        filterStart = customStart;
+        filterEnd = customEnd;
+      } else if (preset === 'today') {
+        filterStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        filterEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      } else if (preset === 'yesterday') {
+        const yest = new Date(now);
+        yest.setDate(yest.getDate() - 1);
+        filterStart = new Date(yest.getFullYear(), yest.getMonth(), yest.getDate(), 0, 0, 0);
+        filterEnd = new Date(yest.getFullYear(), yest.getMonth(), yest.getDate(), 23, 59, 59, 999);
+      } else if (preset === 'this_week') {
+        const day = now.getDay();
+        const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+        filterStart = new Date(now.getFullYear(), now.getMonth(), diffToMon, 0, 0, 0);
+        filterEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      } else if (preset === 'this_month') {
+        filterStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+        filterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      }
+
+      const dateFilteredOrders = allOrders.filter(o => {
+        if (!o) return false;
+        const st = String(o.status || '').toLowerCase().trim();
+        if (["cancelled", "canceled", "rejected", "declined", "failed", "void"].includes(st)) return false;
+
+        if (!filterStart && !filterEnd) return true;
+
+        const oDateRaw = o.createdAt || o.date || o.timestamp || o.orderDate;
+        if (!oDateRaw) return true;
+
+        const oDate = new Date(oDateRaw);
+        if (isNaN(oDate.getTime())) return true;
+
+        if (filterStart && oDate < filterStart) return false;
+        if (filterEnd && oDate > filterEnd) return false;
+        return true;
+      });
+
+      const completedOrders = dateFilteredOrders.filter(o => isCompletedOrder(o));
+      const closedSalesCount = completedOrders.length;
+      
+      let netEarnings = 0;
+      completedOrders.forEach(o => {
+        const totalVal = parseFloat(o.total || o.finalTotal || o.grandTotal || (parseFloat(o.subtotal || 0) + parseFloat(o.deliveryFee || o.deliveryCharge || 0)));
+        netEarnings += isNaN(totalVal) ? 0 : totalVal;
+      });
+
+      const concludedEl = document.getElementById('anal-concluded-orders');
+      if (concludedEl) concludedEl.innerText = closedSalesCount.toLocaleString();
+
+      const revenueEl = document.getElementById('anal-total-revenue');
+      if (revenueEl) revenueEl.innerText = `₹${Math.round(netEarnings).toLocaleString()}`;
+
+      const dateLabelEl = document.getElementById('analytics-active-date-label');
+      if (dateLabelEl) {
+        if (preset === 'all' && !customStart && !customEnd) {
+          dateLabelEl.innerText = 'All Time / அனைத்து காலமும்';
+        } else if (preset === 'today') {
+          dateLabelEl.innerText = 'Today / இன்று';
+        } else if (preset === 'yesterday') {
+          dateLabelEl.innerText = 'Yesterday / நேற்று';
+        } else if (preset === 'this_week') {
+          dateLabelEl.innerText = 'This Week / இந்த வாரம்';
+        } else if (preset === 'this_month') {
+          dateLabelEl.innerText = 'This Month / இந்த மாதம்';
+        } else if (customStart || customEnd) {
+          const sStr = customStart ? customStart.toLocaleDateString('en-IN') : 'Start';
+          const eStr = customEnd ? customEnd.toLocaleDateString('en-IN') : 'Now';
+          dateLabelEl.innerText = `${sStr} - ${eStr}`;
+        }
+      }
+
+      const categories = {
+        meat: { revenue: 0, labelId: 'bar-meat-text', barId: 'bar-meat' },
+        fish: { revenue: 0, labelId: 'bar-fish-text', barId: 'bar-fish' },
+        veg: { revenue: 0, labelId: 'bar-veg-text', barId: 'bar-veg' },
+        fruits: { revenue: 0, labelId: 'bar-fruits-text', barId: 'bar-fruits' },
+        dairy: { revenue: 0, labelId: 'bar-dairy-text', barId: 'bar-dairy' },
+        groceries: { revenue: 0, labelId: 'bar-groceries-text', barId: 'bar-groceries' }
+      };
+
+      const productAggregator = new Map();
+
+      completedOrders.forEach(o => {
+        const items = Array.isArray(o.items) ? o.items : [];
+        items.forEach(item => {
+          if (!item) return;
+          const itemName = (item.englishName || item.tamilName || item.name || item.title || 'Unknown Product').trim();
+          const itemCat = String(item.category || item.categoryId || '').toLowerCase();
+          const itemPrice = parseFloat(item.totalPrice || item.price || 0) * (parseFloat(item.quantity || item.qty || 1));
+          const itemQty = parseFloat(item.quantity || item.qty || 1);
+
+          const lowerName = itemName.toLowerCase();
+          if (itemCat.includes('meat') || itemCat.includes('chicken') || itemCat.includes('mutton') || lowerName.includes('chicken') || lowerName.includes('mutton') || lowerName.includes('சிக்கன்') || lowerName.includes('மட்டன்') || lowerName.includes('இறைச்சி')) {
+            categories.meat.revenue += itemPrice;
+          } else if (itemCat.includes('fish') || itemCat.includes('seafood') || lowerName.includes('fish') || lowerName.includes('prawn') || lowerName.includes('மீன்') || lowerName.includes('நண்டு')) {
+            categories.fish.revenue += itemPrice;
+          } else if (itemCat.includes('veg') || lowerName.includes('tomato') || lowerName.includes('onion') || lowerName.includes('தக்காளி') || lowerName.includes('வெங்காயம்') || lowerName.includes('காய்கறி')) {
+            categories.veg.revenue += itemPrice;
+          } else if (itemCat.includes('fruit') || lowerName.includes('apple') || lowerName.includes('banana') || lowerName.includes('பழம்') || lowerName.includes('ஆப்பிள்')) {
+            categories.fruits.revenue += itemPrice;
+          } else if (itemCat.includes('dairy') || itemCat.includes('egg') || lowerName.includes('milk') || lowerName.includes('egg') || lowerName.includes('பால்') || lowerName.includes('முட்டை')) {
+            categories.dairy.revenue += itemPrice;
+          } else {
+            categories.groceries.revenue += itemPrice;
+          }
+
+          const pKey = itemName;
+          if (!productAggregator.has(pKey)) {
+            productAggregator.set(pKey, {
+              name: item.tamilName ? `${item.tamilName} (${item.englishName || ''})` : itemName,
+              orderIds: new Set(),
+              totalQty: 0,
+              totalRevenue: 0
+            });
+          }
+          const pData = productAggregator.get(pKey);
+          pData.orderIds.add(o.id || o.orderId);
+          pData.totalQty += itemQty;
+          pData.totalRevenue += itemPrice;
+        });
+      });
+
+      let totalCatRev = 0;
+      Object.values(categories).forEach(c => totalCatRev += c.revenue);
+
+      Object.keys(categories).forEach(catKey => {
+        const c = categories[catKey];
+        const pct = totalCatRev > 0 ? Math.round((c.revenue / totalCatRev) * 100) : 0;
+        const txtEl = document.getElementById(c.labelId);
+        if (txtEl) txtEl.innerText = `₹${Math.round(c.revenue).toLocaleString()} (${pct}%)`;
+
+        const barEl = document.getElementById(c.barId);
+        if (barEl) barEl.style.width = `${pct}%`;
+      });
+
+      const bestSellersContainer = document.getElementById('admin-best-sellers');
+      if (bestSellersContainer) {
+        const sortedProducts = Array.from(productAggregator.values())
+          .sort((a, b) => b.totalRevenue - a.totalRevenue)
+          .slice(0, 8);
+
+        if (sortedProducts.length === 0) {
+          bestSellersContainer.innerHTML = `
+            <div style="color:var(--text-muted); text-align:center; padding:16px; font-size:12px;">
+              முடிக்கப்பட்ட விற்பனை விவரங்கள் எதுவும் கிடைக்கவில்லை / No completed sales recorded for this period.
+            </div>`;
+        } else {
+          let html = `<div style="display:flex; flex-direction:column; gap:8px;">`;
+          sortedProducts.forEach((p, idx) => {
+            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+            html += `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-weight:700; font-size:13px; min-width:24px;">${medal}</span>
+                  <div>
+                    <strong style="font-size:12.5px; color:#fff; display:block;">${p.name}</strong>
+                    <span style="font-size:10.5px; color:var(--text-muted);">${p.orderIds.size} Orders | Qty: ${p.totalQty}</span>
+                  </div>
+                </div>
+                <strong style="font-size:13px; color:var(--accent-green);">₹${Math.round(p.totalRevenue).toLocaleString()}</strong>
+              </div>`;
+          });
+          html += `</div>`;
+          bestSellersContainer.innerHTML = html;
+        }
+      }
+
+      window._currentFilteredAnalyticsOrders = completedOrders.length > 0 ? completedOrders : dateFilteredOrders;
+    }
+
+    window.renderAdminAnalytics = renderAdminAnalytics;
+    window.renderAnalyticsReport = renderAdminAnalytics;
     window.debouncedSearchAdminOrders = debouncedSearchAdminOrders;
     window.debouncedSearchProducts = debouncedSearchProducts;
     window.updateDeliveryModeUI = updateDeliveryModeUI;

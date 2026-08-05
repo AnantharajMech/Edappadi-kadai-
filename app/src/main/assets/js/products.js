@@ -950,6 +950,28 @@ function renderAdminBannerList(force = false) {
     return;
   }
 
+  function reorderSlidingBanner(index, dir) {
+    let settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : {};
+    let banners = settings.slidingBanners || [];
+    if (!Array.isArray(banners) || banners.length < 2) return;
+    const newIndex = index + dir;
+    if (newIndex < 0 || newIndex >= banners.length) return;
+
+    const temp = banners[index];
+    banners[index] = banners[newIndex];
+    banners[newIndex] = temp;
+
+    settings.slidingBanners = banners;
+    if (typeof saveData === 'function') saveData('ek_settings', settings);
+    if (typeof db !== 'undefined' && db) {
+      db.collection('ek_settings').doc('global_config').set({ slidingBanners: banners }, { merge: true })
+        .catch(err => console.error("Error saving reordered banners:", err));
+    }
+    renderAdminBannerList();
+    if (typeof renderSlidingBanners === 'function') renderSlidingBanners(true);
+  }
+  window.reorderSlidingBanner = reorderSlidingBanner;
+
   let html = '';
   banners.forEach((b, idx) => {
     if (!b) return;
@@ -957,14 +979,19 @@ function renderAdminBannerList(force = false) {
     const titleText = (b.titleTa || b.titleEn || ('Banner #' + (idx+1))).replace(/"/g, '&quot;');
     const subText = (b.subTa || b.subEn || '').replace(/"/g, '&quot;');
     html += `
-      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px; display: flex; align-items: center; gap: 10px;">
-        <img src="${b.image}" style="width: 50px; height: 35px; object-fit: cover; border-radius: 6px;" onError="this.onerror=null;this.src='https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800';" />
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px; display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%;">
+        <img src="${b.image}" style="width: 50px; height: 35px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" onError="this.onerror=null;this.src='https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800';" />
         <div style="flex: 1; min-width: 0;">
           <div style="color: var(--text-primary); font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${titleText}</div>
           <div style="color: var(--text-secondary); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subText}</div>
         </div>
-        <button type="button" onclick="editSlidingBanner('${bId}')" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">Edit</button>
-        <button type="button" onclick="deleteSlidingBanner('${bId}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;">Delete</button>
+        <div style="display: flex; gap: 2px; background: rgba(0,0,0,0.4); padding: 3px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; align-items: center; flex-shrink: 0;">
+          <button type="button" class="btn" style="padding: 0; margin: 0; font-size: 10px; height: 26px; width: 26px; min-height: 26px; min-width: 26px; display: flex; align-items: center; justify-content: center; background: transparent; color: #94a3b8; border: none; border-radius: 6px; cursor: pointer;" onclick="reorderSlidingBanner(${idx}, -1)" ${idx === 0 ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''}>▲</button>
+          <div style="width: 1px; height: 14px; background: rgba(255,255,255,0.12);"></div>
+          <button type="button" class="btn" style="padding: 0; margin: 0; font-size: 10px; height: 26px; width: 26px; min-height: 26px; min-width: 26px; display: flex; align-items: center; justify-content: center; background: transparent; color: #94a3b8; border: none; border-radius: 6px; cursor: pointer;" onclick="reorderSlidingBanner(${idx}, 1)" ${idx === banners.length - 1 ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''}>▼</button>
+        </div>
+        <button type="button" onclick="editSlidingBanner('${bId}')" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;">Edit</button>
+        <button type="button" onclick="deleteSlidingBanner('${bId}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;">Delete</button>
       </div>
     `;
   });
@@ -1297,6 +1324,28 @@ function renderHomeScreen(forceReRender = false) {
     let isCategoriesLoading = false;
     let categoriesLoadError = null;
 
+    function updateCatalogSyncIndicator(isFromCache) {
+      let badge = document.getElementById('catalog-sync-indicator');
+      if (!badge) {
+        const container = document.getElementById('home-product-search-container') || document.querySelector('.search-wrapper') || document.getElementById('home-product-grid')?.parentElement;
+        if (container) {
+          badge = document.createElement('div');
+          badge.id = 'catalog-sync-indicator';
+          badge.style.cssText = 'display:none; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:600; color:var(--text-muted, #94a3b8); padding:4px 12px; border-radius:20px; background:rgba(255,255,255,0.05); margin:6px auto; width:fit-content; border:1px solid rgba(255,255,255,0.1); transition:all 0.3s ease; z-index:5;';
+          badge.innerHTML = `<span class="spinner-dual" style="width:12px; height:12px; border-width:2px; display:inline-block;"></span> <span>${typeof currentLang !== 'undefined' && currentLang === 'ta' ? 'அண்மைய தகவல்கள் புதுப்பிக்கப்படுகின்றன...' : 'Updating catalog...'}</span>`;
+          if (container.firstChild) {
+            container.insertBefore(badge, container.firstChild);
+          } else {
+            container.appendChild(badge);
+          }
+        }
+      }
+      if (badge) {
+        badge.style.display = isFromCache ? 'inline-flex' : 'none';
+      }
+    }
+    window.updateCatalogSyncIndicator = updateCatalogSyncIndicator;
+
     function retryCloudSync() {
       productsLoadError = null;
       categoriesLoadError = null;
@@ -1586,7 +1635,7 @@ function renderHomeScreen(forceReRender = false) {
             }
           });
         }
-        const renderTargetCount = isFilterChange ? PRODUCTS_PER_BATCH : Math.max(PRODUCTS_PER_BATCH, _currentFilteredProducts.length);
+        const renderTargetCount = _currentFilteredProducts.length;
         while (_currentRenderedCount < renderTargetCount && _currentRenderedCount < _currentFilteredProducts.length) {
           renderNextProductBatch();
         }
@@ -2406,10 +2455,21 @@ function renderHomeScreen(forceReRender = false) {
     }
 
     window.openProductModalDetail = function(productId) {
-      const products = getData('ek_products', []);
-      const prod = products.find(p => p.id === productId);
+      if (!productId) return;
+
+      let products = (typeof getDataCached === 'function' ? getDataCached('ek_products', []) : []) || [];
+      if (!products || products.length === 0) products = (typeof getData === 'function' ? getData('ek_products', []) : []);
+      let prod = products.find(p => p && String(p.id) === String(productId));
+      if (!prod && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
+        prod = DEMO_PRODUCTS.find(p => p && String(p.id) === String(productId));
+      }
+      if (!prod && window._currentFilteredProducts && Array.isArray(window._currentFilteredProducts)) {
+        prod = window._currentFilteredProducts.find(p => p && String(p.id) === String(productId));
+      }
       if (!prod) {
-        showToast("Product not found!", "error");
+        if (typeof showToast === "function") {
+          showToast(currentLang === "ta" ? "தயாரிப்பு விவரங்கள் ஏற்றப்படுகின்றன..." : "Loading product details...", "info");
+        }
         return;
       }
       activeProduct = prod;
@@ -2443,11 +2503,7 @@ function renderHomeScreen(forceReRender = false) {
 
       const cutGroup = document.getElementById('modal-cut-group');
       if (cutGroup) {
-        if (profile) {
-          cutGroup.style.display = 'block';
-        } else {
-          cutGroup.style.display = 'none';
-        }
+        cutGroup.style.display = profile ? 'block' : 'none';
       }
 
       if (isWeight) {
@@ -2480,13 +2536,28 @@ function renderHomeScreen(forceReRender = false) {
 
       const backdrop = document.getElementById('product-detail-modal');
       if (backdrop) {
+        backdrop.style.display = 'flex';
+        backdrop.style.zIndex = '10005';
+        backdrop.style.opacity = '1';
+        backdrop.style.pointerEvents = 'auto';
         backdrop.classList.add('active');
+        const sheet = backdrop.querySelector('.bottom-sheet');
+        if (sheet) {
+          sheet.style.transform = 'translateY(0)';
+        }
       }
-    }
+    };
 
     function closeProductModalDetail() {
       const backdrop = document.getElementById('product-detail-modal');
-      if (backdrop) backdrop.classList.remove('active');
+      if (backdrop) {
+        const sheet = backdrop.querySelector('.bottom-sheet');
+        if (sheet) sheet.style.transform = 'translateY(100%)';
+        setTimeout(() => {
+          backdrop.classList.remove('active');
+          backdrop.style.display = 'none';
+        }, 180);
+      }
       activeProduct = null;
     }
 
@@ -2779,6 +2850,56 @@ function renderHomeScreen(forceReRender = false) {
       document.getElementById('modal-footer-price').innerText = `₹${total}`;
     }
 
+    function sanitizeCart(cartArr) {
+      if (!Array.isArray(cartArr)) return [];
+      const validItems = [];
+      const seenKeys = new Map();
+
+      cartArr.forEach(item => {
+        if (!item || !item.productId) return;
+        const pid = String(item.productId);
+        const cut = String(item.cutStyle || 'Small Pieces');
+        const note = String(item.specialNote || '').trim();
+        const key = `${pid}___${cut}___${note}`;
+
+        const unitPrice = parseFloat(item.pricePerKg || item.price) || 0;
+        const unitStr = item.sellingUnit || item.unit || 'kg';
+        const isWeight = isUnitWeight ? isUnitWeight(unitStr) : !(unitStr === 'piece' || unitStr === 'packet' || unitStr === 'unit' || unitStr === 'box' || unitStr === 'bunch');
+        const grams = Math.max(1, parseFloat(item.weightGrams) || 1);
+        const totalPrice = isWeight
+          ? Math.round((unitPrice / 1000) * grams)
+          : Math.round(unitPrice * grams);
+
+        if (seenKeys.has(key)) {
+          const existing = seenKeys.get(key);
+          existing.weightGrams = grams; // update to latest selected weight
+          existing.pricePerKg = unitPrice;
+          existing.totalPrice = isWeight
+            ? Math.round((unitPrice / 1000) * grams)
+            : Math.round(unitPrice * grams);
+          existing.price = existing.totalPrice;
+        } else {
+          const cleanItem = {
+            ...item,
+            productId: pid,
+            pricePerKg: unitPrice,
+            weightGrams: grams,
+            unit: unitStr,
+            sellingUnit: unitStr,
+            cutStyle: cut,
+            specialNote: note,
+            totalPrice: totalPrice,
+            price: totalPrice
+          };
+          seenKeys.set(key, cleanItem);
+          validItems.push(cleanItem);
+        }
+      });
+
+      return validItems;
+    }
+    window.sanitizeCart = sanitizeCart;
+
     function addToCart() {
       const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.getElementById('modal-add-btn');
       if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
@@ -2803,31 +2924,38 @@ function renderHomeScreen(forceReRender = false) {
         }
 
         const unit = activeProduct.sellingUnit || activeProduct.unit || 'kg';
-        const isWeight = isUnitWeight(unit);
+        const note = document.getElementById('modal-special-notes')?.value?.trim() || '';
+        const cut = selectedCutStyle || 'Small Pieces';
 
-        const price = isWeight
-          ? Math.round((activeProduct.pricePerKg / 1000) * selectedWeight)
-          : Math.round(activeProduct.pricePerKg * selectedWeight);
+        if (typeof cart === 'undefined') window.cart = [];
 
-        const note = document.getElementById('modal-special-notes').value.trim();
+        const existingIdx = cart.findIndex(c => 
+          String(c.productId) === String(activeProduct.id) && 
+          String(c.cutStyle || 'Small Pieces') === String(cut) && 
+          String(c.specialNote || '').trim() === String(note)
+        );
 
-        const cartItem = {
-          productId: activeProduct.id,
-          tamilName: activeProduct.tamilName,
-          englishName: activeProduct.englishName,
-          weightGrams: selectedWeight,
-          unit: activeProduct.unit || 'kg',
-          sellingUnit: unit,
-          cutStyle: selectedCutStyle || 'Small Pieces',
-          category: activeProduct.category,
-          specialNote: note,
-          pricePerKg: activeProduct.pricePerKg,
-          imageUrl: activeProduct.imageUrl,
-          isFreeDeliveryEligible: Boolean(activeProduct.isFreeDeliveryEligible),
-          totalPrice: price
-        };
+        if (existingIdx !== -1) {
+          cart[existingIdx].weightGrams = selectedWeight;
+          cart[existingIdx].pricePerKg = activeProduct.pricePerKg;
+        } else {
+          const cartItem = {
+            productId: activeProduct.id,
+            tamilName: activeProduct.tamilName || activeProduct.englishName,
+            englishName: activeProduct.englishName || activeProduct.tamilName,
+            weightGrams: selectedWeight,
+            unit: activeProduct.unit || 'kg',
+            sellingUnit: unit,
+            cutStyle: cut,
+            category: activeProduct.category,
+            specialNote: note,
+            pricePerKg: activeProduct.pricePerKg,
+            imageUrl: activeProduct.imageUrl,
+            isFreeDeliveryEligible: Boolean(activeProduct.isFreeDeliveryEligible)
+          };
+          cart.push(cartItem);
+        }
 
-        cart.push(cartItem);
         saveCart();
 
         const standardCard = document.getElementById(`card-prod-${activeProduct.id}`);
@@ -2849,9 +2977,10 @@ function renderHomeScreen(forceReRender = false) {
           }, 1200);
         }
 
+        const currentItem = cart.find(c => String(c.productId) === String(activeProduct.id)) || activeProduct;
         showToast(`${activeProduct.englishName} added to checkout cart!`, "success");
         closeProductModalDetail();
-        showAddConfirmation(cartItem);
+        showAddConfirmation(currentItem);
       } finally {
         if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
@@ -2899,13 +3028,62 @@ function renderHomeScreen(forceReRender = false) {
     }
 
     function saveCart() {
+      if (typeof cart === 'undefined') window.cart = [];
+      if (typeof sanitizeCart === 'function') {
+        cart = sanitizeCart(cart);
+      }
       saveData('ek_cart', cart);
       updateCartBadge();
       triggerCartPulse();
+      if (typeof updateLyoDraftCartBar === 'function') updateLyoDraftCartBar();
+      if (typeof recalculateBill === 'function') recalculateBill();
       if (!window._isSyncingCart && typeof syncManualToLyoCart === 'function') {
         syncManualToLyoCart();
       }
+      if (typeof updateAllProductCardCartQty === 'function') {
+        updateAllProductCardCartQty();
+      }
     }
+    window.saveCart = saveCart;
+
+    function updateAllProductCardCartQty() {
+      const currentCart = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart : [];
+      const cartQtyMap = {};
+      currentCart.forEach(item => {
+        if (!item || !item.productId) return;
+        const pid = String(item.productId);
+        cartQtyMap[pid] = (cartQtyMap[pid] || 0) + 1;
+      });
+
+      document.querySelectorAll('.product-grid-card, .special-card').forEach(card => {
+        const cardId = card.id || '';
+        const pid = cardId.replace('card-prod-', '').replace('card-special-', '');
+        if (!pid) return;
+
+        const count = cartQtyMap[pid] || 0;
+        const btn = card.querySelector('.btn-add-orange, .btn-primary');
+        if (btn) {
+          if (count > 0) {
+            btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            btn.style.boxShadow = '0 3px 10px rgba(16,185,129,0.3)';
+            const btnSpan = btn.querySelector('span');
+            if (btnSpan) {
+              btnSpan.innerText = `✓ IN CART (${count})`;
+            } else {
+              btn.innerText = `✓ IN CART (${count})`;
+            }
+          } else {
+            btn.style.background = '';
+            btn.style.boxShadow = '';
+            const btnSpan = btn.querySelector('span');
+            if (btnSpan) {
+              btnSpan.innerText = btn.classList.contains('btn-primary') ? 'Buy ➔' : '+ ADD';
+            }
+          }
+        }
+      });
+    }
+    window.updateAllProductCardCartQty = updateAllProductCardCartQty;
 
     function triggerCartPulse() {
       const elNavBtn = document.getElementById('nav-btn-cart');

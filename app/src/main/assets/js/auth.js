@@ -491,6 +491,15 @@
       if (typeof renderHomeScreenProducts === 'function') {
         renderHomeScreenProducts();
       }
+
+      // If realtime listener is already active and we already have products, skip redundant get() call
+      if (window._hasFreshCloudData && cachedProds && cachedProds.length > 0) {
+        debugLog('[DEBUG fetchProductsOnce] Realtime listener already provided fresh products, skipping redundant query.');
+        window._isProductsFetched = true;
+        isProductsLoading = false;
+        isCategoriesLoading = false;
+        return;
+      }
       try {
         const [productsSnap, categoriesSnap] = await Promise.all([
           db.collection('ek_products').get(),
@@ -1564,23 +1573,35 @@ async function verifyOtpAndResetPassword() {
 
           let cred = null;
           let credentialVerified = false;
-          try {
-            cred = await firebase.auth().signInWithEmailAndPassword(adminEmail, pass);
-            credentialVerified = true;
-          } catch (signInErr) {
-            console.warn("[Admin Login] Firebase signInWithEmailAndPassword failed, attempting user registration/healing...", signInErr);
+          if (typeof firebase !== 'undefined' && firebase.auth) {
             try {
-              if (!matchedAcc) {
+              cred = await firebase.auth().signInWithEmailAndPassword(adminEmail, pass);
+              credentialVerified = true;
+            } catch (signInErr) {
+              console.warn("[Admin Login] Firebase signInWithEmailAndPassword failed, attempting user registration/healing...", signInErr);
+              try {
                 cred = await firebase.auth().createUserWithEmailAndPassword(adminEmail, pass);
                 credentialVerified = true;
+              } catch (createErr) {
+                console.warn("[Admin Login] Firebase createUserWithEmailAndPassword failed/exists:", createErr);
               }
-            } catch (createErr) {
-              console.warn("[Admin Login] Firebase createUserWithEmailAndPassword failed/exists:", createErr);
             }
           }
 
           const localPasswordVerified = !!(matchedAcc && matchedAcc.password);
-          if (!credentialVerified && !localPasswordVerified) {
+          if (typeof firebase !== 'undefined' && firebase.auth && !credentialVerified) {
+            loginCompleted = true;
+            clearTimeout(loginTimeout);
+            clearTimeout(slowNetworkTimeout);
+            showToast(
+              currentLang === 'ta'
+                ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
+                : "Incorrect admin password! Please check credentials ❌",
+              "error"
+            );
+            restoreButton();
+            return;
+          } else if ((typeof firebase === 'undefined' || !firebase.auth) && !localPasswordVerified) {
             loginCompleted = true;
             clearTimeout(loginTimeout);
             clearTimeout(slowNetworkTimeout);
@@ -2413,25 +2434,61 @@ async function verifyOtpAndResetPassword() {
           return;
         }
 
-        if (typeof db !== 'undefined' && db) {
+        const cleanDigits = phone.replace(/\D/g, '');
+        const phoneVariants = Array.from(new Set([
+          phone,
+          cleanDigits,
+          cleanDigits.slice(-10),
+          `+91${cleanDigits.slice(-10)}`,
+          `91${cleanDigits.slice(-10)}`
+        ])).filter(Boolean);
+
+        let isDuplicatePhone = false;
+
+        // Check local cache (ek_users)
+        try {
+          const localUsers = (typeof getData === 'function') ? getData('ek_users', []) : [];
+          const existingLocal = localUsers.find(u => {
+            if (!u || !u.phone) return false;
+            const uDigits = String(u.phone).replace(/\D/g, '');
+            return phoneVariants.some(v => v === u.phone) || (uDigits && cleanDigits.length >= 10 && uDigits.endsWith(cleanDigits.slice(-10)));
+          });
+          if (existingLocal) {
+            isDuplicatePhone = true;
+            debugLog("[handleRegister] Duplicate phone found in local cache:", existingLocal.phone);
+          }
+        } catch (localErr) {
+          console.warn("Could not check local duplicate phone:", localErr);
+        }
+
+        // Check Firestore (ek_users) if not already matched locally
+        if (!isDuplicatePhone && typeof db !== 'undefined' && db) {
           try {
-            const qSnap = await db.collection('ek_users').where('phone', '==', phone).get();
-            if (!qSnap.empty) {
-              showToast(
-                currentLang === 'ta'
-                  ? "இந்த மொபைல் எண் ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது! லாகின் செய்யவும்."
-                  : "This phone number is already registered! Please log in instead.",
-                "error"
-              );
-              const loginIdentifierInput = document.getElementById('login-identifier');
-              if (loginIdentifierInput) loginIdentifierInput.value = phone;
-              showScreen('screen-login');
-              restoreButton();
-              return;
+            for (const variant of phoneVariants) {
+              const qSnap = await db.collection('ek_users').where('phone', '==', variant).limit(1).get();
+              if (!qSnap.empty) {
+                isDuplicatePhone = true;
+                debugLog("[handleRegister] Duplicate phone found in Firestore for variant:", variant);
+                break;
+              }
             }
           } catch (e) {
             console.warn("Could not check duplicate phone on cloud:", e);
           }
+        }
+
+        if (isDuplicatePhone) {
+          showToast(
+            currentLang === 'ta'
+              ? "இந்த மொபைல் எண் ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது - தயவுசெய்து லாகின் செய்யவும், அல்லது கடவுச்சொல் நினைவில்லை எனில் 'Forgot Password' பயன்படுத்தவும்."
+              : "This phone number is already registered - please login instead, or use 'Forgot Password' if you don't remember your password.",
+            "error"
+          );
+          const loginIdentifierInput = document.getElementById('login-identifier');
+          if (loginIdentifierInput) loginIdentifierInput.value = phone;
+          showScreen('screen-login');
+          restoreButton();
+          return;
         }
 
         const regAddrElem = document.getElementById('reg-address');

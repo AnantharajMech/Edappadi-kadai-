@@ -938,6 +938,13 @@
           renderAdminBannerList(true);
         } else if (sectionId === 'upi-config' && typeof renderAdminUpiSettings === 'function') {
           if (typeof renderAdminUpiSettings === 'function') renderAdminUpiSettings(true);
+        } else if ((sectionId === 'delivery' || sectionId === 'zones') && typeof initAdminZonesMap === 'function') {
+          setTimeout(() => {
+            if (typeof initAdminZonesMap === 'function') initAdminZonesMap();
+          }, 350);
+          setTimeout(() => {
+            if (typeof refreshAdminZonesMapSize === 'function') refreshAdminZonesMapSize();
+          }, 700);
         }
 
         container.style.maxHeight = container.scrollHeight + 'px';

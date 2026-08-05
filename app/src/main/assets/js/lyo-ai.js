@@ -130,12 +130,15 @@
       let apiKey = (config.apiKey || '').trim();
       let model = (config.model || '').trim();
 
+      let primaryErr = null;
+
       // Attempt primary call with selected provider
       if (apiKey) {
         try {
           return await executeSingleAiCall(provider, apiKey, model, systemInstructions, conversationContents);
-        } catch (primaryErr) {
-          console.warn(`[AI Orchestrator] Primary provider (${provider}) failed: ${primaryErr.message}. Attempting fallback to Built-in Gemini...`);
+        } catch (err) {
+          primaryErr = err;
+          console.warn(`[AI Orchestrator] Primary provider (${provider}) failed: HTTP ${err.status || 'N/A'} - ${err.message}. Attempting fallback to Built-in Gemini...`);
         }
       }
 
@@ -145,11 +148,14 @@
         try {
           return await executeSingleAiCall('gemini', builtinKey, '', systemInstructions, conversationContents);
         } catch (fallbackErr) {
-          console.warn(`[AI Orchestrator] Builtin Gemini fallback failed: ${fallbackErr.message}`);
+          console.warn(`[AI Orchestrator] Builtin Gemini fallback failed: HTTP ${fallbackErr.status || 'N/A'} - ${fallbackErr.message}`);
+          if (!primaryErr) primaryErr = fallbackErr;
         }
       }
 
-      throw new Error("AI_ORCHESTRATOR_ALL_PROVIDERS_FAILED");
+      const finalErr = primaryErr || new Error("AI_ORCHESTRATOR_ALL_PROVIDERS_FAILED");
+      if (!finalErr.provider) finalErr.provider = provider;
+      throw finalErr;
     }
 
     async function executeSingleAiCall(provider, cleanKey, cleanModel, systemInstructions, conversationContents) {
@@ -170,7 +176,15 @@
           },
           body: JSON.stringify({ model: targetModel, messages: messages })
         }, 1, 7000);
-        if (!res.ok) throw new Error(`Groq status ${res.status}`);
+        if (!res.ok) {
+          let errDetails = '';
+          try { errDetails = await res.text(); } catch(e) {}
+          const err = new Error(`Groq HTTP ${res.status}: ${errDetails || res.statusText}`);
+          err.status = res.status;
+          err.provider = 'groq';
+          err.details = errDetails;
+          throw err;
+        }
         const data = await res.json();
         const replyText = data?.choices?.[0]?.message?.content;
         if (!replyText) throw new Error("Empty Groq response");
@@ -194,7 +208,15 @@
           },
           body: JSON.stringify({ model: targetModel, messages: messages })
         }, 1, 7000);
-        if (!res.ok) throw new Error(`OpenRouter status ${res.status}`);
+        if (!res.ok) {
+          let errDetails = '';
+          try { errDetails = await res.text(); } catch(e) {}
+          const err = new Error(`OpenRouter HTTP ${res.status}: ${errDetails || res.statusText}`);
+          err.status = res.status;
+          err.provider = 'openrouter';
+          err.details = errDetails;
+          throw err;
+        }
         const data = await res.json();
         const replyText = data?.choices?.[0]?.message?.content;
         if (!replyText) throw new Error("Empty OpenRouter response");
@@ -218,7 +240,15 @@
           },
           body: JSON.stringify({ model: targetModel, messages: messages })
         }, 1, 7000);
-        if (!res.ok) throw new Error(`${provider} status ${res.status}`);
+        if (!res.ok) {
+          let errDetails = '';
+          try { errDetails = await res.text(); } catch(e) {}
+          const err = new Error(`${provider.toUpperCase()} HTTP ${res.status}: ${errDetails || res.statusText}`);
+          err.status = res.status;
+          err.provider = provider;
+          err.details = errDetails;
+          throw err;
+        }
         const data = await res.json();
         const replyText = data?.choices?.[0]?.message?.content;
         if (!replyText) throw new Error(`Empty ${provider} response`);
@@ -245,7 +275,15 @@
             messages: messages
           })
         }, 1, 7000);
-        if (!res.ok) throw new Error(`Anthropic status ${res.status}`);
+        if (!res.ok) {
+          let errDetails = '';
+          try { errDetails = await res.text(); } catch(e) {}
+          const err = new Error(`Anthropic HTTP ${res.status}: ${errDetails || res.statusText}`);
+          err.status = res.status;
+          err.provider = 'anthropic';
+          err.details = errDetails;
+          throw err;
+        }
         const data = await res.json();
         const replyText = data?.content?.[0]?.text;
         if (!replyText) throw new Error("Empty Anthropic response");
@@ -255,6 +293,8 @@
         // Default: Gemini
         const geminiModels = [cleanModel || 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest'];
         let lastError = "";
+        let lastStatus = 0;
+        let lastDetails = "";
 
         for (const m of geminiModels) {
           try {
@@ -273,13 +313,27 @@
               const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
               if (replyText) return { text: replyText };
             } else {
-              lastError = `Gemini status ${res.status}`;
+              lastStatus = res.status;
+              let errText = '';
+              try {
+                const errJson = await res.json();
+                errText = errJson?.error?.message || errJson?.message || JSON.stringify(errJson);
+              } catch(e) {
+                try { errText = await res.text(); } catch(e2) {}
+              }
+              lastDetails = errText;
+              lastError = `Gemini HTTP ${res.status}: ${errText || res.statusText}`;
             }
           } catch (mErr) {
             lastError = mErr.message;
+            if (mErr.status) lastStatus = mErr.status;
           }
         }
-        throw new Error(`Gemini call failed: ${lastError}`);
+        const err = new Error(`Gemini call failed: ${lastError}`);
+        err.status = lastStatus || 400;
+        err.provider = 'gemini';
+        err.details = lastDetails || lastError;
+        throw err;
       }
     }
 
@@ -442,6 +496,107 @@
       return s.toLowerCase().replace(/[\u0BCD\u0BD7]/g, '').replace(/[^\w\u0B80-\u0BFF]/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
+    function getAutoGeneratedProductAliases(p) {
+      if (!p) return [];
+      const aliases = new Set();
+
+      // 1. Explicit admin defined aliases
+      if (Array.isArray(p.aliases)) {
+        p.aliases.forEach(a => { if (a && typeof a === 'string' && a.trim()) aliases.add(a.toLowerCase().trim()); });
+      } else if (typeof p.aliases === 'string' && p.aliases.trim()) {
+        p.aliases.split(',').forEach(a => { if (a.trim()) aliases.add(a.toLowerCase().trim()); });
+      }
+
+      // 2. Search keywords / alternate names
+      if (Array.isArray(p.keywords)) {
+        p.keywords.forEach(k => { if (k && typeof k === 'string' && k.trim()) aliases.add(k.toLowerCase().trim()); });
+      }
+      if (typeof p.searchKeywords === 'string') {
+        p.searchKeywords.split(',').forEach(k => { if (k.trim()) aliases.add(k.toLowerCase().trim()); });
+      }
+
+      // 3. English Name & word variations
+      const eng = (p.englishName || p.name || '').toLowerCase().replace(/[-_:,;!/()]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (eng) {
+        aliases.add(eng);
+        const tokens = eng.split(' ').filter(w => w.length > 0);
+        tokens.forEach(t => {
+          if (t.length > 2) {
+            aliases.add(t);
+            if (t.endsWith('s')) aliases.add(t.slice(0, -1));
+            if (t.endsWith('es')) aliases.add(t.slice(0, -2));
+            if (!t.endsWith('s')) aliases.add(t + 's');
+            if (t === 'potato') aliases.add('potatoes');
+            if (t === 'tomato') aliases.add('tomatoes');
+            if (t === 'egg') aliases.add('eggs');
+          }
+        });
+
+        const coreWords = tokens.filter(w => !['fresh', 'organic', 'pure', 'premium', 'big', 'slice', 'cut', 'tender', 'sujatha', 'cold', 'pressed', 'white', 'country', 'broiler'].includes(w));
+        if (coreWords.length > 0) {
+          aliases.add(coreWords.join(' '));
+          coreWords.forEach(cw => {
+            if (cw.length > 2) {
+              aliases.add(cw);
+              if (cw.endsWith('s')) aliases.add(cw.slice(0, -1));
+              if (!cw.endsWith('s')) aliases.add(cw + 's');
+            }
+          });
+        }
+      }
+
+      // 4. Tamil Name & word variations
+      const tam = (p.tamilName || '').toLowerCase().replace(/[-_:,;!/()]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (tam) {
+        aliases.add(tam);
+        const tamTokens = tam.split(' ').filter(w => w.length > 0);
+        tamTokens.forEach(tt => {
+          if (tt.length > 2) aliases.add(tt);
+        });
+      }
+
+      // 5. Common Tamil/Tanglish Transliteration aliases
+      const engNorm = eng.toLowerCase();
+      if (engNorm.includes('head curry') || engNorm.includes('goat head') || tam.includes('தலைகறி') || tam.includes('தலைக்கறி')) {
+        ['thalaikkari', 'thalaikari', 'thala karii', 'head curry', 'goat head', 'head', 'தலைகறி', 'தலைக்கறி', 'ஆட்டுத்தலை'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('egg') || tam.includes('முட்டை')) {
+        ['egg', 'eggs', 'muttai', 'muttas', 'முட்டை', 'முட்டைகள்', 'white egg', 'white eggs'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('potato') || tam.includes('உருளை')) {
+        ['potato', 'potatoes', 'urulai', 'urulaikilangu', 'உருளை', 'உருளைக்கிழங்கு'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('tomato') || tam.includes('தக்காளி')) {
+        ['tomato', 'tomatoes', 'thakkali', 'thakali', 'தக்காளி'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('onion') || tam.includes('வெங்காயம்')) {
+        ['onion', 'onions', 'vengayam', 'vengaym', 'வெங்காயம்', 'சின்ன வெங்காயம்', 'பெரிய வெங்காயம்'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('chicken') || tam.includes('சிக்கன்') || tam.includes('கோழி')) {
+        ['chicken', 'chickens', 'koli', 'kozhi', 'சிக்கன்', 'நாட்டுக்கோழி', 'பிராய்லர்'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('mutton') || tam.includes('மட்டன்') || tam.includes('ஆட்டு')) {
+        ['mutton', 'kari', 'karii', 'aattu kari', 'மட்டன்', 'ஆட்டுக்கறி'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('milk') || tam.includes('பால்')) {
+        ['milk', 'paal', 'pal', 'பால்', 'பசும்பால்'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('ghee') || tam.includes('நெய்')) {
+        ['ghee', 'nei', 'neyy', 'நெய்', 'பசு நெய்'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('oil') || tam.includes('எண்ணெய்')) {
+        ['oil', 'ennai', 'ennay', 'எண்ணெய்', 'தேங்காய் எண்ணெய்'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('fish') || tam.includes('மீன்')) {
+        ['fish', 'meen', 'மீன்', 'வஞ்சரம்'].forEach(a => aliases.add(a));
+      }
+      if (engNorm.includes('paneer') || tam.includes('பன்னீர்')) {
+        ['paneer', 'panir', 'பன்னீர்'].forEach(a => aliases.add(a));
+      }
+
+      return Array.from(aliases);
+    }
+
     // 4. Product Matching Engine with Confidence Scoring (>95%, 70-95%, <70%)
     function matchProductWithConfidence(rawQuery, activeProducts) {
       if (!activeProducts || activeProducts.length === 0) {
@@ -462,25 +617,50 @@
 
         let currentScore = 0;
 
-        // Exact or normalized match
-        if (q === nameEn || q === nameTa || qNorm === nameEnNorm || qNorm === nameTaNorm) {
+        // Check local product dictionary aliases
+        const aliases = getAutoGeneratedProductAliases(p);
+        const hasExactAlias = aliases.some(al => {
+          const alNorm = normalizeLyoText(al);
+          return alNorm && (qNorm === alNorm || qNorm === al.toLowerCase());
+        });
+
+        if (hasExactAlias) {
           currentScore = 1.0;
         } else {
-          const qTokens = qNorm.split(' ').filter(w => w.length > 0);
-          const pTokens = (nameEnNorm + ' ' + nameTaNorm).split(' ').filter(w => w.length > 0);
+          const hasWordAlias = aliases.some(al => {
+            const alNorm = normalizeLyoText(al);
+            return alNorm && alNorm.length >= 3 && new RegExp('\\b' + alNorm + '\\b', 'i').test(qNorm);
+          });
+          if (hasWordAlias) {
+            currentScore = 0.98;
+          }
+        }
 
-          // Check if any query token is an exact match to a product token
-          const exactTokenMatch = qTokens.some(qt => pTokens.includes(qt));
-          const wholeWordInQuery = pTokens.some(pt => pt.length > 2 && new RegExp('\\b' + pt + '\\b', 'i').test(q));
-          const wholeWordInProduct = qTokens.some(qt => qt.length > 2 && new RegExp('\\b' + qt + '\\b', 'i').test(nameEn + ' ' + nameTa));
-
-          if (exactTokenMatch || wholeWordInQuery || wholeWordInProduct) {
-            currentScore = 0.95;
+        // Exact or normalized match
+        if (currentScore < 0.95) {
+          if (q === nameEn || q === nameTa || qNorm === nameEnNorm || qNorm === nameTaNorm) {
+            currentScore = 1.0;
           } else {
-            // Token overlap (exact token equality or prefix match for words >= 4 chars)
-            const matchedTokens = qTokens.filter(t => pTokens.some(pt => pt === t || (t.length >= 4 && pt.startsWith(t))));
-            if (qTokens.length > 0 && matchedTokens.length > 0) {
-              currentScore = Math.max(currentScore, 0.70 + (matchedTokens.length / qTokens.length) * 0.25);
+            const qTokens = qNorm.split(' ').filter(w => w.length > 0);
+            const pTokens = (nameEnNorm + ' ' + nameTaNorm).split(' ').filter(w => w.length > 0);
+
+            // Check if any query token is an exact match to a product token
+            const exactTokenMatch = qTokens.some(qt => pTokens.includes(qt));
+            const wholeWordInQuery = pTokens.some(pt => pt.length > 2 && new RegExp('\\b' + pt + '\\b', 'i').test(q));
+            const wholeWordInProduct = qTokens.some(qt => qt.length > 2 && new RegExp('\\b' + qt + '\\b', 'i').test(nameEn + ' ' + nameTa));
+
+            if (exactTokenMatch || wholeWordInQuery || wholeWordInProduct) {
+              currentScore = 0.95;
+            } else {
+              // Token overlap (exact token equality or prefix match for words >= 3 chars or singular/plural)
+              const matchedTokens = qTokens.filter(t => pTokens.some(pt => {
+                const cleanT = t.replace(/s$/i, '');
+                const cleanPt = pt.replace(/s$/i, '');
+                return pt === t || cleanPt === cleanT || (t.length >= 3 && (pt.startsWith(t) || t.startsWith(pt)));
+              }));
+              if (qTokens.length > 0 && matchedTokens.length > 0) {
+                currentScore = Math.max(currentScore, 0.70 + (matchedTokens.length / qTokens.length) * 0.25);
+              }
             }
           }
         }
@@ -491,11 +671,11 @@
             const list = LYO_SYNONYMS[key];
             const qHasSyn = list.some(syn => {
               const sn = normalizeLyoText(syn);
-              return sn && new RegExp('\\b' + sn + '\\b', 'i').test(qNorm);
+              return sn && (qNorm === sn || new RegExp('\\b' + sn + '\\b', 'i').test(qNorm) || qNorm.includes(sn));
             });
             const pHasSyn = list.some(syn => {
               const sn = normalizeLyoText(syn);
-              return sn && new RegExp('\\b' + sn + '\\b', 'i').test(nameEnNorm + ' ' + nameTaNorm);
+              return sn && (nameEnNorm.includes(sn) || nameTaNorm.includes(sn) || new RegExp('\\b' + sn + '\\b', 'i').test(nameEnNorm + ' ' + nameTaNorm));
             });
             if (qHasSyn && pHasSyn) {
               currentScore = Math.max(currentScore, 0.98);
@@ -529,8 +709,10 @@
 
     // 5. Smart Multi-lingual Query Parser
     function parseSingleItemText(itemText) {
-      let t = (itemText || '').toLowerCase().trim();
+      let t = (itemText || '').toLowerCase().replace(/[-_:,;!?]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!t) return null;
+
+      let hasExplicitUserUnit = false;
 
       // Tamil number words to digits
       const numMap = [
@@ -567,6 +749,7 @@
       if (rupeeMatch) {
         amountType = 'RUPEES';
         rawQtyVal = parseFloat(rupeeMatch[1] || rupeeMatch[2] || '0');
+        hasExplicitUserUnit = true;
         t = t.replace(rupeeMatch[0], '').trim();
         t = t.replace(/^க்கு\s*/i, '').trim();
       } else {
@@ -575,21 +758,25 @@
           amountType = 'WEIGHT_GRAMS';
           rawQtyVal = 500;
           unit = 'g';
+          hasExplicitUserUnit = true;
           t = t.replace(/(அரை|arai|half|1\/2)\s*(kilo|kg|கிலோ)?/gi, '').trim();
         } else if (/(கால்|kal|quarter|1\/4)/i.test(t)) {
           amountType = 'WEIGHT_GRAMS';
           rawQtyVal = 250;
           unit = 'g';
+          hasExplicitUserUnit = true;
           t = t.replace(/(கால்|kal|quarter|1\/4)\s*(kilo|kg|கிலோ)?/gi, '').trim();
         } else if (/(முக்கால்|mukkai|mukkhal|3\/4)/i.test(t)) {
           amountType = 'WEIGHT_GRAMS';
           rawQtyVal = 750;
           unit = 'g';
+          hasExplicitUserUnit = true;
           t = t.replace(/(முக்கால்|mukkai|mukkhal|3\/4)\s*(kilo|kg|கிலோ)?/gi, '').trim();
         } else if (/(ஒன்றரை|1\.5|1\s*and\s*half|1\s*1\/2)/i.test(t)) {
           amountType = 'WEIGHT_KG';
           rawQtyVal = 1.5;
           unit = 'kg';
+          hasExplicitUserUnit = true;
           t = t.replace(/(ஒன்றரை|1\.5|1\s*and\s*half|1\s*1\/2)\s*(kilo|kg|கிலோ)?/gi, '').trim();
         } else {
           // Piece / Count / Unit pattern
@@ -599,6 +786,7 @@
             rawQtyVal = parseFloat(pcsMatch[1] || pcsMatch[2] || '1');
             amountType = 'COUNT_PIECES';
             unit = 'pcs';
+            hasExplicitUserUnit = true;
             t = t.replace(pcsMatch[0], '').trim();
           } else {
             // Standard Numbers & Units
@@ -616,25 +804,25 @@
               const isPcs = ['pcs', 'piece', 'pieces', 'பீஸ்', 'பீசு', 'பீஸ்கள்', 'nos', 'no'].includes(uStr);
 
               if (isG) {
-                amountType = 'WEIGHT_GRAMS'; rawQtyVal = num; unit = 'g';
+                amountType = 'WEIGHT_GRAMS'; rawQtyVal = num; unit = 'g'; hasExplicitUserUnit = true;
                 t = t.replace(qtyMatch[0], '').trim();
               } else if (isKg) {
-                amountType = 'WEIGHT_KG'; rawQtyVal = num; unit = 'kg';
+                amountType = 'WEIGHT_KG'; rawQtyVal = num; unit = 'kg'; hasExplicitUserUnit = true;
                 t = t.replace(qtyMatch[0], '').trim();
               } else if (isL) {
-                amountType = 'LIQUID_LITRE'; rawQtyVal = num; unit = 'l';
+                amountType = 'LIQUID_LITRE'; rawQtyVal = num; unit = 'l'; hasExplicitUserUnit = true;
                 t = t.replace(qtyMatch[0], '').trim();
               } else if (isMl) {
-                amountType = 'LIQUID_ML'; rawQtyVal = num; unit = 'ml';
+                amountType = 'LIQUID_ML'; rawQtyVal = num; unit = 'ml'; hasExplicitUserUnit = true;
                 t = t.replace(qtyMatch[0], '').trim();
               } else if (isDoz) {
-                amountType = 'COUNT_DOZEN'; rawQtyVal = num; unit = 'doz';
+                amountType = 'COUNT_DOZEN'; rawQtyVal = num; unit = 'doz'; hasExplicitUserUnit = true;
                 t = t.replace(qtyMatch[0], '').trim();
               } else if (isPkt) {
-                amountType = 'COUNT_PACKETS'; rawQtyVal = num; unit = 'pkt';
+                amountType = 'COUNT_PACKETS'; rawQtyVal = num; unit = 'pkt'; hasExplicitUserUnit = true;
                 t = t.replace(qtyMatch[0], '').trim();
               } else if (isPcs) {
-                amountType = 'COUNT_PIECES'; rawQtyVal = num; unit = 'pcs';
+                amountType = 'COUNT_PIECES'; rawQtyVal = num; unit = 'pcs'; hasExplicitUserUnit = true;
                 t = t.replace(qtyMatch[0], '').trim();
               } else {
                 // uStr is part of the product search term (e.g. 20 Eggs, 50 முட்டை)
@@ -643,6 +831,7 @@
                 const isPieceTerm = /(முட்டை|egg|eggs|பாக்கெட்|packet|packets|pkt|piece|pieces|pcs|பீஸ்|பீசு|பீஸ்கள்|box|bunch|dozen|டஜன்|unit|nos|no)/i.test(remainingText);
                 if (isPieceTerm || num < 50) {
                   amountType = 'COUNT_PIECES'; unit = 'pcs';
+                  if (isPieceTerm) hasExplicitUserUnit = true;
                 } else {
                   amountType = 'WEIGHT_GRAMS'; unit = 'g';
                 }
@@ -660,7 +849,8 @@
         productSearchTerm: t || itemText,
         rawQtyVal: rawQtyVal,
         amountType: amountType,
-        unit: unit
+        unit: unit,
+        hasExplicitUserUnit: hasExplicitUserUnit
       };
     }
 
@@ -691,13 +881,25 @@
       let effectiveAmountType = parsedItem?.amountType || 'WEIGHT_KG';
       let effectiveUnit = parsedItem?.unit || baseUnit;
 
-      // Code-level safety net: Force piece-sold products (eggs, packets, etc.) to COUNT_PIECES unless user explicitly specified a weight unit (kg/g/litre/ml)
-      if (isPieceProduct && (effectiveAmountType === 'WEIGHT_GRAMS' || effectiveAmountType === 'WEIGHT_KG')) {
-        const uLower = String(parsedItem?.unit || '').toLowerCase();
-        const userHasExplicitWeight = ['g', 'gm', 'gram', 'grams', 'kg', 'kilo', 'kilos', 'l', 'litre', 'ml'].includes(uLower);
-        if (!userHasExplicitWeight) {
+      const userTextHasExplicitUnit = Boolean(parsedItem?.hasExplicitUserUnit) || ['g', 'gm', 'gram', 'grams', 'kg', 'kilo', 'kilos', 'l', 'litre', 'liter', 'litres', 'ml', 'rs', 'rupees', 'rupee', '₹'].includes(String(parsedItem?.unit || '').toLowerCase().trim());
+
+      // Code-level safety net for ALL unit types driven by catalog sellingUnit
+      if (!userTextHasExplicitUnit && p) {
+        if (isPieceProduct) {
           effectiveAmountType = 'COUNT_PIECES';
           effectiveUnit = baseUnit || 'pcs';
+        } else if (['litre', 'l', 'liter', 'litres'].includes(baseUnit)) {
+          effectiveAmountType = 'LIQUID_LITRE';
+          effectiveUnit = 'l';
+        } else if (['ml'].includes(baseUnit)) {
+          effectiveAmountType = 'LIQUID_ML';
+          effectiveUnit = 'ml';
+        } else if (['g', 'gm', 'gram', 'grams'].includes(baseUnit)) {
+          effectiveAmountType = 'WEIGHT_GRAMS';
+          effectiveUnit = 'g';
+        } else if (['kg'].includes(baseUnit)) {
+          effectiveAmountType = 'WEIGHT_KG';
+          effectiveUnit = 'kg';
         }
       }
 
@@ -801,7 +1003,40 @@
       if (!queryText || !queryText.trim()) return [];
       const cacheKey = (queryText || '').toLowerCase().trim();
       if (_aiOrderParseCache.has(cacheKey)) {
-        return _aiOrderParseCache.get(cacheKey);
+        const cached = _aiOrderParseCache.get(cacheKey);
+        try {
+          return JSON.parse(JSON.stringify(cached));
+        } catch(e) {
+          return cached;
+        }
+      }
+
+      // 1. Local synonym/alias product dictionary lookup BEFORE calling AI parser
+      const localParsed = parseLyoCommerceQuery(queryText);
+      if (localParsed && localParsed.length > 0) {
+        let allMatchedHighConfidence = true;
+        const resolvedLocalItems = [];
+
+        for (const item of localParsed) {
+          const match = matchProductWithConfidence(item.productSearchTerm, activeProducts);
+          if (match && match.product && (match.score >= 0.70 || (match.score >= 0.60 && item.hasExplicitUserUnit))) {
+            resolvedLocalItems.push({
+              product_name: match.product.englishName,
+              raw_quantity_val: item.rawQtyVal,
+              amount_type: item.amountType,
+              unit: item.unit,
+              hasExplicitUserUnit: item.hasExplicitUserUnit
+            });
+          } else {
+            allMatchedHighConfidence = false;
+            break;
+          }
+        }
+
+        if (allMatchedHighConfidence && resolvedLocalItems.length > 0) {
+          _aiOrderParseCache.set(cacheKey, resolvedLocalItems);
+          return resolvedLocalItems;
+        }
       }
       let { provider, apiKey, model } = getAiProviderConfig();
       if (!apiKey || !apiKey.trim()) {
@@ -967,6 +1202,24 @@ JSON OUTPUT FORMAT (JSON ONLY, NO MARKDOWN):
 async function classifyLyoUserIntent(queryText, activeProducts) {
   if (!queryText || !queryText.trim()) {
     return { intent: "GREETINGS", confidence: 1.0, responseText: "வணக்கம்! Good day! 🌸 How can I help you today?" };
+  }
+
+  const lowerQ = queryText.toLowerCase().trim();
+  const isExplicitNonShopping = (
+    lowerQ.includes("where is my order") || lowerQ.includes("track order") || lowerQ.includes("order status") ||
+    lowerQ.includes("my order") || lowerQ.includes("ஆர்டர் எங்கே") || lowerQ.includes("டிராக்") ||
+    lowerQ.includes("store location") || lowerQ.includes("shop open") || lowerQ.includes("shop timing") ||
+    lowerQ.includes("what is lyo") || lowerQ.includes("who are you") || lowerQ.includes("app feature") ||
+    lowerQ.includes("customer care") || lowerQ.includes("coupon") || lowerQ.includes("delivery fee")
+  );
+
+  const hasNumbersOrUnits = /(\d+|இருபது|பத்து|ஐம்பது|நூறு|இரண்டு|ரெண்டு|ரண்டு|ஒன்று|ஒன்னு|மூன்று|மூனு|நான்கு|நாலு|ஐந்து|அஞ்சு|ஆறு|ஏழு|எட்டு|ஒன்பது|kg|kilo|கிலோ|g|gm|gram|கிராம்|l|litre|லிட்டர்|ml|pcs|piece|pieces|பீஸ்|பாக்கெட்|pkt|rupees|rs|ரூபாய்|₹)/i.test(lowerQ);
+  const foodKeywords = ['head curry', 'thalaikkari', 'தலைக்கறி', 'ஆட்டுத்தலை', 'ஆட்டு', 'கறி', 'curry', 'meat', 'potato', 'urulai', 'உருளைக்கிழங்கு', 'தக்காளி', 'வெங்காயம்', 'சிக்கன்', 'மட்டன்', 'முட்டை', 'பால்', 'நெய்', 'மீன்', 'ஈரல்', 'chicken', 'mutton', 'fish', 'egg', 'eggs', 'milk', 'tomato', 'onion', 'ghee', 'oil', 'paneer'];
+  const hasFoodKeyword = foodKeywords.some(k => lowerQ.includes(k));
+  const activeProposalExists = !!(typeof getActiveLyoProposalMsg === 'function' && getActiveLyoProposalMsg());
+
+  if (!isExplicitNonShopping && (hasNumbersOrUnits || hasFoodKeyword || activeProposalExists)) {
+    return { intent: "SHOPPING_REQUEST", confidence: 0.98 };
   }
 
   try {
@@ -1426,6 +1679,7 @@ function getActiveLyoProposalMsg() {
             activeMsg = {
               id: 'msg_a_' + Date.now(),
               role: 'assistant',
+              isProposal: true,
               text: '',
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               proposalId: proposalId,
@@ -1435,10 +1689,14 @@ function getActiveLyoProposalMsg() {
             };
             _lyoChatMessages.push(activeMsg);
           } else {
+            activeMsg.isProposal = true;
             activeMsg.items = aiItems;
             activeMsg.deliveryCharge = calculatedDeliveryCharge;
           }
-          activeMsg.text = `Sure! Updated items in your active AI shopping cart: 🎉 Total: ₹${subtotal}`;
+          const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+          activeMsg.text = isTa
+            ? `கார்ட்டில் உள்ள பொருட்கள் புதுப்பிக்கப்பட்டன: 🎉 மொத்தம்: ₹${subtotal}`
+            : `Sure! Updated items in your active AI shopping cart: 🎉 Total: ₹${subtotal}`;
         }
         persistLyoChatMessages();
         renderLyoAiChat();
@@ -1482,7 +1740,38 @@ function getActiveLyoProposalMsg() {
       const msgContainer = document.getElementById('lyo-ai-messages');
       if (!msgContainer) return;
       let html = '';
-      _lyoChatMessages.forEach(msg => {
+
+      function isCartUpdateConfirmation(m) {
+        if (!m || m.role !== 'assistant' || typeof m.text !== 'string') return false;
+        const txt = m.text;
+        return txt.includes("Sure! Updated items in your active AI shopping cart") ||
+               txt.includes("கார்ட்டில் உள்ள பொருட்கள் புதுப்பிக்கப்பட்டன") ||
+               txt.includes("உங்கள் கட்டளைப்படி பொருட்கள் கார்ட்டில் சேர்க்கப்பட்டன");
+      }
+
+      // Filter empty assistant messages and collapse consecutive "cart updated" confirmations
+      const displayMessages = [];
+      for (let i = 0; i < _lyoChatMessages.length; i++) {
+        const msg = _lyoChatMessages[i];
+        if (!msg) continue;
+
+        // Skip assistant messages with empty text, no items, and no actionHtml
+        if (msg.role === 'assistant' && (!msg.text || !msg.text.trim()) && (!msg.items || msg.items.length === 0) && !msg.actionHtml) {
+          continue;
+        }
+
+        // Collapse consecutive "cart updated" confirmations down to the last one in the run
+        if (isCartUpdateConfirmation(msg)) {
+          const nextMsg = _lyoChatMessages[i + 1];
+          if (nextMsg && isCartUpdateConfirmation(nextMsg)) {
+            continue; // Skip earlier message in consecutive run
+          }
+        }
+
+        displayMessages.push(msg);
+      }
+
+      displayMessages.forEach(msg => {
         if (msg.role === 'user') {
           html += `
             <div style="align-self: flex-end; max-width: 80%; background: #059669; border-radius: 16px 16px 2px 16px; padding: 10px 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); font-family: 'Poppins', 'Hind Madurai', sans-serif;">
@@ -1707,24 +1996,36 @@ function getActiveLyoProposalMsg() {
         bar.style.display = "none";
         return;
       }
-      let totalAmount = 0;
+      let itemsSubtotal = 0;
       items.forEach(i => {
-        const price = parseFloat(i.totalPrice || i.price || i.itemTotal) || 0;
-        totalAmount += price;
+        itemsSubtotal += (parseFloat(i.totalPrice || i.price || i.itemTotal) || 0);
       });
+      
+      const activeUser = (typeof getActiveUser === "function") ? getActiveUser() : null;
+      const appliedCode = (typeof appliedCouponCode !== "undefined") ? appliedCouponCode : null;
+      const useLoyalty = document.getElementById('cart-use-loyalty')?.checked || false;
+
+      const financials = (typeof calculateOrderFinancials === "function")
+        ? calculateOrderFinancials(itemsSubtotal, activeUser, appliedCode, useLoyalty, items)
+        : { subtotal: itemsSubtotal, deliveryFee: 0, grandTotal: itemsSubtotal };
+
       const isTa = (typeof currentLang !== "undefined" && currentLang === "ta");
       if (titleEl) {
         titleEl.textContent = isTa
-          ? `🛒 ${items.length} பொருட்கள் கார்ட்டில் உள்ளன • ₹${totalAmount.toFixed(2)}`
-          : `🛒 ${items.length} Item(s) in AI Commerce Cart • ₹${totalAmount.toFixed(2)}`;
+          ? `🛒 ${items.length} பொருட்கள் • மொத்தம்: ₹${financials.grandTotal}`
+          : `🛒 ${items.length} Item(s) in Cart • Total: ₹${financials.grandTotal}`;
       }
       if (subEl) {
+        const delStr = financials.deliveryFee === 0 
+          ? (isTa ? "இலவச டெலிவரி 🎉" : "FREE Delivery 🎉") 
+          : `₹${financials.deliveryFee} ${isTa ? 'டெலிவரி' : 'delivery'}`;
         subEl.textContent = isTa
-          ? "ஆர்டர் செய்ய 'Place Order' பொத்தானை அழுத்தவும்."
-          : "Tap 'Place Order' for 1-Click Checkout.";
+          ? `பொருட்கள்: ₹${financials.subtotal} | ${delStr} (1-Click Checkout)`
+          : `Items: ₹${financials.subtotal} | ${delStr} (1-Click Checkout)`;
       }
       bar.style.display = "flex";
     }
+    window.updateLyoDraftCartBar = updateLyoDraftCartBar;
 
     function clearLyoAiCart() {
       if (typeof cart !== "undefined") {
@@ -1844,29 +2145,36 @@ function getActiveLyoProposalMsg() {
     }
 
     function addLyoCardItemToCart(productId, rawQty, unit) {
-      const products = (typeof getData === "function") ? getData("ek_products", []) : [];
-      const prod = products.find(p => p.id === productId);
+      if (!productId) return;
+      const products = (typeof getDataCached === "function") 
+        ? getDataCached("ek_products", []) 
+        : ((typeof getData === "function") ? getData("ek_products", []) : []);
+      let prod = products.find(p => String(p.id) === String(productId));
+      if (!prod && typeof DEMO_PRODUCTS !== "undefined" && Array.isArray(DEMO_PRODUCTS)) {
+        prod = DEMO_PRODUCTS.find(p => String(p.id) === String(productId));
+      }
       if (!prod) {
         if (typeof showToast === "function") showToast("Product not found!", "error");
         return;
       }
+
       const unitPrice = Number(prod.pricePerKg || prod.sellingPrice || prod.price || 40);
-      const isWeight = !(unit === "piece" || unit === "packet" || unit === "bunch" || unit === "dozen" || unit === "unit" || unit === "box");
+      const unitStr = prod.sellingUnit || prod.unit || unit || "kg";
+      const isWeight = isUnitWeight ? isUnitWeight(unitStr) : !(unitStr === "piece" || unitStr === "packet" || unitStr === "bunch" || unitStr === "dozen" || unitStr === "unit" || unitStr === "box");
+
       let weightGrams = rawQty || 1;
       if (isWeight) {
         weightGrams = (rawQty <= 50) ? Math.round(rawQty * 1000) : Math.round(rawQty);
       } else {
         weightGrams = Math.round(rawQty);
       }
-      const totalPrice = isWeight
-        ? Math.round((unitPrice / 1000) * weightGrams)
-        : Math.round(unitPrice * weightGrams);
 
       if (typeof cart === "undefined") window.cart = [];
-      const existingIdx = cart.findIndex(c => c.productId === productId);
+
+      const existingIdx = cart.findIndex(c => String(c.productId) === String(productId));
       if (existingIdx !== -1) {
         cart[existingIdx].weightGrams += weightGrams;
-        cart[existingIdx].totalPrice += totalPrice;
+        cart[existingIdx].pricePerKg = unitPrice;
       } else {
         cart.push({
           productId: prod.id,
@@ -1874,16 +2182,26 @@ function getActiveLyoProposalMsg() {
           englishName: prod.englishName || prod.tamilName,
           weightGrams: weightGrams,
           pricePerKg: unitPrice,
-          totalPrice: totalPrice,
-          unit: prod.unit || unit || "kg",
+          unit: unitStr,
+          sellingUnit: unitStr,
+          cutStyle: 'Small Pieces',
+          category: prod.category || 'meat',
+          specialNote: '',
           imageUrl: prod.imageUrl || "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&auto=format&fit=crop",
           isFreeDeliveryEligible: Boolean(prod.isFreeDeliveryEligible)
         });
       }
-      if (typeof saveData === "function") saveData("ek_cart", cart);
-      if (typeof updateCartBadge === "function") updateCartBadge();
-      if (typeof updateCartUI === "function") updateCartUI();
-      if (typeof updateLyoDraftCartBar === "function") updateLyoDraftCartBar();
+
+      if (typeof saveCart === "function") {
+        saveCart();
+      } else {
+        if (typeof sanitizeCart === "function") window.cart = sanitizeCart(cart);
+        if (typeof saveData === "function") saveData("ek_cart", cart);
+        if (typeof updateCartBadge === "function") updateCartBadge();
+        if (typeof updateCartUI === "function") updateCartUI();
+        if (typeof updateLyoDraftCartBar === "function") updateLyoDraftCartBar();
+      }
+
       const isTa = (typeof currentLang !== "undefined" && currentLang === "ta");
       if (typeof showToast === "function") {
         showToast(
@@ -1938,13 +2256,24 @@ function getActiveLyoProposalMsg() {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
       if (!msg) msg = (typeof getActiveLyoProposalMsg === "function") ? getActiveLyoProposalMsg() : null;
       if (!msg || !msg.items || msg.items.length === 0) return;
+
+      if (typeof cart === "undefined") window.cart = [];
+
       msg.items.forEach(it => {
-        addLyoCardItemToCart(it.productId, it.rawQty, it.unit);
+        const pId = it.productId || it.id;
+        if (!pId) return;
+        const existing = cart.find(c => String(c.productId) === String(pId));
+        if (!existing) {
+          addLyoCardItemToCart(pId, it.rawQty || 1, it.unit || 'kg');
+        }
       });
+
+      if (typeof saveCart === "function") saveCart();
+
       const isTa = (typeof currentLang !== "undefined" && currentLang === "ta");
       if (typeof showToast === "function") {
         showToast(
-          isTa ? "அனைத்து பொருட்களும் கார்ட்டில் சேர்க்கப்பட்டன! 🛒" : "All items added to cart! 🛒",
+          isTa ? "அனைத்து பொருட்களும் கார்ட்டில் உள்ளன! 🛒" : "All items ready in cart! 🛒",
           "success"
         );
       }
@@ -2023,16 +2352,54 @@ function getActiveLyoProposalMsg() {
     }
 
 
+    function promiseWithTimeout(promise, ms = 5000, fallbackValue = null) {
+      let timer;
+      const timeoutPromise = new Promise((resolve) => {
+        timer = setTimeout(() => {
+          console.warn(`[Lyo AI Pipeline] Stage exceeded ${ms}ms timeout. Switching to fallback.`);
+          resolve(fallbackValue);
+        }, ms);
+      });
+      return Promise.race([
+        Promise.resolve(promise).then((res) => { clearTimeout(timer); return res; }).catch((err) => { clearTimeout(timer); throw err; }),
+        timeoutPromise
+      ]);
+    }
+
+    function updateLyoProgressStage(typingId, stepText) {
+      const typingMsg = _lyoChatMessages.find(m => m && m.id === typingId);
+      if (typingMsg) {
+        typingMsg.text = stepText;
+        if (typeof renderLyoAiChat === 'function') renderLyoAiChat();
+      }
+    }
+
+    window.sendLyoAiDirectChoice = function(text) {
+      const inputEl = document.getElementById('lyo-ai-input');
+      if (inputEl) {
+        inputEl.value = text;
+        if (typeof onLyoSendBtnClick === 'function') {
+          onLyoSendBtnClick();
+        }
+      }
+    };
+
     function sendLyoAiMessage() {
       return onLyoSendBtnClick();
     }
 
 async function onLyoSendBtnClick() {
+  const tStart = performance.now();
+  let tempTypingId = 'msg_typing_' + Date.now();
+
   try {
     const inputEl = document.getElementById('lyo-ai-input');
     if (!inputEl) return;
     const queryText = inputEl.value.trim();
     if (!queryText) return;
+
+    console.log(`[Lyo AI Pipeline] User Message Received: "${queryText}"`);
+
     inputEl.value = '';
     inputEl.style.height = '24px';
     inputEl.rows = 1;
@@ -2047,12 +2414,11 @@ async function onLyoSendBtnClick() {
       time: nowStr
     });
 
-    const tempTypingId = 'msg_typing_' + Date.now();
     _lyoChatMessages.push({
       id: tempTypingId,
       role: 'assistant',
       isProposal: false,
-      text: 'Lyo AI சிந்திக்கிறது... 🤖✨',
+      text: '🤖 Lyo AI சிந்திக்கிறது...\n✔ Intent Understood (நோக்கம் உணரப்பட்டது)...',
       time: nowStr,
       isTyping: true,
       items: []
@@ -2063,15 +2429,56 @@ async function onLyoSendBtnClick() {
 
     const activeProducts = (typeof getData === 'function') ? getData('ek_products', []) : [];
 
-    // INTENT CLASSIFICATION LAYER
-    const intentResult = await classifyLyoUserIntent(queryText, activeProducts);
+    // Stage 1: INTENT CLASSIFICATION
+    const stage1Start = performance.now();
+    let intentResult = await promiseWithTimeout(
+      classifyLyoUserIntent(queryText, activeProducts),
+      5000,
+      null
+    );
+    if (!intentResult) {
+      console.warn(`[Lyo AI Pipeline] Intent classification timed out (>5s). Falling back to SHOPPING_REQUEST.`);
+      intentResult = { intent: "SHOPPING_REQUEST", confidence: 0.95 };
+    }
+    const stage1Duration = (performance.now() - stage1Start).toFixed(1);
+    console.log(`[Lyo AI Pipeline] Intent Detected: ${intentResult.intent} (took ${stage1Duration}ms)`);
+
     const intent = (intentResult.intent || 'GENERAL_QUESTIONS').toUpperCase();
 
-    // Remove typing indicator
-    _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== tempTypingId);
-
     if (intent === LYO_INTENTS.SHOPPING_REQUEST) {
-      // EXECUTE SHOPPING ENGINE ONLY FOR SHOPPING REQUESTS
+      // Step 2: Searching Products
+      updateLyoProgressStage(tempTypingId, '🤖 Lyo AI சிந்திக்கிறது...\n✔ Intent Understood (நோக்கம் உணரப்பட்டது)\n✔ Searching Products (பொருட்கள் தேடப்படுகிறது)...');
+
+      // Stage 2: AI ORDER PARSER (with 5s Timeout Protection -> Fallback Catalog Parser)
+      const stage2Start = performance.now();
+      console.log(`[Lyo AI Pipeline] AI Parser Started`);
+      let parsedItems = [];
+      try {
+        if (typeof parseOrderWithAI === 'function') {
+          parsedItems = await promiseWithTimeout(
+            parseOrderWithAI(queryText, activeProducts),
+            5000,
+            null
+          );
+        }
+      } catch (e) {
+        console.warn("[Lyo AI Pipeline] AI Parser Exception:", e);
+      }
+
+      const stage2Duration = (performance.now() - stage2Start).toFixed(1);
+      if (parsedItems && parsedItems.length > 0) {
+        console.log(`[Lyo AI Pipeline] AI Parser Finished (took ${stage2Duration}ms)`);
+      } else {
+        console.log(`[Lyo AI Pipeline] Fallback Started: AI Parser empty/timed out after ${stage2Duration}ms. Running Catalog Fallback Parser.`);
+        parsedItems = parseLyoCommerceQuery(queryText);
+      }
+
+      // Step 3: Matching Inventory
+      updateLyoProgressStage(tempTypingId, '🤖 Lyo AI சிந்திக்கிறது...\n✔ Intent Understood (நோக்கம் உணரப்பட்டது)\n✔ Searching Products (பொருட்கள் தேடப்படுகிறது)\n✔ Matching Inventory (சரக்கு ஒப்பிடுதல்)...');
+
+      // Stage 3: CATALOG & INVENTORY MATCHING ENGINE
+      const stage3Start = performance.now();
+
       let activeProposalMsg = getActiveLyoProposalMsg();
       if (!activeProposalMsg) {
         const proposalId = 'prop_' + Date.now();
@@ -2079,7 +2486,7 @@ async function onLyoSendBtnClick() {
           id: 'msg_a_' + Date.now(),
           role: 'assistant',
           isProposal: true,
-          text: 'உங்களுக்காக தயாரிப்புகள் சேர்க்கப்பட்டது! 🥩🥦',
+          text: '',
           time: nowStr,
           proposalId: proposalId,
           items: [],
@@ -2096,21 +2503,44 @@ async function onLyoSendBtnClick() {
         _lyoChatMessages.push(activeProposalMsg);
       }
 
-      let parsedItems = [];
-      try {
-        if (typeof parseOrderWithAI === 'function') {
-          parsedItems = await parseOrderWithAI(queryText, activeProducts);
-        }
-      } catch (e) {
-        console.warn("parseOrderWithAI failed, using fallback catalog parser:", e);
-      }
-
-      if (!parsedItems || parsedItems.length === 0) {
-        parsedItems = parseLyoCommerceQuery(queryText);
-      }
+      const unmatchedTerms = [];
+      const ambiguousItems = [];
+      let newlyAddedCount = 0;
+      let quantityUpdatedCount = 0;
 
       parsedItems.forEach((parsed) => {
         const searchTerm = parsed.product_name || parsed.productSearchTerm || queryText;
+        const cleanSearch = (searchTerm || '').toLowerCase().trim();
+
+        // Check for ambiguous generic term (e.g. "சிக்கன்" / "chicken" without specifying Broiler vs Country)
+        const isGenericChicken = (cleanSearch === 'chicken' || cleanSearch === 'சிக்கன்' || cleanSearch === 'கோழி') &&
+                                 !cleanSearch.includes('broiler') && !cleanSearch.includes('country') && !cleanSearch.includes('nattu') && !cleanSearch.includes('பிராய்லர்') && !cleanSearch.includes('நாட்டு');
+
+        if (isGenericChicken && activeProducts.length > 0) {
+          const chickenCandidates = activeProducts.filter(p => {
+            const fullN = ((p.englishName || '') + ' ' + (p.tamilName || '')).toLowerCase();
+            return fullN.includes('chicken') || fullN.includes('சிக்கன்') || fullN.includes('கோழி');
+          });
+
+          if (chickenCandidates.length >= 2) {
+            const rawQ = parsed.raw_quantity_val || parsed.rawQtyVal || 1;
+            const uLabel = parsed.unit || 'kg';
+            let qtyDisplay = `${rawQ} ${uLabel}`;
+            if (rawQ === 0.5 || rawQ === 500) qtyDisplay = "அரை கிலோ (500g)";
+            else if (rawQ === 0.25 || rawQ === 250) qtyDisplay = "கால் கிலோ (250g)";
+            else if (rawQ === 0.75 || rawQ === 750) qtyDisplay = "முக்கால் கிலோ (750g)";
+
+            ambiguousItems.push({
+              searchTerm: searchTerm,
+              qtyDisplay: qtyDisplay,
+              candidates: chickenCandidates,
+              rawQtyVal: rawQ,
+              unit: uLabel
+            });
+            return;
+          }
+        }
+
         const matchResult = matchProductWithConfidence(searchTerm, activeProducts);
 
         if (matchResult && matchResult.product && (matchResult.score >= 0.3 || activeProducts.length === 1)) {
@@ -2142,9 +2572,16 @@ async function onLyoSendBtnClick() {
 
           const existingItem = activeProposalMsg.items.find(it => it.productId === matchedProd.id);
           if (existingItem) {
+            quantityUpdatedCount++;
             if (isUnitWeight(matchedProd.unit)) {
-              let currentGrams = (existingItem.rawQty && existingItem.rawQty <= 50) ? existingItem.rawQty * 1000 : existingItem.rawQty;
-              let addedGrams = (calcInput.rawQtyVal && calcInput.rawQtyVal <= 50) ? calcInput.rawQtyVal * 1000 : calcInput.rawQtyVal;
+              let currentGrams = (existingItem.unit === 'g' || existingItem.unit === 'gm' || existingItem.unit === 'gram')
+                ? (existingItem.rawQty || 0)
+                : ((existingItem.rawQty && existingItem.rawQty <= 50) ? existingItem.rawQty * 1000 : (existingItem.rawQty || 0));
+              
+              let addedGrams = (calcInput.unit === 'g' || calcInput.unit === 'gm' || calcInput.unit === 'gram')
+                ? (calcInput.rawQtyVal || 0)
+                : ((calcInput.rawQtyVal && calcInput.rawQtyVal <= 50) ? calcInput.rawQtyVal * 1000 : (calcInput.rawQtyVal || 0));
+
               if (calcInput.amountType === 'AMOUNT_RS') {
                 addedGrams = details.rawQty <= 50 ? details.rawQty * 1000 : details.rawQty;
               }
@@ -2170,6 +2607,7 @@ async function onLyoSendBtnClick() {
               existingItem.itemTotal = updatedDetails.itemTotal;
             }
           } else {
+            newlyAddedCount++;
             const prodPriceVal = Number(matchedProd.pricePerKg || matchedProd.sellingPrice || matchedProd.price || 40);
             const prodUnitVal = String(matchedProd.sellingUnit || matchedProd.unit || calcInput.unit || 'kg');
             const newCardItemId = 'it_' + matchedProd.id + '_' + Date.now();
@@ -2189,37 +2627,87 @@ async function onLyoSendBtnClick() {
               isFreeDeliveryEligible: matchedProd.isFreeDeliveryEligible === true
             });
           }
+        } else {
+          unmatchedTerms.push(searchTerm);
         }
       });
+
+      if (parsedItems.length === 0 && ambiguousItems.length === 0) {
+        unmatchedTerms.push(queryText);
+      }
+
+      // Step 4: Building Cart
+      updateLyoProgressStage(tempTypingId, '🤖 Lyo AI சிந்திக்கிறது...\n✔ Intent Understood\n✔ Searching Products\n✔ Matching Inventory\n✔ Building Cart (கார்ட் உருவாக்கப்படுகிறது)...');
+
+      const stage3Duration = (performance.now() - stage3Start).toFixed(1);
+      console.log(`[Lyo AI Pipeline] Catalog Match & Inventory Processing (took ${stage3Duration}ms)`);
+
+      // Remove typing indicator BEFORE pushing assistant response
+      _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== tempTypingId);
 
       let proposalSubtotal = 0;
       activeProposalMsg.items.forEach(it => proposalSubtotal += (it.itemTotal || 0));
       activeProposalMsg.deliveryCharge = computeLyoDeliveryCharge(proposalSubtotal, activeProposalMsg.items);
 
-      if (activeProposalMsg.items.length > 0) {
-        const itemSummaryList = activeProposalMsg.items.map(it => `• **${it.tamilName || it.name}** (${it.displayQty} - ₹${it.itemTotal})`).join('\n');
-        activeProposalMsg.text = `நன்றி! உங்கள் கட்டளைப்படி பொருட்கள் கார்ட்டில் சேர்க்கப்பட்டன! 🥩🛒\n\n${itemSummaryList}`;
-      } else {
+      const itemsChangedThisTurn = (newlyAddedCount > 0 || quantityUpdatedCount > 0);
+
+      // Handle Ambiguous Product Clarification Prompt
+      if (ambiguousItems.length > 0 && !itemsChangedThisTurn) {
         _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== activeProposalMsg.id);
+        const amb = ambiguousItems[0];
+        const candidateButtons = amb.candidates.map(p => {
+          const pName = p.englishName || p.tamilName;
+          const icon = pName.toLowerCase().includes('country') || pName.toLowerCase().includes('nattu') ? '🐓' : '🐔';
+          return `<button type="button" onclick="sendLyoAiDirectChoice('${amb.rawQtyVal}${amb.unit === 'g'?'g':amb.unit} ${pName}')" style="background: rgba(16,185,129,0.15); border: 1.5px solid #10b981; color: #a7f3d0; padding: 10px 14px; border-radius: 12px; font-weight: 700; font-size: 12.5px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); transition: transform 0.15s;">
+            <span>${icon}</span>
+            <span>${pName} (${amb.qtyDisplay})</span>
+          </button>`;
+        }).join('');
+
         _lyoChatMessages.push({
           id: 'msg_a_' + Date.now(),
           role: 'assistant',
           isProposal: false,
-          text: `மன்னிக்கவும், '${queryText}' குறித்த பொருட்கள் நமது கடையில் தற்போது இருப்பில் இல்லை. 🛒\n\nஎங்களிடம் ஆட்டுக்கறி, ஆட்டுத் தலைக்கறி, பிராய்லர் சிக்கன், நாட்டுக்கோழி, தக்காளி, உருளைக்கிழங்கு போன்ற பொருட்கள் உள்ளன.`,
+          text: `நீங்கள் **${amb.qtyDisplay} சிக்கன்** கேட்டுள்ளீர்கள். இது **Broiler Chicken** அல்லது **Country Chicken (நாட்டுக்கோழி)**?\n\nதயவுசெய்து கீழே உள்ள விருப்பத்தைத் தேர்ந்தெடுக்கவும்:`,
+          actionHtml: `<div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">${candidateButtons}</div>`,
           time: nowStr,
           items: []
         });
+        console.log(`[Lyo AI Pipeline] Proposal Generated: Intelligent Ambiguous Clarification Prompt`);
+      } else if (activeProposalMsg.items.length > 0 && itemsChangedThisTurn) {
+        const itemSummaryList = activeProposalMsg.items.map(it => `• **${it.tamilName || it.name}** (${it.displayQty} - ₹${it.itemTotal})`).join('\n');
+        let headerText = "நன்றி! உங்கள் கட்டளைப்படி பொருட்கள் கார்ட்டில் சேர்க்கப்பட்டன! 🥩🛒\n\n";
+        let mainText = `${headerText}${itemSummaryList}`;
+        if (unmatchedTerms.length > 0) {
+          const uniqueUnmatched = [...new Set(unmatchedTerms)].map(u => `'${u}'`).join(', ');
+          mainText += `\n\n⚠️ **கவனிக்கவும் (Note):**\nதங்கள் செய்தியில் உள்ள **${uniqueUnmatched}** என்ற பொருளை எங்களால் சேர்க்க முடியவில்லை / அடையாளம் காண முடியவில்லை. தயவுசெய்து சரியான பெயர் அல்லது அளவைக் குறிப்பிடவும்.`;
+        }
+        activeProposalMsg.text = mainText;
+        console.log(`[Lyo AI Pipeline] Proposal Generated: Cart Updated (${activeProposalMsg.items.length} items)`);
+      } else if (activeProposalMsg.items.length > 0 && !itemsChangedThisTurn) {
+        const itemSummaryList = activeProposalMsg.items.map(it => `• **${it.tamilName || it.name}** (${it.displayQty} - ₹${it.itemTotal})`).join('\n');
+        const uniqueUnmatched = [...new Set(unmatchedTerms)].map(u => `'${u}'`).join(', ');
+        activeProposalMsg.text = `மன்னிக்கவும், நீங்கள் குறிப்பிட்ட **${uniqueUnmatched || `'${queryText}'`}** என்ற பொருளை அடையாளம் காணவோ கார்ட்டில் சேர்க்கவோ முடியவில்லை. 🛒\n\nதயவுசெய்து சரியான பொருள் பெயர் அல்லது அளவைக் குறிப்பிடவும் (எ.கா: '1 கிலோ தக்காளி').\n\n**தங்கள் கார்ட்டில் உள்ள பொருட்கள்:**\n${itemSummaryList}`;
+        console.log(`[Lyo AI Pipeline] Proposal Generated: Existing Cart Retained`);
+      } else {
+        _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== activeProposalMsg.id);
+        const uniqueUnmatched = [...new Set(unmatchedTerms)].map(u => `'${u}'`).join(', ');
+        _lyoChatMessages.push({
+          id: 'msg_a_' + Date.now(),
+          role: 'assistant',
+          isProposal: false,
+          text: `மன்னிக்கவும், ${uniqueUnmatched || `'${queryText}'`} குறித்த பொருட்கள் நமது கடையில் தற்போது இருப்பில் இல்லை அல்லது அடையாளம் காண முடியவில்லை. 🛒\n\nதயவுசெய்து சரியான பொருள் பெயர் அல்லது அளவைக் குறிப்பிடவும் (எ.கா: '1 கிலோ தக்காளி').\n\nஎங்களிடம் ஆட்டுக்கறி, ஆட்டுத் தலைக்கறி, பிராய்லர் சிக்கன், நாட்டுக்கோழி, தக்காளி, உருளைக்கிழங்கு, முட்டை போன்ற பொருட்கள் உள்ளன.`,
+          time: nowStr,
+          items: []
+        });
+        console.log(`[Lyo AI Pipeline] Proposal Generated: Catalog Fallback Clarification`);
       }
 
       syncLyoToManualCart();
+      console.log(`[Lyo AI Pipeline] Cart Updated`);
     } else {
       // NON-SHOPPING REQUEST
-      // NEVER generate products.
-      // NEVER modify the AI cart.
-      // NEVER change quantities.
-      // NEVER add items.
-      // NEVER remove items.
-      // NEVER trigger checkout logic.
+      _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== tempTypingId);
       const responseObj = getNonShoppingResponse(intent, queryText, intentResult.responseText, activeProducts);
       _lyoChatMessages.push({
         id: 'msg_a_' + Date.now(),
@@ -2232,14 +2720,48 @@ async function onLyoSendBtnClick() {
       });
     }
 
-    renderLyoAiChat();
+  } catch (err) {
+    const errStatus = err.status || err.statusCode || (err.message && err.message.match(/HTTP (\d+)/) ? parseInt(err.message.match(/HTTP (\d+)/)[1]) : null);
+    const errProvider = (err.provider || 'AI Provider').toUpperCase();
+    const errDetails = err.details || err.message || String(err);
+    
+    console.error(`[Lyo AI Pipeline Error Diagnostic] Execution Error: Provider=${errProvider}, Status=${errStatus || 'N/A'}, Details=${errDetails}`, err);
+    
+    _lyoChatMessages = _lyoChatMessages.filter(m => m && m.id !== tempTypingId);
+
+    const isApiKeyError = errStatus === 401 || errStatus === 403 || (errStatus === 400 && (errDetails.includes('API key') || errDetails.includes('API_KEY_INVALID') || errDetails.includes('invalid')));
+    const isQuotaError = errStatus === 429 || errDetails.includes('quota') || errDetails.includes('rate limit');
+
+    let userFacingText = "";
+    if (isApiKeyError) {
+      userFacingText = `⚠️ **AI Service Configuration Issue**\n\nAI சாவி உள்ளமைப்பில் தவறு உள்ளது (${errProvider} Error ${errStatus || '400/401'}: Invalid API Key).\n\n**கடை உரிமையாளர் கவனத்திற்கு:** தயவுசெய்து **Admin > AI Key** பக்கத்திற்கு சென்று சரியான API சாவி அல்லது மாதிரியைப் புதுப்பிக்கவும்.`;
+    } else if (isQuotaError) {
+      userFacingText = `⚡ **AI Service Temporarily Unavailable**\n\nAI சேவை தற்காலிகமாக பிஸியாக உள்ளது (${errProvider} Error 429: Rate Limit / Quota Exceeded).\n\nஉங்கள் எளிய தேவைகள் உள்ளூர் தயாரிப்புப் பட்டியல் மூலம் தொடர்ந்து செயலாக்கப்படும்.`;
+    } else {
+      userFacingText = `மன்னிக்கவும்! தொடர்புகொள்வதில் சிறு தடங்கல் ஏற்பட்டது (${errProvider} ${errStatus ? 'Status ' + errStatus : ''}). 🛒✨\n\nதயவுசெய்து மீண்டும் முயற்சிக்கவும் (எ.கா: "500g சிக்கன்", "1kg தக்காளி").`;
+    }
+    
+    _lyoChatMessages.push({
+      id: 'msg_err_' + Date.now(),
+      role: 'assistant',
+      isProposal: false,
+      text: userFacingText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      items: []
+    });
+  } finally {
+    // ALWAYS clean up typing indicator in case any edge case missed it
+    _lyoChatMessages = _lyoChatMessages.filter(m => m && m.id !== tempTypingId && !m.isTyping);
+    if (typeof hideLyoTransitLoader === 'function') hideLyoTransitLoader();
+    if (typeof persistLyoChatMessages === 'function') persistLyoChatMessages();
+    if (typeof renderLyoAiChat === 'function') renderLyoAiChat();
+    
+    const totalDuration = (performance.now() - tStart).toFixed(1);
+    console.log(`[Lyo AI Pipeline] Render Finished (total execution took ${totalDuration}ms)`);
+
     const chatContainer = document.getElementById('lyo-ai-messages');
     if (chatContainer) {
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
-  } catch (err) {
-    console.error('Error handling Lyo AI message:', err);
-  } finally {
-    hideLyoTransitLoader();
   }
 }

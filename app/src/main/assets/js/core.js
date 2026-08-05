@@ -143,8 +143,9 @@ window.setupCloudRealtimeListeners2 = function() {
   // 3. PRODUCTS REALTIME LISTENER
   if (!_realtimeUnsubscribers.products) {
     try {
-      _realtimeUnsubscribers.products = db.collection('ek_products').limit(300).onSnapshot(snapshot => {
+      _realtimeUnsubscribers.products = db.collection('ek_products').limit(300).onSnapshot({ includeMetadataChanges: true }, snapshot => {
         if (snapshot) {
+          const isFromCache = !!(snapshot.metadata && snapshot.metadata.fromCache);
           let list = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
 
@@ -162,8 +163,22 @@ window.setupCloudRealtimeListeners2 = function() {
             list = list.filter(p => p && p.id && !deletedProductIds.includes(p.id));
           }
 
-          window._hasFreshCloudData = true;
+          const existingLocal = typeof getData === 'function' ? getData('ek_products', []) : [];
+          const existingLocalValid = Array.isArray(existingLocal) ? existingLocal.filter(p => p && p.id && !deletedProductIds.includes(p.id)) : [];
+
+          // If snapshot is from local IndexedDB cache and local storage already has a fuller product list,
+          // preserve the fuller local list so we don't temporarily downgrade or drop items during cold start
+          if (isFromCache && existingLocalValid.length > list.length) {
+            if (typeof debugLog === 'function') {
+              debugLog(`[Realtime Sync] Retaining full local product list (${existingLocalValid.length}) over incomplete cached snapshot (${list.length}).`);
+            }
+            list = existingLocalValid;
+          }
+
+          window._hasFreshCloudData = !isFromCache;
+          window._isProductsFromCache = isFromCache;
           saveData('ek_cloud_synced', true);
+
           if (list && list.length > 0) {
             saveData('ek_products', list);
           } else {
@@ -177,6 +192,10 @@ window.setupCloudRealtimeListeners2 = function() {
           window._lastProductsHash = '';
           _lastDataSnapshotHash = null;
           if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
+
+          if (typeof updateCatalogSyncIndicator === 'function') {
+            updateCatalogSyncIndicator(isFromCache);
+          }
 
           const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
           if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
@@ -194,195 +213,204 @@ window.setupCloudRealtimeListeners2 = function() {
     }
   }
 
-  // 3.5 DELIVERY ZONES REALTIME LISTENER
-  if (!_realtimeUnsubscribers.deliveryZones) {
-    try {
-      _realtimeUnsubscribers.deliveryZones = db.collection('ek_delivery_zones').onSnapshot(snapshot => {
-        if (snapshot) {
-          const list = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
-          if (list.length > 0) {
-            saveData('ek_delivery_zones', list);
-            if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_delivery_zones');
-            const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
-            if (settings) {
-              settings.deliveryZones = list;
-              saveData('ek_settings', settings);
+  // STAGGER LESS CRITICAL LISTENERS (Delivery Zones, Orders, Topic Broadcasts)
+  // Attach with a short delay so cold start CPU & network pipe remain 100% focused on Products, Categories, and Settings
+  if (window._staggeredListenersTimeout) {
+    clearTimeout(window._staggeredListenersTimeout);
+  }
+  window._staggeredListenersTimeout = setTimeout(() => {
+    if (typeof db === 'undefined' || !db) return;
+
+    // 3.5 DELIVERY ZONES REALTIME LISTENER
+    if (!_realtimeUnsubscribers.deliveryZones) {
+      try {
+        _realtimeUnsubscribers.deliveryZones = db.collection('ek_delivery_zones').onSnapshot(snapshot => {
+          if (snapshot) {
+            const list = [];
+            snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+            if (list.length > 0) {
+              saveData('ek_delivery_zones', list);
+              if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_delivery_zones');
+              const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
+              if (settings) {
+                settings.deliveryZones = list;
+                saveData('ek_settings', settings);
+              }
+              try { if (typeof renderAdminZonesTable === 'function') renderAdminZonesTable(); } catch(e) {}
+              try { if (typeof initAdminZonesMap === 'function') initAdminZonesMap(); } catch(e) {}
             }
-            try { if (typeof renderAdminZonesTable === 'function') renderAdminZonesTable(); } catch(e) {}
-            try { if (typeof initAdminZonesMap === 'function') initAdminZonesMap(); } catch(e) {}
           }
-        }
-      }, err => console.warn("[Realtime Sync] Delivery zones listener notice:", err));
-    } catch(e) {
-      console.warn("[Realtime Sync] Delivery zones subscription skipped:", e);
-    }
-  }
-
-  // 4. ORDERS REALTIME LISTENER (SCOPED BY ROLE: CUSTOMER, RIDER, ADMIN)
-  const adminSess = typeof getAdminSession === 'function' ? getAdminSession() : null;
-  const deliverySess = typeof getData === 'function' ? getData('ek_delivery_session', null) : null;
-  const custSess = typeof getActiveSession === 'function' ? getActiveSession() : (typeof getData === 'function' ? getData('ek_customer_session', null) : null);
-
-  let targetRole = 'guest';
-  let sessionKey = 'guest';
-
-  if (adminSess && adminSess.loggedIn) {
-    targetRole = 'admin';
-    sessionKey = adminSess.id || adminSess.email || 'admin';
-  } else if (deliverySess && deliverySess.loggedIn) {
-    targetRole = 'rider';
-    sessionKey = deliverySess.id || deliverySess.phone || 'rider';
-  } else if (custSess && (custSess.loggedIn || custSess.userId || custSess.id || custSess.phone)) {
-    targetRole = 'customer';
-    sessionKey = custSess.userId || custSess.id || custSess.phone || 'customer';
-  }
-
-  const subKey = `${targetRole}_${sessionKey}`;
-
-  if (window._currentOrdersSubKey !== subKey) {
-    if (_realtimeUnsubscribers.orders) {
-      try { _realtimeUnsubscribers.orders(); } catch(e) {}
-      _realtimeUnsubscribers.orders = null;
-    }
-    window._currentOrdersSubKey = subKey;
-  }
-
-  if (!_realtimeUnsubscribers.orders) {
-    try {
-      let ordersQuery = null;
-
-      if (targetRole === 'customer') {
-        const custId = custSess ? (custSess.userId || custSess.id || custSess.uid) : null;
-        const custPhone = custSess ? custSess.phone : null;
-        if (custId) {
-          ordersQuery = db.collection('ek_orders').where('customerId', '==', String(custId)).limit(30);
-        } else if (custPhone) {
-          ordersQuery = db.collection('ek_orders').where('customerPhone', '==', String(custPhone)).limit(30);
-        } else {
-          ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(20);
-        }
-      } else if (targetRole === 'rider') {
-        const riderId = deliverySess ? (deliverySess.id || deliverySess.phone) : null;
-        if (riderId) {
-          ordersQuery = db.collection('ek_orders').where('assignedExecutiveId', '==', String(riderId)).limit(40);
-        } else {
-          ordersQuery = db.collection('ek_orders').where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'delivering', 'out_for_delivery']).limit(40);
-        }
-      } else if (targetRole === 'admin') {
-        try {
-          ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(200);
-        } catch(qe) {
-          ordersQuery = db.collection('ek_orders').limit(200);
-        }
-      } else {
-        ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(100);
+        }, err => console.warn("[Realtime Sync] Delivery zones listener notice:", err));
+      } catch(e) {
+        console.warn("[Realtime Sync] Delivery zones subscription skipped:", e);
       }
-
-      const handleOrdersSnapshot = (snapshot) => {
-        if (snapshot) {
-          const snapshotList = [];
-          snapshot.forEach(d => {
-            const data = d.data();
-            if (data) {
-              snapshotList.push({ ...data, id: d.id || (data && data.id) });
-            }
-          });
-
-          const prevOrders = typeof getData === 'function' ? getData('ek_orders', []) : [];
-          
-          // Merge with local storage orders so loaded history isn't overwritten
-          const orderMap = new Map();
-          if (Array.isArray(prevOrders)) {
-            prevOrders.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
-          }
-          snapshotList.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
-          const mergedList = Array.from(orderMap.values());
-
-          saveData('ek_orders', mergedList);
-          if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
-
-          const curScreen = window.currentScreen || (typeof currentScreen !== 'undefined' ? currentScreen : '');
-
-          // Admin real-time updates
-          if (targetRole === 'admin' || curScreen === 'screen-admin') {
-            if (snapshotList.length > prevOrders.length) {
-              try { if (typeof showToast === 'function') showToast("🔔 புதிய ஆர்டர் வந்துள்ளது! New Order Received!", "info"); } catch(e) {}
-              try { if (typeof playNotificationSound === 'function') playNotificationSound(); } catch(e) {}
-            }
-            if (curScreen === 'screen-admin') {
-              try { if (typeof renderAdminOrdersList === 'function') renderAdminOrdersList(true); } catch(e) {}
-              try { if (typeof renderAdminOrders === 'function') renderAdminOrders(); } catch(e) {}
-              try { if (typeof renderAdminDashboard === 'function') renderAdminDashboard(); } catch(e) {}
-            }
-          }
-
-          // Rider real-time updates
-          if (targetRole === 'rider' || curScreen === 'screen-delivery') {
-            if (curScreen === 'screen-delivery') {
-              try { if (typeof renderRiderOrders === 'function') renderRiderOrders(); } catch(e) {}
-              try { if (typeof renderRiderDashboard === 'function') renderRiderDashboard(); } catch(e) {}
-              try { if (typeof renderDeliveryScreen === 'function') renderDeliveryScreen(); } catch(e) {}
-            }
-          }
-
-          // Customer real-time updates
-          if (targetRole === 'customer' || targetRole === 'guest') {
-            if (curScreen === 'screen-my-orders' || curScreen === 'screen-orders') {
-              try { if (typeof renderMyOrdersList === 'function') renderMyOrdersList(); } catch(e) {}
-            }
-            if (curScreen === 'screen-tracker') {
-              try { if (typeof updateActiveOrderTrackingUI === 'function') updateActiveOrderTrackingUI(); } catch(e) {}
-              try { if (typeof renderTrackerScreen === 'function') renderTrackerScreen(); } catch(e) {}
-            }
-          }
-        }
-      };
-
-      _realtimeUnsubscribers.orders = ordersQuery.onSnapshot(handleOrdersSnapshot, err => {
-        console.warn("[Realtime Sync] Scoped orders listener notice:", err);
-        // Fallback query without orderBy or filter
-        try {
-          if (_realtimeUnsubscribers.orders) _realtimeUnsubscribers.orders();
-          _realtimeUnsubscribers.orders = db.collection('ek_orders').limit(200).onSnapshot(handleOrdersSnapshot, fallbackErr => {
-            console.warn("[Realtime Sync] Fallback orders listener failed:", fallbackErr);
-          });
-        } catch(fallbackErr) {
-          console.warn("[Realtime Sync] Fallback orders listener setup failed:", fallbackErr);
-        }
-      });
-    } catch(e) {
-      console.warn("[Realtime Sync] Orders subscription skipped:", e);
     }
-  }
 
-  // 5. TOPIC BROADCASTS REALTIME LISTENER
-  if (!_realtimeUnsubscribers.broadcasts) {
-    try {
-      _realtimeUnsubscribers.broadcasts = db.collection('ek_topic_broadcast_requests')
-        .orderBy('createdAt', 'desc')
-        .limit(1)
-        .onSnapshot(snapshot => {
-          if (snapshot && !snapshot.empty) {
-            const doc = snapshot.docs[0];
-            const data = doc.data();
-            const lastSeenBroadcastId = localStorage.getItem('last_seen_broadcast_id');
+    // 4. ORDERS REALTIME LISTENER (SCOPED BY ROLE: CUSTOMER, RIDER, ADMIN)
+    const adminSess = typeof getAdminSession === 'function' ? getAdminSession() : null;
+    const deliverySess = typeof getData === 'function' ? getData('ek_delivery_session', null) : null;
+    const custSess = typeof getActiveSession === 'function' ? getActiveSession() : (typeof getData === 'function' ? getData('ek_customer_session', null) : null);
 
-            if (data && doc.id !== lastSeenBroadcastId) {
-              const createdTime = new Date(data.createdAt).getTime();
-              if (!isNaN(createdTime) && (Date.now() - createdTime < 600000)) {
-                localStorage.setItem('last_seen_broadcast_id', doc.id);
-                if (typeof showToast === 'function') {
-                  showToast(`📢 ${data.title || 'அறிவிப்பு'}: ${data.body}`, 'info', 8000);
-                }
+    let targetRole = 'guest';
+    let sessionKey = 'guest';
+
+    if (adminSess && adminSess.loggedIn) {
+      targetRole = 'admin';
+      sessionKey = adminSess.id || adminSess.email || 'admin';
+    } else if (deliverySess && deliverySess.loggedIn) {
+      targetRole = 'rider';
+      sessionKey = deliverySess.id || deliverySess.phone || 'rider';
+    } else if (custSess && (custSess.loggedIn || custSess.userId || custSess.id || custSess.phone)) {
+      targetRole = 'customer';
+      sessionKey = custSess.userId || custSess.id || custSess.phone || 'customer';
+    }
+
+    const subKey = `${targetRole}_${sessionKey}`;
+
+    if (window._currentOrdersSubKey !== subKey) {
+      if (_realtimeUnsubscribers.orders) {
+        try { _realtimeUnsubscribers.orders(); } catch(e) {}
+        _realtimeUnsubscribers.orders = null;
+      }
+      window._currentOrdersSubKey = subKey;
+    }
+
+    if (!_realtimeUnsubscribers.orders) {
+      try {
+        let ordersQuery = null;
+
+        if (targetRole === 'customer') {
+          const custId = custSess ? (custSess.userId || custSess.id || custSess.uid) : null;
+          const custPhone = custSess ? custSess.phone : null;
+          if (custId) {
+            ordersQuery = db.collection('ek_orders').where('customerId', '==', String(custId)).limit(30);
+          } else if (custPhone) {
+            ordersQuery = db.collection('ek_orders').where('customerPhone', '==', String(custPhone)).limit(30);
+          } else {
+            ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(20);
+          }
+        } else if (targetRole === 'rider') {
+          const riderId = deliverySess ? (deliverySess.id || deliverySess.phone) : null;
+          if (riderId) {
+            ordersQuery = db.collection('ek_orders').where('assignedExecutiveId', '==', String(riderId)).limit(40);
+          } else {
+            ordersQuery = db.collection('ek_orders').where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'delivering', 'out_for_delivery']).limit(40);
+          }
+        } else if (targetRole === 'admin') {
+          try {
+            ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(200);
+          } catch(qe) {
+            ordersQuery = db.collection('ek_orders').limit(200);
+          }
+        } else {
+          ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(100);
+        }
+
+        const handleOrdersSnapshot = (snapshot) => {
+          if (snapshot) {
+            const snapshotList = [];
+            snapshot.forEach(d => {
+              const data = d.data();
+              if (data) {
+                snapshotList.push({ ...data, id: d.id || (data && data.id) });
+              }
+            });
+
+            const prevOrders = typeof getData === 'function' ? getData('ek_orders', []) : [];
+            
+            // Merge with local storage orders so loaded history isn't overwritten
+            const orderMap = new Map();
+            if (Array.isArray(prevOrders)) {
+              prevOrders.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+            }
+            snapshotList.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+            const mergedList = Array.from(orderMap.values());
+
+            saveData('ek_orders', mergedList);
+            if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+
+            const curScreen = window.currentScreen || (typeof currentScreen !== 'undefined' ? currentScreen : '');
+
+            // Admin real-time updates
+            if (targetRole === 'admin' || curScreen === 'screen-admin') {
+              if (snapshotList.length > prevOrders.length) {
+                try { if (typeof showToast === 'function') showToast("🔔 புதிய ஆர்டர் வந்துள்ளது! New Order Received!", "info"); } catch(e) {}
+                try { if (typeof playNotificationSound === 'function') playNotificationSound(); } catch(e) {}
+              }
+              if (curScreen === 'screen-admin') {
+                try { if (typeof renderAdminOrdersList === 'function') renderAdminOrdersList(true); } catch(e) {}
+                try { if (typeof renderAdminOrders === 'function') renderAdminOrders(); } catch(e) {}
+                try { if (typeof renderAdminDashboard === 'function') renderAdminDashboard(); } catch(e) {}
+              }
+            }
+
+            // Rider real-time updates
+            if (targetRole === 'rider' || curScreen === 'screen-delivery') {
+              if (curScreen === 'screen-delivery') {
+                try { if (typeof renderRiderOrders === 'function') renderRiderOrders(); } catch(e) {}
+                try { if (typeof renderRiderDashboard === 'function') renderRiderDashboard(); } catch(e) {}
+                try { if (typeof renderDeliveryScreen === 'function') renderDeliveryScreen(); } catch(e) {}
+              }
+            }
+
+            // Customer real-time updates
+            if (targetRole === 'customer' || targetRole === 'guest') {
+              if (curScreen === 'screen-my-orders' || curScreen === 'screen-orders') {
+                try { if (typeof renderMyOrdersList === 'function') renderMyOrdersList(); } catch(e) {}
+              }
+              if (curScreen === 'screen-tracker') {
+                try { if (typeof updateActiveOrderTrackingUI === 'function') updateActiveOrderTrackingUI(); } catch(e) {}
+                try { if (typeof renderTrackerScreen === 'function') renderTrackerScreen(); } catch(e) {}
               }
             }
           }
-        }, err => console.warn("[Realtime Sync] Broadcast listener notice:", err));
-    } catch(e) {
-      console.warn("[Realtime Sync] Broadcast subscription skipped:", e);
+        };
+
+        _realtimeUnsubscribers.orders = ordersQuery.onSnapshot(handleOrdersSnapshot, err => {
+          console.warn("[Realtime Sync] Scoped orders listener notice:", err);
+          // Fallback query without orderBy or filter
+          try {
+            if (_realtimeUnsubscribers.orders) _realtimeUnsubscribers.orders();
+            _realtimeUnsubscribers.orders = db.collection('ek_orders').limit(200).onSnapshot(handleOrdersSnapshot, fallbackErr => {
+              console.warn("[Realtime Sync] Fallback orders listener failed:", fallbackErr);
+            });
+          } catch(fallbackErr) {
+            console.warn("[Realtime Sync] Fallback orders listener setup failed:", fallbackErr);
+          }
+        });
+      } catch(e) {
+        console.warn("[Realtime Sync] Orders subscription skipped:", e);
+      }
     }
-  }
+
+    // 5. TOPIC BROADCASTS REALTIME LISTENER
+    if (!_realtimeUnsubscribers.broadcasts) {
+      try {
+        _realtimeUnsubscribers.broadcasts = db.collection('ek_topic_broadcast_requests')
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+          .onSnapshot(snapshot => {
+            if (snapshot && !snapshot.empty) {
+              const doc = snapshot.docs[0];
+              const data = doc.data();
+              const lastSeenBroadcastId = localStorage.getItem('last_seen_broadcast_id');
+
+              if (data && doc.id !== lastSeenBroadcastId) {
+                const createdTime = new Date(data.createdAt).getTime();
+                if (!isNaN(createdTime) && (Date.now() - createdTime < 600000)) {
+                  localStorage.setItem('last_seen_broadcast_id', doc.id);
+                  if (typeof showToast === 'function') {
+                    showToast(`📢 ${data.title || 'அறிவிப்பு'}: ${data.body}`, 'info', 8000);
+                  }
+                }
+              }
+            }
+          }, err => console.warn("[Realtime Sync] Broadcast listener notice:", err));
+      } catch(e) {
+        console.warn("[Realtime Sync] Broadcast subscription skipped:", e);
+      }
+    }
+  }, 750);
 };
 window.renderAdminUpiSettings = window.renderAdminUpiSettings || function() {};
 window.initApp = window.initApp || function() {};
@@ -797,21 +825,7 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
         debugLog('[Firebase Init Diagnostic] firebase.initializeApp succeeded. ProjectId:', firebaseConfig.projectId);
 
         if (db) {
-          db.collection('ek_products').limit(1).get()
-            .then(snap => {
-              debugLog('[Firebase Init Diagnostic] First Firestore read (ek_products) RESOLVED SUCCESSFULLY! Doc count:', snap.size, 'Empty:', snap.empty);
-            })
-            .catch(err => {
-              console.error('[Firebase Init Diagnostic Error] First Firestore read (ek_products) THREW AN ERROR:', err, 'Code:', err ? err.code : 'N/A', 'Message:', err ? err.message : String(err));
-            });
-
-          db.collection('ek_settings').doc('global_config').get()
-            .then(doc => {
-              debugLog('[Firebase Init Diagnostic] First Firestore read (ek_settings/global_config) RESOLVED SUCCESSFULLY! Exists:', doc.exists);
-            })
-            .catch(err => {
-              console.error('[Firebase Init Diagnostic Error] First Firestore read (ek_settings/global_config) THREW AN ERROR:', err, 'Code:', err ? err.code : 'N/A', 'Message:', err ? err.message : String(err));
-            });
+          debugLog('[Firebase Init] Firestore database reference ready.');
         }
 
         if (firebase.storage) {
@@ -2081,6 +2095,16 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
       }
 
       removeData('ek_users');
+      removeData('ek_active_user');
+      removeData('ek_customer_favorites');
+      removeData('ek_lyo_chat_messages');
+      removeData('ek_assigned_deliveries');
+      removeData('ek_delivery_orders');
+      removeData('ek_admin_orders');
+      removeData('ek_admin_stats');
+      removeData('ek_pending_upi_order_data');
+      removeData('ek_notifications');
+      removeData('ek_active_session');
     }
 
     const renderQuickTestLogins = async () => {

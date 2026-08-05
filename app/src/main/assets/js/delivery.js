@@ -42,49 +42,25 @@
     }
 
     function updateLyoDraftCartBar() {
-      const bar = document.getElementById('lyo-ai-draft-cart-bar');
-      const titleEl = document.getElementById('lyo-ai-draft-cart-title');
-      const subEl = document.getElementById('lyo-ai-draft-cart-sub');
-      if (!bar) return;
-
-      const items = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart : [];
-      if (items.length === 0) {
-        bar.style.display = 'none';
-        return;
+      if (typeof window.updateLyoDraftCartBar === 'function' && window.updateLyoDraftCartBar !== updateLyoDraftCartBar) {
+        window.updateLyoDraftCartBar();
       }
-
-      let totalAmount = 0;
-      items.forEach(i => {
-        const price = parseFloat(i.totalPrice || i.price) || 0;
-        totalAmount += price;
-      });
-
-      if (titleEl) {
-        titleEl.textContent = currentLang === 'ta'
-          ? `🛒 ${items.length} பொருட்கள் கார்ட்டில் உள்ளன • ₹${totalAmount.toFixed(2)}`
-          : `🛒 ${items.length} Item(s) in AI Commerce Cart • ₹${totalAmount.toFixed(2)}`;
-      }
-      if (subEl) {
-        subEl.textContent = currentLang === 'ta'
-          ? "ஆர்டர் செய்ய 'Place Order' பொத்தானை அழுத்தவும்."
-          : "Tap 'Place Order' for 1-Click Checkout.";
-      }
-      bar.style.display = 'flex';
     }
 
     function clearLyoAiCart() {
-      if (typeof cart !== 'undefined') {
-        cart = [];
-        saveData('ek_cart', cart);
+      if (typeof window.clearLyoAiCart === 'function' && window.clearLyoAiCart !== clearLyoAiCart) {
+        window.clearLyoAiCart();
+      } else {
+        if (typeof cart !== 'undefined') {
+          cart = [];
+          saveData('ek_cart', cart);
+        }
+        if (typeof updateCartBadge === 'function') updateCartBadge();
+        if (typeof updateCartUI === 'function') updateCartUI();
+        if (typeof showToast === 'function') {
+          showToast(currentLang === 'ta' ? 'கூடை காலியாக்கப்பட்டது! 🛒' : 'Cart cleared! 🛒', 'info');
+        }
       }
-      updateLyoDraftCartBar();
-      if (typeof updateCartBadge === 'function') updateCartBadge();
-      if (typeof updateCartUI === 'function') updateCartUI();
-
-      showToast(
-        currentLang === 'ta' ? 'கூடை காலியாக்கப்பட்டது! 🛒' : 'Cart cleared! 🛒',
-        'info'
-      );
     }
 
     function checkoutLyoAiOrder() {
@@ -1212,6 +1188,19 @@ function updateRiderLiveLocation() {
         orders[idx].deliveryExecutivePhone = session.phone;
         orders[idx].updatedAt = new Date().toISOString();
         saveData('ek_orders', orders);
+
+        try {
+          const currentOrder = orders[idx];
+          if (typeof sendFcmNotificationForRiderAssignment === 'function') {
+            sendFcmNotificationForRiderAssignment(currentOrder, session);
+          }
+          if (typeof sendFcmPushNotification === 'function') {
+            sendFcmPushNotification(currentOrder, currentOrder.status || 'ready', currentOrder.status || 'ready');
+          }
+        } catch (fcmErr) {
+          console.warn("FCM notification error on rider claim (offline):", fcmErr);
+        }
+
         showToast("Order claimed locally! 🏍️", "success");
         renderDeliveryScreen();
         return;
@@ -1267,6 +1256,18 @@ function updateRiderLiveLocation() {
           orders[idx].deliveryExecutivePhone = session.phone;
           orders[idx].updatedAt = new Date().toISOString();
           saveData('ek_orders', orders);
+
+          try {
+            const currentOrder = orders[idx];
+            if (typeof sendFcmNotificationForRiderAssignment === 'function') {
+              sendFcmNotificationForRiderAssignment(currentOrder, session);
+            }
+            if (typeof sendFcmPushNotification === 'function') {
+              sendFcmPushNotification(currentOrder, currentOrder.status || 'ready', currentOrder.status || 'ready');
+            }
+          } catch (fcmErr) {
+            console.warn("FCM notification error on rider claim:", fcmErr);
+          }
         }
         removePendingSync('ek_orders', orderId);
         showToast("ஆர்டர் வெற்றிகரமாக உங்களுக்கு ஒதுக்கப்பட்டது! மழையிலும் நிதானமாக ஓட்டவும்! 🏍️", "success");
@@ -1844,22 +1845,32 @@ function updateRiderLiveLocation() {
 
         const orders = getData('ek_orders', []);
         const idx = orders.findIndex(o => o.id === orderId);
+        let cancelledOrderObj = null;
         if (idx !== -1) {
           orders[idx].status = 'CANCELLED';
           orders[idx].cancelledBy = 'customer';
           orders[idx].cancelledAt = new Date().toISOString();
           orders[idx].updatedAt = new Date().toISOString();
+          cancelledOrderObj = orders[idx];
           saveData('ek_orders', orders);
         } else {
-          const updatedOrderObject = {
+          cancelledOrderObj = {
             ...cloudOrder,
             status: 'CANCELLED',
             cancelledBy: 'customer',
             cancelledAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
-          orders.push(updatedOrderObject);
+          orders.push(cancelledOrderObj);
           saveData('ek_orders', orders);
+        }
+
+        try {
+          if (typeof sendFcmPushNotification === 'function') {
+            sendFcmPushNotification(cancelledOrderObj, 'pending', 'cancelled', 'Cancelled by customer');
+          }
+        } catch (fcmErr) {
+          console.warn("FCM push notify error on customer cancel:", fcmErr);
         }
 
         showToast(currentLang === 'ta' ? "ஆர்டர் வெற்றிகரமாக ரத்து செய்யப்பட்டது! 🛑" : "Order Cancelled! 🛑", "error");

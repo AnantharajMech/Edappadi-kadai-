@@ -1273,18 +1273,22 @@
 
     async function getCustomerFcmToken(target) {
       if (!target) return null;
+
+      const isValidToken = (t) => t && typeof t === 'string' && t.trim() !== '' && t !== 'null' && t !== 'undefined';
+
       if (typeof target === 'object') {
-        if (target.customerFcmToken) return target.customerFcmToken;
-        if (target.fcmToken) return target.fcmToken;
-        if (target.realFcmToken) return target.realFcmToken;
+        if (isValidToken(target.customerFcmToken)) return target.customerFcmToken.trim();
+        if (isValidToken(target.fcmToken)) return target.fcmToken.trim();
+        if (isValidToken(target.realFcmToken)) return target.realFcmToken.trim();
 
         const targetId = target.customerId || target.userId || target.id;
         const targetPhone = target.customerPhone || target.phone;
 
         const users = getDataCached('ek_users', []);
         const foundUser = users.find(u => u && ((targetId && u.id === targetId) || (targetPhone && u.phone === targetPhone)));
-        if (foundUser && (foundUser.fcmToken || foundUser.realFcmToken)) {
-          return foundUser.fcmToken || foundUser.realFcmToken;
+        if (foundUser) {
+          if (isValidToken(foundUser.fcmToken)) return foundUser.fcmToken.trim();
+          if (isValidToken(foundUser.realFcmToken)) return foundUser.realFcmToken.trim();
         }
 
         if (typeof db !== 'undefined' && db && targetId) {
@@ -1292,8 +1296,9 @@
             const userDoc = await db.collection('ek_users').doc(targetId).get();
             if (userDoc.exists) {
               const data = userDoc.data();
-              if (data && (data.fcmToken || data.realFcmToken)) {
-                return data.fcmToken || data.realFcmToken;
+              if (data) {
+                if (isValidToken(data.fcmToken)) return data.fcmToken.trim();
+                if (isValidToken(data.realFcmToken)) return data.realFcmToken.trim();
               }
             }
           } catch (e) {
@@ -1304,18 +1309,22 @@
       }
 
       if (typeof target === 'string') {
+        if (isValidToken(target)) return target.trim();
+
         const users = getDataCached('ek_users', []);
         const foundUser = users.find(u => u && (u.id === target || u.phone === target));
-        if (foundUser && (foundUser.fcmToken || foundUser.realFcmToken)) {
-          return foundUser.fcmToken || foundUser.realFcmToken;
+        if (foundUser) {
+          if (isValidToken(foundUser.fcmToken)) return foundUser.fcmToken.trim();
+          if (isValidToken(foundUser.realFcmToken)) return foundUser.realFcmToken.trim();
         }
         if (typeof db !== 'undefined' && db) {
           try {
             const userDoc = await db.collection('ek_users').doc(target).get();
             if (userDoc.exists) {
               const data = userDoc.data();
-              if (data && (data.fcmToken || data.realFcmToken)) {
-                return data.fcmToken || data.realFcmToken;
+              if (data) {
+                if (isValidToken(data.fcmToken)) return data.fcmToken.trim();
+                if (isValidToken(data.realFcmToken)) return data.realFcmToken.trim();
               }
             }
           } catch (e) {
@@ -1424,6 +1433,52 @@
       processPendingSignOut();
     } catch (e) {}
 
+    const masterAuthKeysToClear = [
+      'ek_admin_session',
+      'ek_customer_session',
+      'ek_delivery_session',
+      'ek_customer_session_temp',
+      'ek_admin_remember_me',
+      'ek_customer_remember_me',
+      'ek_delivery_remember_me',
+      'ek_remembered_credentials',
+      'ek_remembered_admin_credentials',
+      'ek_remembered_delivery_credentials',
+      'ek_role',
+      'ek_user_role',
+      'ek_active_role',
+      'role',
+      'user_id',
+      'remember_me',
+      'rememberMe',
+      'ek_pending_signout',
+      'ek_active_session',
+      'ek_active_user',
+      'ek_customer_favorites',
+      'ek_lyo_chat_messages',
+      'ek_assigned_deliveries',
+      'ek_delivery_orders',
+      'ek_admin_orders',
+      'ek_admin_stats',
+      'ek_pending_upi_order_data',
+      'ek_referred_by_code',
+      'ek_notifications'
+    ];
+
+    function purgeAllMasterSessionsAndTokens() {
+      masterAuthKeysToClear.forEach(key => {
+        try {
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
+          if (typeof removeData === 'function') removeData(key);
+          if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.saveData === 'function') {
+            AndroidStorage.saveData(key, "");
+          }
+        } catch (ce) {}
+      });
+      try { sessionStorage.clear(); } catch(se) {}
+    }
+
     let _adminLogoutPending = false;
 
     window.adminLogout = async function(evt) {
@@ -1488,40 +1543,7 @@
             if (typeof setupCloudRealtimeListeners2 === 'function') setupCloudRealtimeListeners2();
           } catch (se) {}
 
-          // Explicitly clear all authentication, session, role, and remember_me keys from localStorage and sessionStorage
-          const authKeysToClear = [
-            'ek_admin_session',
-            'ek_customer_session',
-            'ek_delivery_session',
-            'ek_customer_session_temp',
-            'ek_admin_remember_me',
-            'ek_customer_remember_me',
-            'ek_delivery_remember_me',
-            'ek_remembered_credentials',
-            'ek_remembered_admin_credentials',
-            'ek_remembered_delivery_credentials',
-            'ek_role',
-            'ek_user_role',
-            'ek_active_role',
-            'role',
-            'user_id',
-            'remember_me',
-            'rememberMe',
-            'ek_pending_signout'
-          ];
-
-          authKeysToClear.forEach(key => {
-            try {
-              localStorage.removeItem(key);
-              sessionStorage.removeItem(key);
-              if (typeof removeData === 'function') removeData(key);
-              if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.saveData === 'function') {
-                AndroidStorage.saveData(key, "");
-              }
-            } catch (ce) {}
-          });
-
-          try { sessionStorage.clear(); } catch(se) {}
+          purgeAllMasterSessionsAndTokens();
 
           if (typeof safelyClearUserCacheOnLogout === 'function') {
             try { await safelyClearUserCacheOnLogout(); } catch(e) {}
@@ -1699,13 +1721,12 @@
           setupCloudRealtimeListeners2();
         } catch (se) {}
 
-        await safelyClearUserCacheOnLogout();
-        removeData('ek_customer_session');
-        removeData('ek_admin_session');
-        removeData('ek_delivery_session');
-        sessionStorage.removeItem('ek_customer_session_temp');
-        removeData('ek_customer_remember_me');
-        removeData('ek_remembered_credentials');
+        purgeAllMasterSessionsAndTokens();
+
+        if (typeof safelyClearUserCacheOnLogout === 'function') {
+          try { await safelyClearUserCacheOnLogout(); } catch(e) {}
+        }
+
         cart = [];
         try {
           updateCartBadge();
@@ -1960,13 +1981,11 @@
           setupCloudRealtimeListeners2();
         } catch (se) {}
 
-        await safelyClearUserCacheOnLogout();
-        removeData('ek_customer_session');
-        removeData('ek_admin_session');
-        removeData('ek_delivery_session');
-        sessionStorage.removeItem('ek_customer_session_temp');
-        removeData('ek_delivery_remember_me');
-        removeData('ek_remembered_delivery_credentials');
+        purgeAllMasterSessionsAndTokens();
+
+        if (typeof safelyClearUserCacheOnLogout === 'function') {
+          try { await safelyClearUserCacheOnLogout(); } catch(e) {}
+        }
 
         try {
           initDeliveryRiderMap(null);
@@ -1981,6 +2000,11 @@
           } catch (e) {}
           deliveryLeafletMap = null;
         }
+
+        cart = [];
+        try {
+          updateCartBadge();
+        } catch (ce) {}
 
         screenHistory = [];
 

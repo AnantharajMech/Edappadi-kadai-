@@ -541,48 +541,8 @@
 
       if (!hasValidCoords) {
         if (address && address.length > 5) {
-          if (isCod) {
-            // COD payment skips blocking geocoding completely to proceed instantly
-            needsManualLocationPin = true;
-            debugLog("[Checkout COD Geocode] COD Order: skipping blocking geocoding flow, marking for background attempt.");
-          } else {
-            try {
-              const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
-              if (!geocodeFn) {
-                console.warn("[Checkout Geocode] Geocode service not deployed yet.");
-                needsManualLocationPin = true;
-              } else {
-                debugLog("[Checkout Geocode] Attempting geocoding with 6-second timeout...");
-                const geocodePromise = geocodeFn({ address: address + ', Edappadi, Salem, Tamil Nadu' });
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000));
-                
-                const res = await Promise.race([geocodePromise, timeoutPromise]);
-                if (res && res.data && res.data.latitude) {
-                  finalLat = parseFloat(res.data.latitude);
-                  finalLng = parseFloat(res.data.longitude);
-                  debugLog('[Checkout Geocode] Address geocoded securely:', finalLat, finalLng);
-                } else {
-                  console.warn("[Checkout Geocode] No latitude returned in response.");
-                  needsManualLocationPin = true;
-                  showToast(
-                    currentLang === 'ta'
-                      ? "📍 உங்கள் இருப்பிடத்தை துல்லியமாக கண்டறிய முடியவில்லை. ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டது — எங்கள் அணி விரைவில் தொடர்பு கொள்ளும்."
-                      : "📍 We could not pinpoint your exact location. Order placed successfully — our team will contact you shortly.",
-                    "info"
-                  );
-                }
-              }
-            } catch (geoErr) {
-              console.warn('[Checkout Geocode] Forward geocode failed or timed out:', geoErr);
-              needsManualLocationPin = true;
-              showToast(
-                currentLang === 'ta'
-                  ? "📍 உங்கள் இருப்பிடத்தை துல்லியமாக கண்டறிய முடியவில்லை. ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டது — எங்கள் அணி விரைவில் தொடர்பு கொள்ளும்."
-                  : "📍 We could not pinpoint your exact location. Order placed successfully — our team will contact you shortly.",
-                "info"
-              );
-            }
-          }
+          needsManualLocationPin = true;
+          debugLog("[Checkout Geocode] Skipping blocking geocode delay, proceeding instantly with order placement.");
         } else {
           showToast(
             currentLang === 'ta'
@@ -1056,6 +1016,37 @@ function parseAndroidUpiPaymentResult(statusString) {
     }
 
 async function completeOrderPlacement(order, customerProfile, address, finalLat, finalLng, pointsEarned, financials, user, cartItems, appliedCoupon) {
+      // Ensure Firebase Auth session is active & ID token is retrieved before writing
+      let authUser = user || ((typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null);
+      if (authUser) {
+        try { authUser.getIdToken(false); } catch(e) {}
+      } else if (typeof firebase !== 'undefined' && firebase.auth) {
+        const authStart = Date.now();
+        const maxWaitMs = 1200;
+        while (Date.now() - authStart < maxWaitMs) {
+          let currentAuthUser = firebase.auth().currentUser;
+          if (!currentAuthUser) {
+            try {
+              if (typeof firebase.auth().signInAnonymously === 'function') {
+                const anonRes = await firebase.auth().signInAnonymously().catch(e => null);
+                if (anonRes && anonRes.user) currentAuthUser = anonRes.user;
+              }
+            } catch (e) {}
+          }
+          if (currentAuthUser) {
+            authUser = currentAuthUser;
+            break;
+          }
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
+
+      if (authUser && authUser.uid) {
+        user = authUser;
+        if (!order.userId || order.userId === 'offline_guest') order.userId = authUser.uid;
+        if (!order.customerId || order.customerId === 'offline_guest') order.customerId = authUser.uid;
+      }
+
       if (typeof db !== 'undefined' && db && user) {
         try {
           await db.runTransaction(async (transaction) => {
@@ -1135,67 +1126,35 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
             throw txnErr; // Abort on out of stock
           }
 
-          const isPermissionDenied = txnErr.code === 'permission-denied' || errMsg.includes('permission_denied') || errMsg.includes('Permission denied') || errMsg.includes('Access denied');
-          if (isPermissionDenied) {
-            debugLog("[Graceful Fallback] Transaction failed due to permission denial (likely strict ek_products rules or App Check). Attempting direct write to ek_orders collection...");
-            try {
-              const orderRef = db.collection('ek_orders').doc(order.id);
-              await orderRef.set(cleanFirestoreData(order));
-              debugLog("[Graceful Fallback] Successfully placed order via direct online write to ek_orders!");
+          // Fallback to direct write to ek_orders collection before offline queue
+          debugLog("[Graceful Fallback] Transaction write hit an error. Attempting direct online write to ek_orders collection...");
+          try {
+            const orderRef = db.collection('ek_orders').doc(order.id);
+            await orderRef.set(cleanFirestoreData(order));
+            debugLog("[Graceful Fallback] Successfully placed order via direct online write to ek_orders!");
 
-              // Deduct stock locally
-              const localProducts = getData('ek_products', []);
-              for (const item of cartItems) {
-                const prod = localProducts.find(p => p.id === item.productId);
-                if (prod) {
-                  const unit = prod.unit || 'kg';
-                  const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-                  const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
-                  prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
-                  if (prod.stockKg <= 0) prod.isOutOfStock = true;
-                  prod.updatedAt = new Date().toISOString();
-                }
+            // Deduct stock locally
+            const localProducts = getData('ek_products', []);
+            for (const item of cartItems) {
+              const prod = localProducts.find(p => p.id === item.productId);
+              if (prod) {
+                const unit = prod.unit || 'kg';
+                const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+                const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
+                prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
+                if (prod.stockKg <= 0) prod.isOutOfStock = true;
+                prod.updatedAt = new Date().toISOString();
               }
-              saveData('ek_products', localProducts);
-
-              const orders = getData('ek_orders', []);
-              orders.push(order);
-              saveData('ek_orders', orders);
-
-              removePendingSync('ek_orders', order.id);
-            } catch (fallbackErr) {
-              console.warn("[Graceful Fallback] Direct write to ek_orders also failed. Falling back to local offline order queue:", fallbackErr);
-              queueFailedSync('ek_orders', order.id, 'set', order);
-              setTimeout(() => { if (typeof processPendingSyncQueue === 'function') processPendingSyncQueue(); }, 800);
-
-              try {
-                sendFcmPushNotification(order, 'none', 'pending');
-              } catch (fcmErr) {
-                console.warn("[FCM Order Placed Offline Error]", fcmErr);
-              }
-
-              const orders = getData('ek_orders', []);
-              orders.push(order);
-              saveData('ek_orders', orders);
-
-              const products = getData('ek_products', []);
-              for (const item of cartItems) {
-                const prod = products.find(p => p.id === item.productId);
-                if (prod) {
-                  const unit = prod.unit || 'kg';
-                  const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-                  const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
-                  prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
-                  if (prod.stockKg <= 0) {
-                    prod.isOutOfStock = true;
-                  }
-                  prod.updatedAt = new Date().toISOString();
-                }
-              }
-              saveData('ek_products', products);
             }
-          } else {
-            // Fallback entirely to local database (offline queue for atomic retry when back online)
+            saveData('ek_products', localProducts);
+
+            const orders = getData('ek_orders', []);
+            orders.push(order);
+            saveData('ek_orders', orders);
+
+            removePendingSync('ek_orders', order.id);
+          } catch (fallbackErr) {
+            console.warn("[Graceful Fallback] Direct write to ek_orders failed. Falling back to local offline order queue:", fallbackErr);
             queueFailedSync('ek_orders', order.id, 'set', order);
             setTimeout(() => { if (typeof processPendingSyncQueue === 'function') processPendingSyncQueue(); }, 800);
 
@@ -3324,19 +3283,25 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         mergeIntoCart(currentCart, newItems) {
           if (!Array.isArray(currentCart)) return newItems;
           newItems.forEach(newItem => {
-            const idx = currentCart.findIndex(ci => ci.productId === newItem.productId);
+            if (!newItem || !newItem.productId) return;
+            const idx = currentCart.findIndex(ci => String(ci.productId) === String(newItem.productId));
             if (idx !== -1) {
-              currentCart[idx].weightGrams = (currentCart[idx].weightGrams || 1000) + newItem.weightGrams;
-              currentCart[idx].quantity = (currentCart[idx].quantity || 1) + newItem.quantity;
-              const isW = isUnitWeight ? isUnitWeight(currentCart[idx].unit || 'kg') : true;
+              const uStr = currentCart[idx].sellingUnit || currentCart[idx].unit || newItem.sellingUnit || newItem.unit || 'kg';
+              const isW = isUnitWeight ? isUnitWeight(uStr) : !(uStr === 'piece' || uStr === 'packet' || uStr === 'unit' || uStr === 'box' || uStr === 'bunch');
+              currentCart[idx].weightGrams = (parseFloat(currentCart[idx].weightGrams) || 1) + (parseFloat(newItem.weightGrams) || 1);
+              const uPrice = parseFloat(currentCart[idx].pricePerKg || currentCart[idx].price || newItem.pricePerKg) || 0;
+              currentCart[idx].pricePerKg = uPrice;
               currentCart[idx].totalPrice = isW
-                ? Math.round((currentCart[idx].pricePerKg / 1000) * currentCart[idx].weightGrams)
-                : Math.round(currentCart[idx].pricePerKg * currentCart[idx].quantity);
+                ? Math.round((uPrice / 1000) * currentCart[idx].weightGrams)
+                : Math.round(uPrice * currentCart[idx].weightGrams);
               currentCart[idx].price = currentCart[idx].totalPrice;
             } else {
               currentCart.push(newItem);
             }
           });
+          if (typeof sanitizeCart === 'function') {
+            return sanitizeCart(currentCart);
+          }
           return currentCart;
         }
       },

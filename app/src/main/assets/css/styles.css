@@ -22,13 +22,21 @@
       --category-groceries: #ec4899;
     }
 
-    /* GLOBAL OVERRIDE: STRIP ALL ANIMATIONS, TRANSITIONS, BACKDROP FILTERS TO PREVENT WEBVIEW RENDERING LAG & PIXEL TEARING */
-    *, *::before, *::after, div, span, button, a, img, input, select, textarea, p, h1, h2, h3, h4, h5, h6, .card, .btn, .modal-backdrop, .animate-alert-container {
-      transition: none !important;
-      animation: none !important;
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-      will-change: auto !important;
+    /* High performance touch & interaction rules */
+    button, .btn, [role="button"], .nav-item, select, option, .clickable {
+      touch-action: manipulation !important;
+      -webkit-tap-highlight-color: transparent !important;
+      cursor: pointer;
+    }
+    button:active, .btn:active, [role="button"]:active, .nav-item:active {
+      opacity: 0.82 !important;
+      transform: scale(0.97) !important;
+    }
+    input, textarea, select {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+      touch-action: auto !important;
+      pointer-events: auto !important;
     }
 
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -634,31 +642,12 @@
       line-height: 1.2;
       letter-spacing: 0.3px;
     }
-    .form-control {
-      width: 100%;
-      background: #ffffff;
-      border: 1px solid var(--border-color);
-      color: var(--text-primary);
-      font-size: 14.5px;
-      padding: 13px 16px;
-      border-radius: 12px;
-      outline: none;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      -webkit-user-select: text !important;
-      -moz-user-select: text !important;
-      -ms-user-select: text !important;
-      user-select: text !important;
-    }
     input, textarea, select {
+      color: #ffffff !important;
       -webkit-user-select: text !important;
       -moz-user-select: text !important;
       -ms-user-select: text !important;
       user-select: text !important;
-    }
-    .form-control:focus {
-      border-color: var(--accent-green);
-      background: #ffffff;
-      box-shadow: 0 0 12px rgba(30, 130, 76, 0.1);
     }
 
     button, input, select, textarea, .btn, .nav-item, .category-pill, .product-card, .cart-item-row {
@@ -846,8 +835,8 @@
       width: 100vw;
       height: 100vh;
       background: rgba(4, 6, 10, 0.7) !important;
-      backdrop-filter: blur(14px) saturate(125%) !important;
-      -webkit-backdrop-filter: blur(14px) saturate(125%) !important;
+      backdrop-filter: blur(10px) saturate(120%) !important;
+      -webkit-backdrop-filter: blur(10px) saturate(120%) !important;
       z-index: 10000;
       display: none;
       justify-content: center;
@@ -862,8 +851,8 @@
       width: 100%;
       max-width: 480px;
       background: linear-gradient(135deg, rgba(16, 22, 34, 0.95) 0%, rgba(8, 12, 18, 0.98) 100%) !important;
-      backdrop-filter: blur(28px) saturate(160%) !important;
-      -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
+      backdrop-filter: blur(12px) saturate(135%) !important;
+      -webkit-backdrop-filter: blur(12px) saturate(135%) !important;
       border-top-left-radius: 24px;
       border-top-right-radius: 24px;
       padding: 22px;
@@ -1334,8 +1323,8 @@
       color: #ffffff;
       font-weight: 600;
       letter-spacing: 0.3px;
-      backdrop-filter: blur(25px) saturate(180%);
-      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      backdrop-filter: blur(10px) saturate(140%);
+      -webkit-backdrop-filter: blur(10px) saturate(140%);
       box-shadow:
         0 12px 32px rgba(0, 0, 0, 0.6),
         inset 0 1px 1px rgba(255, 255, 255, 0.25);
@@ -1748,20 +1737,34 @@
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
     }
 
-    /* Enhanced form inputs with premium 3D Glass glow */
+    /* Enhanced form inputs with explicit solid high-contrast dark background and white text */
     .form-control {
-      background: rgba(255, 255, 255, 0.03) !important;
-      backdrop-filter: blur(8px) !important;
-      -webkit-backdrop-filter: blur(8px) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      width: 100%;
+      background: #1e293b !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.2) !important;
       border-radius: 12px !important;
-      box-shadow: inset 0 1px 2px rgba(0,0,0,0.4), inset 0 -1px 0 rgba(255,255,255,0.02) !important;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.4) !important;
       height: 48px !important;
       padding: 10px 14px !important;
       line-height: 26px !important;
       box-sizing: border-box !important;
       font-size: 14px !important;
       vertical-align: middle !important;
+      outline: none !important;
+      -webkit-user-select: text !important;
+      -moz-user-select: text !important;
+      -ms-user-select: text !important;
+      user-select: text !important;
+    }
+    .form-control::placeholder {
+      color: rgba(255, 255, 255, 0.5) !important;
+    }
+    .form-control option {
+      background-color: #111827 !important;
+      color: #ffffff !important;
     }
     select.form-control {
       -webkit-appearance: none !important;
@@ -1779,8 +1782,9 @@
       padding: 10px 14px !important;
     }
     .form-control:focus {
-      background: rgba(255, 255, 255, 0.06) !important;
-      border-color: rgba(245, 158, 11, 0.5) !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      border-color: rgba(245, 158, 11, 0.6) !important;
+      color: #ffffff !important;
       box-shadow:
         0 0 12px rgba(245, 158, 11, 0.22),
         inset 0 1px 2px rgba(0,0,0,0.5),
@@ -1996,8 +2000,8 @@
     }
     }
     @keyframes lyoProgressBarRun {
-      0% { width: 0%; }
-      100% { width: 100%; }
+      0% { transform: scaleX(0); transform-origin: left; }
+      100% { transform: scaleX(1); transform-origin: left; }
     }
     @keyframes pulseGreen {
       0% {

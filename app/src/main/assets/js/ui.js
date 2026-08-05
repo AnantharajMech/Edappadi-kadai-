@@ -1798,6 +1798,12 @@
         ? `எடப்பாடி கடை ஆர்டர் #${orderId} நேரலை வரைபடத்தைப் பார்க்க இந்த லிங்கை க்ளிக் செய்யவும்: ${shareUrl}`
         : `Track your Edappadi Kadai order #${orderId} live here: ${shareUrl}`;
 
+      if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.shareIntent === 'function') {
+        AndroidStorage.shareIntent(`Edappadi Kadai Order #${orderId}`, shareText);
+        showToast(msg, 'success');
+        return;
+      }
+
       if (navigator.share) {
         navigator.share({
           title: `Edappadi Kadai Order #${orderId}`,
@@ -2913,7 +2919,12 @@
       if (!o) return;
 
       cart = [...o.items];
-      updateCartBadge();
+      if (typeof saveCart === 'function') {
+        saveCart();
+      } else {
+        if (typeof saveData === 'function') saveData('ek_cart', cart);
+        if (typeof updateCartBadge === 'function') updateCartBadge();
+      }
       const localizedToast = currentLang === 'ta'
         ? "கூடையில் உங்களது முந்தைய ஆர்டர் பொருட்கள் வெற்றிகரமாக சேர்க்கப்பட்டன! 🛒"
         : "Cart successfully populated with products from your previous order! 🛒";
@@ -3078,6 +3089,8 @@
       if (profEditName) profEditName.value = user.name || '';
       const profEditPhone = document.getElementById('prof-edit-phone');
       if (profEditPhone) profEditPhone.value = user.phone || '';
+      const profEditEmail = document.getElementById('prof-edit-email');
+      if (profEditEmail) profEditEmail.value = user.email || (session ? session.email : '') || '';
 
       document.getElementById('prof-cut-dropdown').value = user.defaultCut || 'Small Pieces';
       document.getElementById('prof-whatsapp-toggle').checked = user.whatsappNotify !== false;
@@ -3240,10 +3253,12 @@ function saveProfileChanges() {
 
       const profEditName = document.getElementById('prof-edit-name');
       const profEditPhone = document.getElementById('prof-edit-phone');
+      const profEditEmail = document.getElementById('prof-edit-email');
       const profAddrEdit = document.getElementById('prof-address-edit');
 
       const nameVal = profEditName ? profEditName.value.trim() : "";
       const phoneVal = profEditPhone ? profEditPhone.value.trim() : "";
+      const emailVal = profEditEmail ? profEditEmail.value.trim().toLowerCase() : "";
       const adrVal = profAddrEdit ? profAddrEdit.value.trim() : "";
 
       if (!nameVal) {
@@ -3252,6 +3267,10 @@ function saveProfileChanges() {
       }
       if (!phoneVal) {
         showToast(currentLang === 'ta' ? "மொபைல் எண் காலியாக இருக்கக்கூடாது!" : "Mobile number cannot be empty!", "error");
+        return;
+      }
+      if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+        showToast(currentLang === 'ta' ? "செல்லுபடியாகும் மின்னஞ்சலை உள்ளிடவும்!" : "Please enter a valid email address!", "error");
         return;
       }
       if (!adrVal) {
@@ -3272,6 +3291,7 @@ function saveProfileChanges() {
         const userObj = users[userIdx];
         userObj.name = nameVal;
         userObj.phone = phoneVal;
+        if (emailVal) userObj.email = emailVal;
         userObj.address = adrVal;
         userObj.latitude = lat;
         userObj.longitude = lng;
@@ -3282,6 +3302,7 @@ function saveProfileChanges() {
 
         session.userName = nameVal;
         session.phone = phoneVal;
+        if (emailVal) session.email = emailVal;
         if (session.temp) {
           saveData('ek_customer_session_temp', session);
         } else {
@@ -3301,6 +3322,7 @@ function saveProfileChanges() {
           db.collection('ek_users').doc(userObj.id).update({
             name: nameVal,
             phone: phoneVal,
+            email: emailVal || userObj.email || session.email || '',
             address: adrVal,
             latitude: lat,
             longitude: lng,
