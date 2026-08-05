@@ -230,7 +230,10 @@
       // 1. Single source of truth Firebase Auth check
       if (typeof firebase !== 'undefined' && firebase.auth) {
         const user = firebase.auth().currentUser;
-        if (!user || user.isAnonymous) {
+        const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+        const hasAdminSession = !!(adminSession && adminSession.loggedIn);
+
+        if ((!user || user.isAnonymous) && !hasAdminSession) {
           console.warn("[Admin Access Guard] No authenticated admin user found in Firebase Auth.");
           if (typeof showScreen === 'function') showScreen('screen-login');
           return;

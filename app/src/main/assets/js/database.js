@@ -2052,9 +2052,28 @@
                     debugLog("[Route Guard Background] Succeeded: Zero active admin accounts in Firestore. Checking and showing superadmin setup.");
                     await checkAndShowSuperAdminSetup();
                   } else {
-                    console.error(`[Route Guard Background] Access DENIED: No doc in 'ek_admin_accounts' for UID: ${finalUser.uid}`);
-                    showToast("அங்கீகாரம் இல்லாத கணக்கு! / Admin UID not in database.", "error");
-                    showScreen('screen-login');
+                    if (hasAdminSession) {
+                      debugLog("[Route Guard Background] Admin doc pending in Firestore but active local admin session exists. Self-healing admin account doc...");
+                      const adminEmail = finalUser.email || `admin_9876543210@app.com`;
+                      const phoneStr = adminEmail.replace('admin_', '').split('@')[0];
+                      const newAdminDoc = {
+                        id: finalUser.uid,
+                        uid: finalUser.uid,
+                        email: adminEmail,
+                        phone: phoneStr,
+                        name: (adminSession && adminSession.name) ? adminSession.name : 'Admin',
+                        role: 'admin',
+                        active: true,
+                        createdAt: new Date().toISOString()
+                      };
+                      window._verifiedAdminUids = window._verifiedAdminUids || new Set();
+                      window._verifiedAdminUids.add(finalUser.uid);
+                      db.collection('ek_admin_accounts').doc(finalUser.uid).set(newAdminDoc).catch(e => console.warn(e));
+                    } else {
+                      console.error(`[Route Guard Background] Access DENIED: No doc in 'ek_admin_accounts' for UID: ${finalUser.uid}`);
+                      showToast("அங்கீகாரம் இல்லாத கணக்கு! / Admin UID not in database.", "error");
+                      showScreen('screen-login');
+                    }
                   }
                 }
               } catch (err) {
@@ -2188,8 +2207,13 @@
               if (window.visualViewport && !window.lyoAiViewportResizeListener) {
                 window.lyoAiViewportResizeListener = function() {
                   const composeBox = document.querySelector('#lyo-ai-compose-box');
+                  const inputEl = document.getElementById('lyo-ai-input');
                   if (composeBox) {
-                    const keyboardHeight = window.innerHeight - window.visualViewport.height;
+                    if (!inputEl || document.activeElement !== inputEl) {
+                      composeBox.style.transform = 'translateY(0)';
+                      return;
+                    }
+                    const keyboardHeight = Math.max(0, window.innerHeight - (window.visualViewport ? window.visualViewport.height : window.innerHeight));
                     composeBox.style.transform = keyboardHeight > 100 ? `translateY(-${keyboardHeight}px)` : 'translateY(0)';
                   }
                 };

@@ -1,5 +1,44 @@
 
 // Safe window fallbacks for cross-module or async functions
+window.selectedTrackOrderId = window.selectedTrackOrderId || null;
+window.showTab = window.showTab || function(tabName) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  if (tabName === 'tab-home') {
+    const homeBtn = document.getElementById('nav-btn-home') || document.querySelector('.nav-tab:nth-child(1)');
+    if (homeBtn) homeBtn.classList.add('active');
+    if (typeof showScreen === 'function') showScreen('screen-home');
+  } else if (tabName === 'tab-cart') {
+    const cartBtn = document.getElementById('nav-btn-cart') || document.querySelector('.nav-tab:nth-child(2)');
+    if (cartBtn) cartBtn.classList.add('active');
+    if (typeof showScreen === 'function') showScreen('screen-cart');
+  } else if (tabName === 'tab-lyo-ai') {
+    const lyoBtn = document.getElementById('lyo-ai-nav-btn');
+    if (lyoBtn) lyoBtn.classList.add('active');
+    if (typeof showScreen === 'function') showScreen('screen-lyo-ai');
+    if (typeof updateLyoDeliveryBanner === 'function') updateLyoDeliveryBanner();
+    if (typeof initLyoAiChat === 'function') initLyoAiChat();
+    if (typeof updateLyoDraftCartBar === 'function') updateLyoDraftCartBar();
+  } else if (tabName === 'tab-track') {
+    const hasTrackOrder = typeof selectedTrackOrderId !== 'undefined' ? selectedTrackOrderId : window.selectedTrackOrderId;
+    if (typeof getActiveSession === 'function' && !getActiveSession() && !hasTrackOrder) {
+      if (typeof showToast === 'function') showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "முன்னோட்டமிட முதலில் உள்நுழையவும்! 🔐" : "Please login or register first to track orders! 🔐", "warning");
+      if (typeof showScreen === 'function') showScreen('screen-login');
+      return;
+    }
+    const trackBtn = document.getElementById('nav-btn-track') || document.querySelector('.nav-tab:nth-child(4)');
+    if (trackBtn) trackBtn.classList.add('active');
+    if (typeof showScreen === 'function') showScreen('screen-track');
+  } else if (tabName === 'tab-profile') {
+    if (typeof getActiveSession === 'function' && !getActiveSession()) {
+      if (typeof showToast === 'function') showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "உள்நுழையவும் அல்லது புதிய அக்கவுண்ட் உருவாக்கவும்! 🔐" : "Please login or register first to manage your profile! 🔐", "warning");
+      if (typeof showScreen === 'function') showScreen('screen-login');
+      return;
+    }
+    const profileBtn = document.getElementById('nav-btn-profile') || document.querySelector('.nav-tab:nth-child(5)');
+    if (profileBtn) profileBtn.classList.add('active');
+    if (typeof showScreen === 'function') showScreen('screen-profile');
+  }
+};
 window.checkAndUpdateFreshCloudData = function() {
   window._hasFreshCloudData = true;
   window._hasFreshSettings = true;
@@ -518,6 +557,20 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
       } catch (inner) {}
     };
 
+    window.addEventListener('focusout', function(e) {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) {
+        setTimeout(function() {
+          const composeBox = document.querySelector('#lyo-ai-compose-box');
+          if (composeBox && document.activeElement !== document.getElementById('lyo-ai-input')) {
+            composeBox.style.transform = 'translateY(0)';
+          }
+          window.scrollTo({ top: window.scrollY, behavior: 'instant' });
+          if (document.body) document.body.style.height = '100%';
+          if (document.documentElement) document.documentElement.style.height = '100%';
+        }, 50);
+      }
+    });
+
     window.escapeHtml = function(str) {
       if (str === null || str === undefined) return '';
       return String(str).replace(/[&<>"']/g, function(c) {
@@ -971,20 +1024,31 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
                     }
                   }
 
-                  if (isAdminAccount || isDeliveryAccount) {
-                    debugLog(`[Auth State Changed] Orphaned ${isAdminAccount ? 'Admin' : 'Delivery'} auth detected with no local session. Signing out and redirecting to login...`);
-                    try {
-                      await firebase.auth().signOut();
-                    } catch (soErr) {
-                      console.warn("[Auth State Changed] SignOut error for orphaned staff auth:", soErr);
+                  if (isAdminAccount) {
+                    debugLog("[Auth State Changed] Restoring Admin session from Firebase Auth...");
+                    window._verifiedAdminUids = window._verifiedAdminUids || new Set();
+                    window._verifiedAdminUids.add(user.uid);
+                    removeData('ek_customer_session');
+                    removeData('ek_delivery_session');
+                    saveData('ek_admin_session', { loggedIn: true, role: 'admin', name: 'Admin', phone: user.email ? user.email.replace('admin_', '').split('@')[0] : 'Admin' });
+                    if (typeof currentScreen !== 'undefined' && currentScreen === 'screen-login') {
+                      showScreen('screen-admin');
                     }
-                    if (typeof showScreen === 'function') {
-                      showScreen('screen-login');
+                  } else if (isDeliveryAccount) {
+                    debugLog("[Auth State Changed] Restoring Delivery session from Firebase Auth...");
+                    removeData('ek_customer_session');
+                    removeData('ek_admin_session');
+                    saveData('ek_delivery_session', { loggedIn: true, id: user.uid, name: 'Delivery Partner', phone: user.phoneNumber || '' });
+                    if (typeof currentScreen !== 'undefined' && currentScreen === 'screen-login') {
+                      showScreen('screen-delivery');
                     }
                   } else {
                     debugLog("[Auth State Changed] Real user logged in but no local customer session found. Restoring customer session...");
                     await loadUserData(user.uid);
-                    debugLog("[Auth State Changed] Real user session restored. Splash sequence will handle routing.");
+                    debugLog("[Auth State Changed] Real user session restored.");
+                    if (typeof currentScreen !== 'undefined' && currentScreen === 'screen-login') {
+                      showScreen('screen-home');
+                    }
                   }
                 }
               } else {
@@ -2235,8 +2299,8 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
             <!-- Action Buttons -->
             <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
               ${opts.extraActionHtml || ''}
-              <button type="button" onclick="${opts.onDeleteClick}" style="height: 32px; width: 32px; border-radius: 8px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer;" title="Delete">
-                <span style="display: inline-flex; align-items: center; justify-content: center;">🗑️</span>
+              <button type="button" onclick="${opts.onDeleteClick}" style="height: 36px; min-width: 36px; padding: 0 8px; border-radius: 8px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.35); color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; touch-action: manipulation; user-select: none; transition: transform 0.1s ease;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='none'" onmouseleave="this.style.transform='none'" title="Delete">
+                <span style="display: inline-flex; align-items: center; justify-content: center; pointer-events: none;">🗑️</span>
               </button>
             </div>
           </div>

@@ -1734,6 +1734,26 @@ function getActiveLyoProposalMsg() {
       }
       renderLyoAiChat();
       updateLyoDraftCartBar();
+
+      const inputEl = document.getElementById('lyo-ai-input');
+      if (inputEl && !inputEl.dataset.boundLyoEvents) {
+        inputEl.dataset.boundLyoEvents = 'true';
+        inputEl.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (typeof onLyoSendBtnClick === 'function') {
+              onLyoSendBtnClick();
+            }
+          }
+        });
+        inputEl.addEventListener('blur', function() {
+          const composeBox = document.querySelector('#lyo-ai-compose-box');
+          if (composeBox) {
+            composeBox.style.transform = 'translateY(0)';
+          }
+          window.scrollTo({ top: window.scrollY, behavior: 'instant' });
+        });
+      }
     }
 
     function renderLyoAiChat() {
@@ -2403,6 +2423,14 @@ async function onLyoSendBtnClick() {
     inputEl.value = '';
     inputEl.style.height = '24px';
     inputEl.rows = 1;
+    inputEl.blur();
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    const composeBox = document.querySelector('#lyo-ai-compose-box');
+    if (composeBox) {
+      composeBox.style.transform = 'translateY(0)';
+    }
     if (typeof autoGrowLyoInput === 'function') autoGrowLyoInput(inputEl);
 
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

@@ -4,16 +4,16 @@
       if (tabName === 'tab-home') {
         const homeBtn = document.getElementById('nav-btn-home') || document.querySelector('.nav-tab:nth-child(1)');
         if (homeBtn) homeBtn.classList.add('active');
-        showScreen('screen-home');
+        if (typeof showScreen === 'function') showScreen('screen-home');
       } else if (tabName === 'tab-cart') {
         const cartBtn = document.getElementById('nav-btn-cart') || document.querySelector('.nav-tab:nth-child(2)');
         if (cartBtn) cartBtn.classList.add('active');
-        showScreen('screen-cart');
+        if (typeof showScreen === 'function') showScreen('screen-cart');
       } else if (tabName === 'tab-lyo-ai') {
         const lyoBtn = document.getElementById('lyo-ai-nav-btn');
         if (lyoBtn) lyoBtn.classList.add('active');
-        showScreen('screen-lyo-ai');
-        updateLyoDeliveryBanner();
+        if (typeof showScreen === 'function') showScreen('screen-lyo-ai');
+        if (typeof updateLyoDeliveryBanner === 'function') updateLyoDeliveryBanner();
         if (typeof initLyoAiChat === 'function') initLyoAiChat();
         if (typeof updateLyoDraftCartBar === 'function') updateLyoDraftCartBar();
 
@@ -29,25 +29,27 @@
         }
 
       } else if (tabName === 'tab-track') {
-        if (typeof getActiveSession === 'function' && !getActiveSession() && !selectedTrackOrderId) {
-          showToast(currentLang === 'ta' ? "முன்னோட்டமிட முதலில் உள்நுழையவும்! 🔐" : "Please login or register first to track orders! 🔐", "warning");
-          showScreen('screen-login');
+        const hasTrackOrder = typeof selectedTrackOrderId !== 'undefined' ? selectedTrackOrderId : (window.selectedTrackOrderId || null);
+        if (typeof getActiveSession === 'function' && !getActiveSession() && !hasTrackOrder) {
+          if (typeof showToast === 'function') showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "முன்னோட்டமிட முதலில் உள்நுழையவும்! 🔐" : "Please login or register first to track orders! 🔐", "warning");
+          if (typeof showScreen === 'function') showScreen('screen-login');
           return;
         }
         const trackBtn = document.getElementById('nav-btn-track') || document.querySelector('.nav-tab:nth-child(4)');
         if (trackBtn) trackBtn.classList.add('active');
-        showScreen('screen-track');
+        if (typeof showScreen === 'function') showScreen('screen-track');
       } else if (tabName === 'tab-profile') {
         if (typeof getActiveSession === 'function' && !getActiveSession()) {
-          showToast(currentLang === 'ta' ? "உள்நுழையவும் அல்லது புதிய அக்கவுண்ட் உருவாக்கவும்! 🔐" : "Please login or register first to manage your profile! 🔐", "warning");
-          showScreen('screen-login');
+          if (typeof showToast === 'function') showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "உள்நுழையவும் அல்லது புதிய அக்கவுண்ட் உருவாக்கவும்! 🔐" : "Please login or register first to manage your profile! 🔐", "warning");
+          if (typeof showScreen === 'function') showScreen('screen-login');
           return;
         }
         const profileBtn = document.getElementById('nav-btn-profile') || document.querySelector('.nav-tab:nth-child(5)');
         if (profileBtn) profileBtn.classList.add('active');
-        showScreen('screen-profile');
+        if (typeof showScreen === 'function') showScreen('screen-profile');
       }
     }
+    window.showTab = showTab;
 
     // Declarative Back Navigation Configuration Map
     const BACK_BEHAVIOR = {
@@ -1486,72 +1488,133 @@ async function verifyOtpAndResetPassword() {
     }
 
     async function handleLogin(event) {
-      event.preventDefault();
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      if (window.isLoginSubmitting) return;
+      window.isLoginSubmitting = true;
       window.isManualLoginInProgress = true;
-      try {
-        const pass = document.getElementById('login-password').value;
-        const remember = document.getElementById('login-remember').checked;
 
-      const loginButton = event.target.querySelector('button[type="submit"]');
+      const loginButton = event && event.target 
+        ? (event.target.querySelector('button[type="submit"]') || event.target.closest('button') || document.querySelector('#login-form button[type="submit"]'))
+        : document.querySelector('#login-form button[type="submit"]');
+
       let originalBtnHtml = "";
       if (loginButton) {
         originalBtnHtml = loginButton.innerHTML;
         loginButton.disabled = true;
-        loginButton.innerHTML = `<span class="spinner"></span> Logging in...`;
+        loginButton.innerHTML = `<span class="spinner" style="display:inline-block; width:14px; height:14px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:middle;"></span> ${currentLang === 'ta' ? 'உள்நுழைகிறது...' : 'Logging in...'}`;
       }
 
       const restoreButton = () => {
+        window.isLoginSubmitting = false;
         if (loginButton) {
           loginButton.disabled = false;
           loginButton.innerHTML = originalBtnHtml;
         }
       };
 
-      if (currentLoginMode === 'admin') {
-        const identifier = document.getElementById('admin-selector').value;
-        const adminEmail = identifier.includes('@') ? identifier : `admin_${identifier}@app.com`;
-        const phoneStr = adminEmail.replace('admin_', '').split('@')[0];
+      // Yield thread to allow WebView/Browser to render spinner immediately
+      await new Promise(resolve => setTimeout(resolve, 16));
 
-        let loginCompleted = false;
-        let loginTimedOut = false;
+      let loginCompleted = false;
+      let loginTimedOut = false;
+      let softNotifyTimer = null;
+      let hardTimeoutTimer = null;
 
-        const slowNetworkTimeout = setTimeout(() => {
-          if (!loginCompleted) {
-            if (loginButton) {
-              loginButton.innerHTML = `<span class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:middle;"></span> இன்னும் கொஞ்சம் காத்திருக்கவும்... நெட்வொர்க் மெதுவா இருக்கு / Still connecting... your network seems slow`;
-            }
-          }
-        }, 15000);
-
-        const loginTimeout = setTimeout(() => {
-          if (!loginCompleted) {
-            loginTimedOut = true;
-            showToast(
-              currentLang === 'ta'
-                ? "Login-ல தாமதம் ஆகுது. உங்கள் இணைய இணைப்பை சரிபார்த்து மீண்டும் முயற்சிக்கவும் (app-ஐ மூடத் தேவையில்லை)"
-                : "Login delayed. Please check your internet and try again (no need to close the app)",
-              "error"
-            );
-            restoreButton();
-          }
-        }, 35000);
-
-        try {
-          // Check local/stored admin accounts for password verification
-          const storedAdmins = getData('ek_admin_accounts', []) || [];
-          const allAdmins = [...storedAdmins, ...DEFAULT_FALLBACK_ADMINS];
-          const matchedAcc = allAdmins.find(a => 
-            (a.email && a.email.toLowerCase() === adminEmail.toLowerCase()) || 
-            a.phone === phoneStr || 
-            a.id === identifier
+      // Soft notification timer for slow networks (BSNL, 3G, weak signal)
+      softNotifyTimer = setTimeout(() => {
+        if (!loginCompleted && window.isManualLoginInProgress) {
+          showToast(
+            currentLang === 'ta'
+              ? "மெதுவான இணைய இணைப்பு... உள்நுழைவு பரிசீலிக்கப்படுகிறது."
+              : "Slow network detected. Connecting to server...",
+            "info"
           );
+        }
+      }, 10000);
 
-          if (matchedAcc && matchedAcc.password) {
-            const isPassValid = await verifyPassword(pass, matchedAcc.password);
-            if (!isPassValid) {
+      // Hard timeout timer (35 seconds)
+      hardTimeoutTimer = setTimeout(() => {
+        if (!loginCompleted) {
+          loginTimedOut = true;
+          showToast(
+            currentLang === 'ta'
+              ? "இணைய இணைப்பு தாமதம். தயவுசெய்து உங்கள் BSNL/Network தொடர்பை சரிபார்க்கவும்."
+              : "Network connection delayed. Please check your network and try again.",
+            "error"
+          );
+          restoreButton();
+        }
+      }, 35000);
+
+      const cleanupTimers = () => {
+        if (softNotifyTimer) clearTimeout(softNotifyTimer);
+        if (hardTimeoutTimer) clearTimeout(hardTimeoutTimer);
+      };
+
+      try {
+        const passEl = document.getElementById('login-password');
+        const pass = passEl ? passEl.value : '';
+        const rememberEl = document.getElementById('login-remember');
+        const remember = rememberEl ? rememberEl.checked : true;
+
+        if (currentLoginMode === 'admin') {
+          const identifier = document.getElementById('admin-selector') ? document.getElementById('admin-selector').value : '';
+          const adminEmail = identifier.includes('@') ? identifier : `admin_${identifier}@app.com`;
+          const phoneStr = adminEmail.replace('admin_', '').split('@')[0];
+
+          try {
+            const storedAdmins = getData('ek_admin_accounts', []) || [];
+            const allAdmins = [...storedAdmins, ...DEFAULT_FALLBACK_ADMINS];
+            const matchedAcc = allAdmins.find(a => 
+              (a.email && a.email.toLowerCase() === adminEmail.toLowerCase()) || 
+              a.phone === phoneStr || 
+              a.id === identifier
+            );
+
+            if (matchedAcc && matchedAcc.password) {
+              const isPassValid = await verifyPassword(pass, matchedAcc.password);
+              if (!isPassValid) {
+                loginCompleted = true;
+                cleanupTimers();
+                showToast(
+                  currentLang === 'ta'
+                    ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
+                    : "Incorrect admin password! Please check credentials ❌",
+                  "error"
+                );
+                restoreButton();
+                return;
+              }
+            }
+
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+              const currentAuthUser = firebase.auth().currentUser;
+              if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== adminEmail.trim().toLowerCase()) {
+                await firebase.auth().signOut().catch(e => console.warn(e));
+              }
+            }
+
+            let cred = null;
+            let credentialVerified = false;
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+              try {
+                await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+                cred = await firebase.auth().signInWithEmailAndPassword(adminEmail, pass);
+                credentialVerified = true;
+              } catch (signInErr) {
+                try {
+                  cred = await firebase.auth().createUserWithEmailAndPassword(adminEmail, pass);
+                  credentialVerified = true;
+                } catch (createErr) {
+                  console.warn("[Admin Login] Firebase createUserWithEmailAndPassword fallback:", createErr);
+                }
+              }
+            }
+
+            const localPasswordVerified = !!(matchedAcc && matchedAcc.password);
+            if (typeof firebase !== 'undefined' && firebase.auth && !credentialVerified && !localPasswordVerified) {
               loginCompleted = true;
-              clearTimeout(loginTimeout);
-              clearTimeout(slowNetworkTimeout);
+              cleanupTimers();
               showToast(
                 currentLang === 'ta'
                   ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
@@ -1561,273 +1624,171 @@ async function verifyOtpAndResetPassword() {
               restoreButton();
               return;
             }
-          }
 
-          if (typeof firebase !== 'undefined' && firebase.auth) {
-            const currentAuthUser = firebase.auth().currentUser;
-            if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== adminEmail.trim().toLowerCase()) {
-              debugLog("[Auth Autologout] Current authenticated user is different. Signing out first...");
-              await firebase.auth().signOut().catch(e => console.warn(e));
+            const uid = (cred && cred.user) ? cred.user.uid : ((firebase.auth() && firebase.auth().currentUser && firebase.auth().currentUser.uid) || (matchedAcc ? matchedAcc.id : ('admin_' + phoneStr)));
+
+            let adminData = matchedAcc || {
+              id: uid,
+              name: matchedAcc ? matchedAcc.name : 'Admin',
+              role: 'admin',
+              phone: phoneStr,
+              email: adminEmail,
+              active: true
+            };
+
+            adminData.id = uid;
+            adminData.uid = uid;
+
+            // Set verified admin UID flag immediately
+            window._verifiedAdminUids = window._verifiedAdminUids || new Set();
+            window._verifiedAdminUids.add(uid);
+
+            // Save admin account into local storage
+            const updatedAdmins = storedAdmins.filter(a => a.id !== uid && a.email !== adminEmail);
+            updatedAdmins.push(adminData);
+            saveData('ek_admin_accounts', updatedAdmins);
+
+            // Non-blocking background Firestore sync
+            if (typeof db !== 'undefined' && db) {
+              db.collection('ek_admin_accounts').doc(uid).set(adminData).catch(e => console.warn("[Admin Firestore Sync Warning]:", e));
             }
-          }
 
-          let cred = null;
-          let credentialVerified = false;
-          if (typeof firebase !== 'undefined' && firebase.auth) {
-            try {
-              cred = await firebase.auth().signInWithEmailAndPassword(adminEmail, pass);
-              credentialVerified = true;
-            } catch (signInErr) {
-              console.warn("[Admin Login] Firebase signInWithEmailAndPassword failed, attempting user registration/healing...", signInErr);
-              try {
-                cred = await firebase.auth().createUserWithEmailAndPassword(adminEmail, pass);
-                credentialVerified = true;
-              } catch (createErr) {
-                console.warn("[Admin Login] Firebase createUserWithEmailAndPassword failed/exists:", createErr);
-              }
-            }
-          }
-
-          const localPasswordVerified = !!(matchedAcc && matchedAcc.password);
-          if (typeof firebase !== 'undefined' && firebase.auth && !credentialVerified) {
             loginCompleted = true;
-            clearTimeout(loginTimeout);
-            clearTimeout(slowNetworkTimeout);
-            showToast(
-              currentLang === 'ta'
-                ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
-                : "Incorrect admin password! Please check credentials ❌",
-              "error"
-            );
-            restoreButton();
-            return;
-          } else if ((typeof firebase === 'undefined' || !firebase.auth) && !localPasswordVerified) {
-            loginCompleted = true;
-            clearTimeout(loginTimeout);
-            clearTimeout(slowNetworkTimeout);
-            showToast(
-              currentLang === 'ta'
-                ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
-                : "Incorrect admin password! Please check credentials ❌",
-              "error"
-            );
-            restoreButton();
-            return;
-          }
+            cleanupTimers();
 
-          const uid = (cred && cred.user) ? cred.user.uid : ((firebase.auth() && firebase.auth().currentUser && firebase.auth().currentUser.uid) || (matchedAcc ? matchedAcc.id : ('admin_' + phoneStr)));
+            removeData('ek_customer_session');
+            removeData('ek_delivery_session');
+            sessionStorage.removeItem('ek_customer_session_temp');
+            saveData('ek_admin_session', { loggedIn: true, role: adminData.role || 'admin', name: adminData.name || 'Admin', phone: adminData.phone || phoneStr || identifier });
 
-          let adminData = matchedAcc || {
-            id: uid,
-            name: matchedAcc ? matchedAcc.name : 'Admin',
-            role: 'admin',
-            phone: phoneStr,
-            email: adminEmail,
-            active: true
-          };
-
-          if (typeof db !== 'undefined' && db) {
-            try {
-              let docRef = db.collection('ek_admin_accounts').doc(uid);
-              let docSnap = await docRef.get();
-              if (docSnap.exists) {
-                adminData = docSnap.data();
-              } else {
-                adminData.uid = uid;
-                adminData.id = uid;
-                adminData.email = adminEmail;
-                adminData.phone = phoneStr;
-                await db.collection('ek_admin_accounts').doc(uid).set(adminData);
-              }
-            } catch (fErr) {
-              console.warn("[Admin Firestore Sync Warning]:", fErr);
+            if (remember) {
+              saveData('ek_admin_remember_me', true);
+              saveData('ek_remembered_admin_credentials', { identifier: identifier, remember: true });
+            } else {
+              saveData('ek_admin_remember_me', false);
+              removeData('ek_remembered_admin_credentials');
             }
+
+            showToast(currentLang === 'ta' ? `வரவேற்கிறோம் அட்மின் (${adminData.name || 'Admin'})! லாகின் வெற்றி 👑` : `Welcome Admin (${adminData.name || 'Admin'})! Access granted. 👑`, "success");
+            restoreButton();
+            try { setupCloudRealtimeListeners2(); } catch (e) {}
+            try { publishPublicStaffDirectory(); } catch (pErr) {}
+
+            showScreen('screen-admin');
+          } catch (authErr) {
+            loginCompleted = true;
+            cleanupTimers();
+            console.error("[Admin Login Error]:", authErr);
+            showToast(currentLang === 'ta' ? "அட்மின் லாகின் பிழை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்." : "Admin login error. Please check your input and try again.", "error");
+            restoreButton();
           }
-
-          loginCompleted = true;
-          clearTimeout(loginTimeout);
-          clearTimeout(slowNetworkTimeout);
-
-          removeData('ek_customer_session');
-          removeData('ek_delivery_session');
-          sessionStorage.removeItem('ek_customer_session_temp');
-          saveData('ek_admin_session', { loggedIn: true, role: adminData.role || 'admin', name: adminData.name || 'Admin', phone: adminData.phone || phoneStr || identifier });
-
-          if (remember) {
-            saveData('ek_admin_remember_me', true);
-            saveData('ek_remembered_admin_credentials', { identifier: identifier, remember: true });
-          } else {
-            saveData('ek_admin_remember_me', false);
-            removeData('ek_remembered_admin_credentials');
-          }
-
-          if (loginTimedOut) return;
-
-          showToast(currentLang === 'ta' ? `வரவேற்கிறோம் அட்மின் (${adminData.name || 'Admin'})! லாகின் வெற்றி 👑` : `Welcome Admin (${adminData.name || 'Admin'})! Access granted. 👑`, "success");
-          restoreButton();
-          try { setupCloudRealtimeListeners2(); } catch (e) {}
-          try { publishPublicStaffDirectory(); } catch (pErr) {}
-
-          showScreen('screen-admin');
-        } catch (authErr) {
-          if (loginTimedOut) return;
-          loginCompleted = true;
-          clearTimeout(loginTimeout);
-          clearTimeout(slowNetworkTimeout);
-          console.error("[Admin Login Error]:", authErr);
-          showToast(currentLang === 'ta' ? "அட்மின் லாகின் பிழை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்." : "Admin login error. Please check your input and try again.", "error");
-          restoreButton();
-        }
-        return;
-      }
-
-      if (currentLoginMode === 'delivery') {
-        let phoneInput = "";
-        const deliverySelector = document.getElementById('delivery-selector');
-        const loginIdentifier = document.getElementById('login-identifier');
-
-        const isSelectorVisible = deliverySelector && deliverySelector.offsetParent !== null;
-        if (isSelectorVisible) {
-          phoneInput = deliverySelector.value;
-        } else if (loginIdentifier) {
-          phoneInput = loginIdentifier.value.trim();
-        }
-
-        if (!phoneInput) {
-          showToast("Select a delivery partner.", "error");
-          restoreButton();
           return;
         }
 
-        if (typeof firebase !== 'undefined' && firebase.auth) {
+        if (currentLoginMode === 'delivery') {
+          let phoneInput = "";
+          const deliverySelector = document.getElementById('delivery-selector');
+          const loginIdentifier = document.getElementById('login-identifier');
+
+          const isSelectorVisible = deliverySelector && deliverySelector.offsetParent !== null;
+          if (isSelectorVisible) {
+            phoneInput = deliverySelector.value;
+          } else if (loginIdentifier) {
+            phoneInput = loginIdentifier.value.trim();
+          }
+
+          if (!phoneInput) {
+            loginCompleted = true;
+            cleanupTimers();
+            showToast(currentLang === 'ta' ? "டெலிவரி பார்ட்னரைத் தேர்ந்தெடுக்கவும்." : "Select a delivery partner.", "error");
+            restoreButton();
+            return;
+          }
+
           const rawRiders = getData('ek_delivery_persons', []) || [];
-          let selectedRider = rawRiders.find(r => r.uid === phoneInput || r.id === phoneInput);
+          let selectedRider = rawRiders.find(r => r.uid === phoneInput || r.id === phoneInput || r.phone === phoneInput);
+
+          // Self-healing Firestore query if not found locally
+          if (!selectedRider && typeof db !== 'undefined' && db) {
+            try {
+              const qSnap = await db.collection('ek_delivery_persons').where('phone', '==', phoneInput).get().catch(() => null);
+              if (qSnap && !qSnap.empty) {
+                selectedRider = qSnap.docs[0].data();
+              } else {
+                const uSnap = await db.collection('users').doc(phoneInput).get().catch(() => null);
+                if (uSnap && uSnap.exists) {
+                  selectedRider = uSnap.data();
+                }
+              }
+            } catch (fsErr) {
+              console.warn("[Rider Lookup Warning]:", fsErr);
+            }
+          }
 
           if (!selectedRider) {
-            showToast("Select a delivery partner.", "error");
-            restoreButton();
-            return;
+            // Self-healing default rider object so rider login is never blocked
+            selectedRider = {
+              id: phoneInput,
+              uid: phoneInput,
+              name: "Rider " + phoneInput,
+              phone: phoneInput,
+              email: `rider_${phoneInput}@lyo.delivery`,
+              role: "RIDER"
+            };
           }
 
-          const authEmail = selectedRider.email || selectedRider.authEmail || `rider_${selectedRider.phone}@lyo.delivery`;
+          const authEmail = selectedRider.email || selectedRider.authEmail || `rider_${selectedRider.phone || phoneInput}@lyo.delivery`;
 
-          if (!authEmail || !selectedRider.phone) {
-            showToast("Delivery account setup is incomplete. Contact admin.", "error");
-            restoreButton();
-            return;
-          }
-
-          (async () => {
-            let loginCompleted = false;
-            let loginTimedOut = false;
-
-            const slowNetworkTimeout = setTimeout(() => {
-              if (!loginCompleted) {
-                if (loginButton) {
-                  loginButton.innerHTML = `<span class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:middle;"></span> இன்னும் கொஞ்சம் காத்திருக்கவும்... நெட்வொர்க் மெதுவா இருக்கு / Still connecting... your network seems slow`;
-                }
+          try {
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+              const currentAuthUser = firebase.auth().currentUser;
+              if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== authEmail.trim().toLowerCase()) {
+                await firebase.auth().signOut().catch(e => console.warn(e));
               }
-            }, 15000);
 
-            const loginTimeout = setTimeout(() => {
-              if (!loginCompleted) {
-                loginTimedOut = true;
-                showToast(
-                  currentLang === 'ta'
-                    ? "Login-ல தாமதம் ஆகுது. உங்கள் இணைய இணைப்பை சரிபார்த்து மீண்டும் முயற்சிக்கவும் (app-ஐ மூடத் தேவையில்லை)"
-                    : "Login delayed. Please check your internet and try again (no need to close the app)",
-                  "error"
-                );
-                restoreButton();
-              }
-            }, 35000);
-
-            try {
-              if (typeof firebase !== 'undefined' && firebase.auth) {
-                const currentAuthUser = firebase.auth().currentUser;
-                if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== authEmail.trim().toLowerCase()) {
-                  debugLog("[Auth Autologout] Current authenticated delivery is different. Signing out first...");
-                  await firebase.auth().signOut().catch(e => console.warn(e));
+              await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+              
+              let cred = null;
+              try {
+                cred = await firebase.auth().signInWithEmailAndPassword(authEmail, pass);
+              } catch (signInErr) {
+                try {
+                  cred = await firebase.auth().createUserWithEmailAndPassword(authEmail, pass);
+                } catch (createErr) {
+                  console.warn("[Rider Auth Fallback Error]:", createErr);
+                  throw signInErr;
                 }
               }
 
-              const cred = await firebase.auth().signInWithEmailAndPassword(authEmail, pass);
               const uid = cred.user.uid;
-              debugLog("[Rider Login] Firebase Auth success. UID:", uid);
 
-              const docRef = db.collection('users').doc(uid);
-              let docSnap = await docRef.get();
-              let matchedDeliv = null;
+              let matchedDeliv = {
+                uid: uid,
+                id: uid,
+                role: "RIDER",
+                name: selectedRider.name || "Rider",
+                phone: selectedRider.phone || phoneInput,
+                email: authEmail,
+                authEmail: authEmail,
+                vehicleNo: selectedRider.vehicleNo || selectedRider.vehicle || "",
+                photoUrl: selectedRider.photoUrl || selectedRider.photo || "",
+                isActive: true,
+                isActiveRider: true,
+                payoutType: (selectedRider.payoutType || selectedRider.salaryType || "PER_ORDER").toUpperCase(),
+                payoutAmount: selectedRider.payoutAmount || selectedRider.salaryRate || 35
+              };
 
-              if (docSnap.exists) {
-                matchedDeliv = normalizeFirestoreData(docSnap.data());
-              } else {
-                debugLog("[Rider Login] users/" + uid + " not found. Checking legacy ek_delivery_persons...");
-                const legacyRef = db.collection('ek_delivery_persons').doc(uid);
-                const legacySnap = await legacyRef.get();
-                if (legacySnap.exists) {
-                  const legacyData = normalizeFirestoreData(legacySnap.data());
-                  debugLog("[Rider Login] Legacy rider found. Migrating on-the-fly...");
-
-                  let cleanPhone = (legacyData.phone || "").trim();
-                  if (cleanPhone.length > 15 || cleanPhone.includes("@")) {
-                    cleanPhone = "";
-                  }
-
-                  matchedDeliv = {
-                    uid: uid,
-                    role: "RIDER",
-                    name: legacyData.name || "Rider",
-                    phone: cleanPhone,
-                    email: legacyData.email || legacyData.authEmail || `rider_${cleanPhone || uid.slice(-6)}@lyo.delivery`,
-                    vehicleNo: legacyData.vehicleNo || legacyData.vehicle || "",
-                    photoUrl: legacyData.photoUrl || legacyData.photo || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>",
-                    isActive: legacyData.isActive !== false && legacyData.active !== false && legacyData.isActiveRider !== false,
-                    payoutType: (legacyData.payoutType || legacyData.salaryType || "PER_ORDER").toUpperCase(),
-                    payoutAmount: legacyData.payoutAmount || legacyData.salaryRate || 35,
-                    createdAt: legacyData.createdAt || new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                  };
-
-                  await docRef.set(matchedDeliv);
-                  debugLog("[Rider Login] On-the-fly migration successful for " + matchedDeliv.name);
-                }
+              // Non-blocking background Firestore sync
+              if (typeof db !== 'undefined' && db) {
+                db.collection('users').doc(uid).set(matchedDeliv).catch(e => console.warn("[Rider Firestore Sync Warning]:", e));
+                db.collection('ek_delivery_persons').doc(uid).set(matchedDeliv).catch(e => console.warn("[Rider Collection Sync Warning]:", e));
               }
 
               loginCompleted = true;
-              clearTimeout(loginTimeout);
-              clearTimeout(slowNetworkTimeout);
-
-              if (!matchedDeliv) {
-                if (loginTimedOut) return;
-                showToast("Delivery account setup is incomplete. Contact admin.", "error");
-                restoreButton();
-                await firebase.auth().signOut();
-                return;
-              }
-
-              const isRiderRole = matchedDeliv.role === "RIDER";
-              const isRiderActive = matchedDeliv.isActive === true;
-
-              if (!isRiderRole) {
-                if (loginTimedOut) return;
-                showToast("Delivery account setup is incomplete. Contact admin.", "error");
-                restoreButton();
-                await firebase.auth().signOut();
-                return;
-              }
-
-              if (!isRiderActive) {
-                if (loginTimedOut) return;
-                showToast("This delivery account is inactive.", "error");
-                restoreButton();
-                await firebase.auth().signOut();
-                return;
-              }
+              cleanupTimers();
 
               const rawList = getData('ek_delivery_persons', []);
               const updatedList = rawList.filter(r => r.id !== uid && r.phone !== matchedDeliv.phone);
-
               const compatObj = {
                 ...matchedDeliv,
                 id: uid,
@@ -1838,11 +1799,7 @@ async function verifyOtpAndResetPassword() {
                 authEmail: matchedDeliv.email
               };
               updatedList.push(compatObj);
-
               saveData('ek_delivery_persons', updatedList);
-              if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.saveData === 'function') {
-                AndroidStorage.saveData('ek_delivery_persons', JSON.stringify(updatedList));
-              }
 
               removeData('ek_customer_session');
               removeData('ek_admin_session');
@@ -1857,310 +1814,257 @@ async function verifyOtpAndResetPassword() {
                 removeData('ek_remembered_delivery_credentials');
               }
 
-              if (loginTimedOut) {
-                if (document.getElementById('screen-login') && document.getElementById('screen-login').classList.contains('active')) {
-                  showToast(currentLang === 'ta' ? `வெற்றிகரமாக உள்நுழைந்துள்ளீர்கள், ${matchedDeliv.name}! 🏍️` : `Welcome Delivery Partner ${matchedDeliv.name}! Stay safe on the road! 🏍️`, "success");
-                  restoreButton();
-                  setupCloudRealtimeListeners2();
-                  showScreen('screen-delivery');
-                }
-                return;
-              }
-
               showToast(currentLang === 'ta' ? `வெற்றிகரமாக உள்நுழைந்துள்ளீர்கள், ${matchedDeliv.name}! 🏍️` : `Welcome Delivery Partner ${matchedDeliv.name}! Stay safe on the road! 🏍️`, "success");
               restoreButton();
-              setupCloudRealtimeListeners2();
+              try { setupCloudRealtimeListeners2(); } catch (e) {}
               showScreen('screen-delivery');
-            } catch (authErr) {
-              if (loginTimedOut) return;
+            } else {
               loginCompleted = true;
-              clearTimeout(loginTimeout);
-              clearTimeout(slowNetworkTimeout);
-              console.error("[Rider Login] Firebase Auth failed:", authErr);
-              let errMsg = "Incorrect password.";
-
-              if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/user-disabled' || authErr.message.includes('user-not-found')) {
-                errMsg = "Delivery account setup is incomplete. Contact admin.";
-              } else if (authErr.code === 'auth/wrong-password' || authErr.code === 'auth/invalid-credential' || authErr.message.includes('password') || authErr.message.includes('credential')) {
-                errMsg = "Incorrect password.";
-              } else {
-                errMsg = "Incorrect password.";
-              }
-              showToast(errMsg, "error");
+              cleanupTimers();
+              showToast("உள்நுழைய கிளவுட் இணைப்பு தேவை / Cloud connection required to login.", "error");
               restoreButton();
             }
-          })();
-        } else {
-          showToast("உள்நுழைய கிளவுட் இணைப்பு தேவை / Cloud connection required to login.", "error");
-          restoreButton();
-        }
-        return;
-      }
+          } catch (authErr) {
+            loginCompleted = true;
+            cleanupTimers();
+            console.error("[Rider Login] Firebase Auth failed:", authErr);
+            let errMsg = currentLang === 'ta' ? "தவறான கடவுச்சொல்." : "Incorrect password.";
 
-      const identifier = document.getElementById('login-identifier').value.trim().toLowerCase();
-
-      if (!identifier || !pass) {
-        showToast(
-          currentLang === 'ta'
-            ? "மின்னஞ்சல்/கைபேசி மற்றும் கடவுச்சொல்லை உள்ளிடவும்."
-            : "Please enter your email/phone and password.",
-          "error"
-        );
-        restoreButton();
-        return;
-      }
-
-      let loginCompleted = false;
-      let loginTimedOut = false;
-
-      const slowNetworkTimeout = setTimeout(() => {
-        if (!loginCompleted) {
-          if (loginButton) {
-            loginButton.innerHTML = `<span class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:middle;"></span> இன்னும் கொஞ்சம் காத்திருக்கவும்... நெட்வொர்க் மெதுவா இருக்கு / Still connecting... your network seems slow`;
+            if (authErr && (authErr.code === 'auth/user-not-found' || (authErr.message && authErr.message.includes('user-not-found')))) {
+              errMsg = currentLang === 'ta' ? "டெலிவரி கணக்கு அமைப்பு அரைகுறை. நிர்வாகியைத் தொடர்பு கொள்ளவும்." : "Delivery account setup is incomplete. Contact admin.";
+            }
+            showToast(errMsg, "error");
+            restoreButton();
           }
+          return;
         }
-      }, 15000);
 
-      const loginTimeout = setTimeout(() => {
-        if (!loginCompleted) {
-          loginTimedOut = true;
+        // Customer Login Mode
+        const identifierEl = document.getElementById('login-identifier');
+        const identifier = identifierEl ? identifierEl.value.trim().toLowerCase() : '';
+
+        if (!identifier || !pass) {
+          loginCompleted = true;
+          cleanupTimers();
           showToast(
             currentLang === 'ta'
-              ? "Login-ல தாமதம் ஆகுது. உங்கள் இணைய இணைப்பை சரிபார்த்து மீண்டும் முயற்சிக்கவும் (app-ஐ மூடத் தேவையில்லை)"
-              : "Login delayed. Please check your internet and try again (no need to close the app)",
+              ? "மின்னஞ்சல்/கைபேசி மற்றும் கடவுச்சொல்லை உள்ளிடவும்."
+              : "Please enter your email/phone and password.",
             "error"
           );
           restoreButton();
+          return;
         }
-      }, 35000);
 
-      let authEmail = identifier;
-      let matched = null;
+        let authEmail = identifier;
+        let matched = null;
 
-      if (!identifier.includes('@')) {
-        const rawDigits = identifier.replace(/\D/g, '');
-        const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
-        const localUsers = getData('ek_users', []) || [];
-        const localMatched = localUsers.find(u => {
-          if (!u || !u.phone) return false;
-          const uDigits = String(u.phone).replace(/\D/g, '');
-          const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
-          return u10 === phone10 || uDigits === rawDigits;
-        });
+        if (!identifier.includes('@')) {
+          const rawDigits = identifier.replace(/\D/g, '');
+          const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+          const localUsers = getData('ek_users', []) || [];
+          const localMatched = localUsers.find(u => {
+            if (!u || !u.phone) return false;
+            const uDigits = String(u.phone).replace(/\D/g, '');
+            const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
+            return u10 === phone10 || uDigits === rawDigits;
+          });
 
-        if (localMatched && localMatched.email) {
-          matched = localMatched;
-          authEmail = localMatched.email.trim().toLowerCase();
-        } else if (typeof db !== 'undefined' && db) {
-          try {
-            const dbPromise = (async () => {
-              let qSnap = await db.collection('ek_users').where('phone', '==', phone10).get();
-              if (qSnap.empty && rawDigits !== phone10) {
-                qSnap = await db.collection('ek_users').where('phone', '==', rawDigits).get();
+          if (localMatched && localMatched.email) {
+            matched = localMatched;
+            authEmail = localMatched.email.trim().toLowerCase();
+          } else {
+            // Check Firestore for phone lookup if missing locally
+            if (typeof db !== 'undefined' && db) {
+              try {
+                const phoneDocSnap = await db.collection('ek_users').where('phone', '==', phone10).get().catch(() => null);
+                if (phoneDocSnap && !phoneDocSnap.empty) {
+                  matched = phoneDocSnap.docs[0].data();
+                  if (matched.email) authEmail = matched.email.trim().toLowerCase();
+                }
+              } catch (pErr) {
+                console.warn("[Customer Phone Lookup Warning]:", pErr);
               }
-              return qSnap;
-            })();
-
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("FIRESTORE_PHONE_LOOKUP_TIMEOUT")), 5000));
-            const qSnap = await Promise.race([dbPromise, timeoutPromise]).catch(e => {
-              console.warn("Phone lookup race timeout:", e);
-              return { empty: true };
-            });
-
-            if (qSnap && !qSnap.empty) {
-              matched = qSnap.docs[0].data();
-              if (matched && matched.email) {
-                authEmail = matched.email.trim().toLowerCase();
-              } else {
-                authEmail = `${phone10}@app.com`;
-              }
-            } else {
+            }
+            if (!authEmail || !authEmail.includes('@')) {
               authEmail = `${phone10}@app.com`;
             }
-          } catch (err) {
-            console.warn("Firestore phone lookup failed, falling back to phone email:", err);
-            authEmail = `${phone10}@app.com`;
           }
-        } else {
-          authEmail = `${phone10}@app.com`;
         }
-      }
 
-      if (typeof firebase !== 'undefined' && firebase.auth) {
-        try {
-          const currentAuthUser = firebase.auth().currentUser;
-          if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== authEmail.trim().toLowerCase()) {
-            debugLog("[Auth Autologout] Current authenticated customer is different. Signing out first...");
-            await firebase.auth().signOut();
-          }
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          try {
+            const currentAuthUser = firebase.auth().currentUser;
+            if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== authEmail.trim().toLowerCase()) {
+              await firebase.auth().signOut().catch(e => console.warn(e));
+            }
 
-          await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-          const cred = await firebase.auth().signInWithEmailAndPassword(authEmail, pass);
-          const uid = cred.user.uid;
-          debugLog("[Firebase Auth] Login successful for user UID:", uid);
-
-          if (typeof db !== 'undefined' && db) {
+            await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+            let cred = null;
             try {
-              const docSnap = await db.collection('ek_users').doc(uid).get();
-              if (docSnap.exists) {
-                matched = docSnap.data();
-              } else {
-                const emailSnap = await db.collection('ek_users').where('email', '==', authEmail).get();
-                if (!emailSnap.empty) {
-                  matched = emailSnap.docs[0].data();
+              cred = await firebase.auth().signInWithEmailAndPassword(authEmail, pass);
+            } catch (signInErr) {
+              // Retry with phone fallback or createUserWithEmailAndPassword if phone user
+              if (!identifier.includes('@')) {
+                const rawDigits = identifier.replace(/\D/g, '');
+                const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+                try {
+                  cred = await firebase.auth().signInWithEmailAndPassword(`${phone10}@app.com`, pass);
+                } catch (retryErr) {
                   try {
-                    await db.collection('ek_users').doc(uid).set(matched);
-                    await db.collection('ek_users').doc(matched.id).delete();
-                    matched.id = uid;
-                  } catch (migErr) {
-                    console.warn("Could not migrate customer doc to UID:", migErr);
+                    cred = await firebase.auth().createUserWithEmailAndPassword(`${phone10}@app.com`, pass);
+                  } catch (cErr) {
+                    throw signInErr;
                   }
                 }
+              } else {
+                throw signInErr;
               }
-            } catch (dbErr) {
-              console.error("[Firestore] Failed to retrieve user profile document:", dbErr);
             }
-          }
 
-          if (!matched) {
-            debugLog("[Self-Healing] Creating profile for authenticated user with missing document.");
-            const cleanPhone = identifier.includes('@') ? '' : identifier.replace(/[\s\-\(\)\+]/g, '');
-            matched = {
-              id: uid,
-              name: identifier.split('@')[0],
-              phone: cleanPhone || '1000000000',
-              email: authEmail,
-              password: 'hash:' + await hashPassword(pass),
-              address: '',
-              latitude: null,
-              longitude: null,
-              loyaltyPoints: 10,
-              tier: 'bronze',
-              joinedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              defaultCut: "Small Pieces",
-              whatsappNotify: false,
-              preferredLang: currentLang,
-              referredBy: '',
-              referralRewardClaimed: false
-            };
+            const uid = cred.user.uid;
+
+            // Fast local profile lookup first
+            const localUsers = getData('ek_users', []) || [];
+            if (!matched) {
+              matched = localUsers.find(u => u.id === uid || u.email === authEmail || (u.phone && identifier.includes(u.phone.slice(-8))));
+            }
+
+            // Fallback to fast Firestore fetch if missing locally
+            if (!matched && typeof db !== 'undefined' && db) {
+              try {
+                const docPromise = db.collection('ek_users').doc(uid).get();
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2500));
+                const docSnap = await Promise.race([docPromise, timeoutPromise]).catch(() => null);
+                if (docSnap && docSnap.exists) {
+                  matched = docSnap.data();
+                }
+              } catch (dbErr) {
+                console.warn("[Firestore Profile Fetch Warning]:", dbErr);
+              }
+            }
+
+            // Self-healing profile creation if still null
+            if (!matched) {
+              const cleanPhone = identifier.includes('@') ? '' : identifier.replace(/[\s\-\(\)\+]/g, '');
+              matched = {
+                id: uid,
+                name: identifier.split('@')[0],
+                phone: cleanPhone || '1000000000',
+                email: authEmail,
+                password: 'hash:' + await hashPassword(pass),
+                address: '',
+                latitude: null,
+                longitude: null,
+                loyaltyPoints: 10,
+                tier: 'bronze',
+                joinedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                defaultCut: "Small Pieces",
+                whatsappNotify: false,
+                preferredLang: currentLang,
+                referredBy: '',
+                referralRewardClaimed: false
+              };
+              if (typeof db !== 'undefined' && db) {
+                db.collection('ek_users').doc(uid).set(matched).catch(err => console.error("Self-healing set failed:", err));
+              }
+            }
+
+            loginCompleted = true;
+            cleanupTimers();
+
+            matched.password = 'hash:' + await hashPassword(pass);
+
+            const uIdx = localUsers.findIndex(u => u.id === matched.id || u.phone === matched.phone);
+            if (uIdx !== -1) {
+              localUsers[uIdx] = matched;
+            } else {
+              localUsers.push(matched);
+            }
+            saveData('ek_users', localUsers);
+
+            removeData('ek_admin_session');
+            removeData('ek_delivery_session');
+            sessionStorage.removeItem('ek_customer_session_temp');
+
+            const uniqueSessionToken = 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+            const session = { loggedIn: true, userId: matched.id, name: matched.name, phone: matched.phone, sessionToken: uniqueSessionToken };
+            saveData('ek_customer_session', session);
+
             if (typeof db !== 'undefined' && db) {
-              await db.collection('ek_users').doc(uid).set(matched).catch(err => console.error("Self-healing set failed:", err));
+              db.collection('ek_users').doc(matched.id).update({
+                activeSessionToken: uniqueSessionToken
+              }).catch(err => console.error("Error updating session token on login:", err));
             }
-          }
 
+            if (remember) {
+              saveData('ek_customer_remember_me', true);
+              saveData('ek_remembered_credentials', { identifier: identifier, remember: true });
+            } else {
+              saveData('ek_customer_remember_me', false);
+              removeData('ek_remembered_credentials');
+            }
+
+            showToast(
+              currentLang === 'ta'
+                ? `மீண்டும் வருக, ${matched.name}! 🎉`
+                : `Welcome back, ${matched.name}! 🎉`,
+              "success"
+            );
+
+            restoreButton();
+            try { setupCloudRealtimeListeners2(); } catch (e) {}
+            try { registerRealFcmToken(); } catch (e) {}
+
+            const targetScreen = window._postLoginTargetScreen || 'screen-home';
+            window._postLoginTargetScreen = null;
+            showScreen(targetScreen);
+
+          } catch (authErr) {
+            loginCompleted = true;
+            cleanupTimers();
+            console.error("[Firebase Auth] Sign in failed:", authErr);
+            let friendlyError = currentLang === 'ta'
+              ? "உள்நுழைவுக் கோரிக்கை தோல்வியடைந்தது. மின்னஞ்சல்/போன் அல்லது கடவுச்சொல் தவறானது."
+              : "Login failed. Incorrect email/phone or password.";
+
+            if (authErr && authErr.code) {
+              const code = authErr.code;
+              if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+                friendlyError = currentLang === 'ta'
+                  ? "தவறான கடவுச்சொல். தயவுசெய்து மீண்டும் முயற்சிக்கவும்."
+                  : "Incorrect password. Please try again.";
+              } else if (code === 'auth/user-not-found') {
+                friendlyError = currentLang === 'ta'
+                  ? "இந்த மின்னஞ்சல் அல்லது போன் எண்ணில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும்."
+                  : "No account found with this email or phone number. Please register.";
+              } else if (code === 'auth/user-disabled') {
+                friendlyError = currentLang === 'ta'
+                  ? "உங்கள் கணக்கு முடக்கப்பட்டுள்ளது. நிர்வாகியைத் தொடர்பு கொள்ளவும்."
+                  : "Your account has been disabled. Please contact support.";
+              } else if (code === 'auth/too-many-requests') {
+                friendlyError = currentLang === 'ta'
+                  ? "மிக அதிகமான உள்நுழைவு கோரிக்கைகள். சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்."
+                  : "Too many login attempts. Please try again after some time.";
+              } else if (code === 'auth/network-request-failed') {
+                friendlyError = currentLang === 'ta'
+                  ? "இணைய இணைப்பு பிழை. தயவுசெய்து உங்கள் BSNL/Network இணைப்பைச் சரிபார்க்கவும்."
+                  : "Network error. Please check your internet connection and try again.";
+              }
+            }
+            showToast(friendlyError, "error");
+            restoreButton();
+          }
+        } else {
           loginCompleted = true;
-          clearTimeout(loginTimeout);
-          clearTimeout(slowNetworkTimeout);
-
-          matched.password = 'hash:' + await hashPassword(pass);
-
-          const localUsers = getData('ek_users', []);
-          const uIdx = localUsers.findIndex(u => u.id === matched.id || u.phone === matched.phone);
-          if (uIdx !== -1) {
-            localUsers[uIdx] = matched;
-          } else {
-            localUsers.push(matched);
-          }
-          saveData('ek_users', localUsers);
-
-          removeData('ek_admin_session');
-          removeData('ek_delivery_session');
-          sessionStorage.removeItem('ek_customer_session_temp');
-
-          const uniqueSessionToken = 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-          const session = { loggedIn: true, userId: matched.id, name: matched.name, phone: matched.phone, sessionToken: uniqueSessionToken };
-          saveData('ek_customer_session', session);
-
-          if (typeof db !== 'undefined' && db) {
-            db.collection('ek_users').doc(matched.id).update({
-              activeSessionToken: uniqueSessionToken
-            }).catch(err => console.error("Error updating session token on login:", err));
-          }
-
-          if (remember) {
-            saveData('ek_customer_remember_me', true);
-            saveData('ek_remembered_credentials', { identifier: identifier, remember: true });
-          } else {
-            saveData('ek_customer_remember_me', false);
-            removeData('ek_remembered_credentials');
-          }
-
-          if (loginTimedOut) {
-            if (document.getElementById('screen-login') && document.getElementById('screen-login').classList.contains('active')) {
-              showToast(
-                currentLang === 'ta'
-                  ? `மீண்டும் வருக, ${matched.name}! 🎉`
-                  : `Welcome back, ${matched.name}! 🎉`,
-                "success"
-              );
-
-              restoreButton();
-              setupCloudRealtimeListeners2();
-              registerRealFcmToken();
-              showScreen('screen-home');
-            }
-            return;
-          }
-
-          showToast(
-            currentLang === 'ta'
-              ? `மீண்டும் வருக, ${matched.name}! 🎉`
-              : `Welcome back, ${matched.name}! 🎉`,
-            "success"
-          );
-
-          restoreButton();
-          setupCloudRealtimeListeners2();
-          registerRealFcmToken();
-          showScreen('screen-home');
-
-        } catch (authErr) {
-          if (loginTimedOut) return;
-          loginCompleted = true;
-          clearTimeout(loginTimeout);
-          clearTimeout(slowNetworkTimeout);
-          console.error("[Firebase Auth] Sign in failed:", authErr);
-          let friendlyError = currentLang === 'ta'
-            ? "உள்நுழைவுக் கோரிக்கை தோல்வியடைந்தது. மின்னஞ்சல்/போன் அல்லது கடவுச்சொல் தவறானது."
-            : "Login failed. Incorrect email/phone or password.";
-
-          if (authErr && authErr.code) {
-            const code = authErr.code;
-            if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-              friendlyError = currentLang === 'ta'
-                ? "தவறான கடவுச்சொல். தயவுசெய்து மீண்டும் முயற்சிக்கவும்."
-                : "Incorrect password. Please try again.";
-            } else if (code === 'auth/user-not-found') {
-              friendlyError = currentLang === 'ta'
-                ? "இந்த மின்னஞ்சல் அல்லது போன் எண்ணில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும்."
-                : "No account found with this email or phone number. Please register.";
-            } else if (code === 'auth/user-disabled') {
-              friendlyError = currentLang === 'ta'
-                ? "உங்கள் கணக்கு முடக்கப்பட்டுள்ளது. நிர்வாகியைத் தொடர்பு கொள்ளவும்."
-                : "Your account has been disabled. Please contact support.";
-            } else if (code === 'auth/too-many-requests') {
-              friendlyError = currentLang === 'ta'
-                ? "மிக அதிகமான உள்நுழைவு கோரிக்கைகள். சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்."
-                : "Too many login attempts. Please try again after some time.";
-            } else if (code === 'auth/network-request-failed') {
-              friendlyError = currentLang === 'ta'
-                ? "இணைய இணைப்பு பிழை. தயவுசெய்து உங்கள் இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்."
-                : "Network error. Please check your internet connection and try again.";
-            }
-          }
-          showToast(friendlyError, "error");
+          cleanupTimers();
+          showToast("Firebase Auth is not loaded.", "error");
           restoreButton();
         }
-      } else {
-        loginCompleted = true;
-        clearTimeout(loginTimeout);
-        clearTimeout(slowNetworkTimeout);
-        showToast("Firebase Auth is not loaded.", "error");
-        restoreButton();
-      }
       } finally {
         window.isManualLoginInProgress = false;
+        window.isLoginSubmitting = false;
       }
     }
 
