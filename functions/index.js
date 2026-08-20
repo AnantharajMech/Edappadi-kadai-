@@ -693,6 +693,191 @@ exports.repairDeliveryPartner = functions
     }
   });
 
+exports.deductStockOnOrderCreated = functions
+  .region('asia-south1')
+  .firestore
+  .document('ek_orders/{orderId}')
+  .onCreate(async (snap, context) => {
+    const orderId = context.params.orderId;
+    const orderData = snap.data() || {};
+
+    if (!orderData || !orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+      console.log(`[Stock Deduct Trigger] Order ${orderId} has no items. Skipping stock deduction.`);
+      return null;
+    }
+
+    if (orderData.stockDeducted === true) {
+      console.log(`[Stock Deduct Trigger] Order ${orderId} already marked as stockDeducted. Skipping.`);
+      return null;
+    }
+
+    console.log(`[Stock Deduct Trigger] Processing stock deduction for newly created order: ${orderId}`);
+
+    const firestore = admin.firestore();
+    const orderRef = firestore.collection('ek_orders').doc(orderId);
+
+    let hasStockConflict = false;
+    const conflictItems = [];
+
+    try {
+      await firestore.runTransaction(async (transaction) => {
+        // Step A: Re-read order document inside transaction for strict idempotency
+        const freshOrderSnap = await transaction.get(orderRef);
+        if (!freshOrderSnap.exists) {
+          console.warn(`[Stock Deduct Trigger] Order ${orderId} does not exist in transaction.`);
+          return;
+        }
+
+        const freshOrderData = freshOrderSnap.data() || {};
+        if (freshOrderData.stockDeducted === true) {
+          console.log(`[Stock Deduct Trigger] Order ${orderId} was already deducted in concurrent run. Aborting.`);
+          return;
+        }
+
+        const items = freshOrderData.items || orderData.items || [];
+
+        // Step B: Fetch all product docs inside transaction (all reads before writes)
+        const productReads = [];
+        for (const item of items) {
+          if (!item || !item.productId) continue;
+          const prodRef = firestore.collection('ek_products').doc(item.productId);
+          productReads.push({
+            item,
+            prodRef,
+            snapPromise: transaction.get(prodRef)
+          });
+        }
+
+        const productSnaps = [];
+        for (const pr of productReads) {
+          const prodSnap = await pr.snapPromise;
+          productSnaps.push({
+            item: pr.item,
+            prodRef: pr.prodRef,
+            prodSnap
+          });
+        }
+
+        // Step C: Calculate stock updates and verify sufficiency
+        const productUpdates = [];
+
+        for (const { item, prodRef, prodSnap } of productSnaps) {
+          if (!prodSnap.exists) {
+            console.warn(`[Stock Deduct Trigger] Product ${item.productId} not found in Firestore.`);
+            continue;
+          }
+
+          const prodData = prodSnap.data() || {};
+          const serverStock = parseFloat(prodData.stockKg || 0);
+          const unit = String(prodData.unit || item.unit || 'kg').toLowerCase();
+          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+
+          const rawWeight = parseFloat(item.weightGrams || item.quantity || 0);
+          const needed = isWeight ? (rawWeight / 1000) : rawWeight;
+
+          if (serverStock < needed) {
+            hasStockConflict = true;
+            conflictItems.push({
+              productId: item.productId,
+              name: prodData.englishName || prodData.tamilName || item.name || item.productId,
+              available: serverStock,
+              requested: needed,
+              unit: unit
+            });
+            console.warn(`[Stock Deduct Trigger] Insufficient stock for product ${item.productId} (${prodData.englishName || ''}). Available: ${serverStock}, Needed: ${needed}`);
+          }
+
+          const newStock = parseFloat(Math.max(0, serverStock - needed).toFixed(3));
+          const isOutOfStock = newStock <= 0;
+
+          productUpdates.push({
+            prodRef,
+            newStock,
+            isOutOfStock,
+            previousStock: serverStock
+          });
+        }
+
+        // Step D: Write all product updates
+        for (const up of productUpdates) {
+          transaction.update(up.prodRef, {
+            stockKg: up.newStock,
+            isOutOfStock: up.isOutOfStock,
+            updatedAt: new Date().toISOString()
+          });
+          console.log(`[Stock Deduct Trigger] Product ${up.prodRef.id} stock updated: ${up.previousStock} -> ${up.newStock}`);
+        }
+
+        // Step E: Update order document with stockDeducted: true and stockConflict if applicable
+        const orderUpdates = {
+          stockDeducted: true,
+          stockDeductedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        if (hasStockConflict) {
+          orderUpdates.stockConflict = true;
+          orderUpdates.status = 'stock_review';
+          orderUpdates.stockConflictDetails = conflictItems;
+        }
+
+        transaction.update(orderRef, orderUpdates);
+      });
+
+      console.log(`[Stock Deduct Trigger] Successfully completed stock deduction transaction for order ${orderId}.`);
+
+      // If there was a stock conflict, send alerts to admin
+      if (hasStockConflict) {
+        console.log(`[Stock Deduct Trigger] Stock conflict detected for order ${orderId}. Dispatching admin notifications...`);
+        const itemNames = conflictItems.map(c => `${c.name} (${c.available} available vs ${c.requested} ordered)`).join(', ');
+        const conflictTitle = "⚠️ ஸ்டாக் பற்றாக்குறை எச்சரிக்கை! (Stock Alert)";
+        const conflictBody = `ஆர்டர் #${orderId}-ல் ஸ்டாக் குறைவாக உள்ளது: ${itemNames}. ஆர்டரை சரிபார்க்கவும்.`;
+
+        // 1. Send FCM topic broadcast for admin
+        try {
+          await admin.messaging().send({
+            topic: 'admin_notifications',
+            notification: {
+              title: conflictTitle,
+              body: conflictBody
+            },
+            data: {
+              orderId: String(orderId),
+              type: 'stock_conflict',
+              click_action: 'OPEN_MAIN_ACTIVITY'
+            },
+            android: {
+              priority: 'high',
+              notification: { channelId: 'status_alerts' }
+            }
+          });
+          console.log(`[Stock Deduct Trigger] Sent FCM topic alert for stock conflict in order ${orderId}`);
+        } catch (fcmErr) {
+          console.warn('[Stock Deduct Trigger] FCM broadcast notice:', fcmErr.message);
+        }
+
+        // 2. Add to ek_topic_broadcast_requests queue for resilience
+        try {
+          await firestore.collection('ek_topic_broadcast_requests').add({
+            topic: 'admin_notifications',
+            title: conflictTitle,
+            body: conflictBody,
+            orderId: String(orderId),
+            createdAt: new Date().toISOString(),
+            processed: false
+          });
+        } catch (queueErr) {
+          console.warn('[Stock Deduct Trigger] Queue broadcast notice:', queueErr.message);
+        }
+      }
+
+    } catch (err) {
+      console.error(`[Stock Deduct Trigger] Error during stock deduction transaction for order ${orderId}:`, err);
+    }
+
+    return null;
+  });
+
 exports.restoreStockOnOrderCancelled = functions
   .region('asia-south1')
   .firestore
@@ -706,6 +891,11 @@ exports.restoreStockOnOrderCancelled = functions
 
     // Check if status changed to CANCELLED
     if (afterStatus === 'CANCELLED' && beforeStatus !== 'CANCELLED') {
+      if (afterData.stockRestored === true) {
+        console.log(`[Stock Restore Trigger] Order ${context.params.orderId} stock was already restored. Skipping.`);
+        return null;
+      }
+
       console.log(`[Stock Restore Trigger] Order ${context.params.orderId} status changed to CANCELLED. Restoring stocks...`);
       
       const items = afterData.items || [];
@@ -739,6 +929,13 @@ exports.restoreStockOnOrderCancelled = functions
           console.warn(`[Stock Restore Trigger] Product ${item.productId} not found.`);
         }
       }
+
+      const orderRef = firestore.collection('ek_orders').doc(context.params.orderId);
+      batch.update(orderRef, {
+        stockRestored: true,
+        stockRestoredAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
 
       await batch.commit();
       console.log(`[Stock Restore Trigger] Successfully restored stocks for order ${context.params.orderId}.`);

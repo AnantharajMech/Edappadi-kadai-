@@ -929,7 +929,8 @@
       const arrow = document.getElementById(sectionId + '-collapse-arrow') || document.getElementById('admin-' + sectionId + '-collapse-arrow');
       if (!container) return;
 
-      const isCollapsed = container.style.maxHeight === '0px' || container.style.maxHeight === '';
+      const currentMaxHeight = (container.style.maxHeight || '').trim();
+      const isCollapsed = currentMaxHeight === '0px' || currentMaxHeight === '0' || currentMaxHeight === '' || container.classList.contains('collapsed');
 
       if (isCollapsed) {
         if (sectionId === 'categories' && typeof renderAdminCategoriesList === 'function') {
@@ -947,37 +948,26 @@
           }, 700);
         }
 
-        container.style.maxHeight = container.scrollHeight + 'px';
+        container.classList.remove('collapsed');
+        container.classList.add('expanded');
+        container.style.maxHeight = Math.max(container.scrollHeight, 600) + 'px';
         if (arrow) arrow.style.transform = 'rotate(180deg)';
-        sessionStorage.setItem('collapse_' + sectionId, 'expanded');
+        try { sessionStorage.setItem('collapse_' + sectionId, 'expanded'); } catch(e) {}
 
         setTimeout(() => {
-          if (container.style.maxHeight !== '0px') {
+          if (container.classList.contains('expanded') || container.style.maxHeight !== '0px') {
             container.style.maxHeight = 'none';
           }
-        }, 300);
+        }, 350);
       } else {
         container.style.maxHeight = container.scrollHeight + 'px';
-        container.offsetHeight;
+        container.offsetHeight; // force reflow
 
+        container.classList.remove('expanded');
+        container.classList.add('collapsed');
         container.style.maxHeight = '0px';
         if (arrow) arrow.style.transform = 'rotate(0deg)';
-        sessionStorage.setItem('collapse_' + sectionId, 'collapsed');
-
-        setTimeout(() => {
-          if (container.style.maxHeight === '0px') {
-            if (sectionId === 'categories') {
-              const el = document.getElementById('admin-categories-list');
-              if (el) el.innerHTML = '';
-            } else if (sectionId === 'carousel') {
-              const el = document.getElementById('admin-banner-list');
-              if (el) el.innerHTML = '';
-            } else if (sectionId === 'upi-config') {
-              const el = document.getElementById('upi-accounts-container');
-              if (el) el.innerHTML = '';
-            }
-          }
-        }, 300);
+        try { sessionStorage.setItem('collapse_' + sectionId, 'collapsed'); } catch(e) {}
       }
     }
 
@@ -988,7 +978,7 @@
 
       const savedState = sessionStorage.getItem('collapse_' + sectionId) || defaultState;
 
-      if (savedState === 'expanded') {
+      if (savedState === 'expanded' || savedState === 'open') {
         if (sectionId === 'categories' && typeof renderAdminCategoriesList === 'function') {
           renderAdminCategoriesList(true);
         } else if (sectionId === 'carousel' && typeof renderAdminBannerList === 'function') {
@@ -996,23 +986,28 @@
         } else if (sectionId === 'upi-config' && typeof renderAdminUpiSettings === 'function') {
           if (typeof renderAdminUpiSettings === 'function') renderAdminUpiSettings(true);
         }
+        container.classList.remove('collapsed');
+        container.classList.add('expanded');
         container.style.maxHeight = 'none';
         if (arrow) arrow.style.transform = 'rotate(180deg)';
       } else {
+        container.classList.remove('expanded');
+        container.classList.add('collapsed');
         container.style.maxHeight = '0px';
         if (arrow) arrow.style.transform = 'rotate(0deg)';
-        if (sectionId === 'categories') {
-          const el = document.getElementById('admin-categories-list');
-          if (el) el.innerHTML = '';
-        } else if (sectionId === 'carousel') {
-          const el = document.getElementById('admin-banner-list');
-          if (el) el.innerHTML = '';
-        } else if (sectionId === 'upi-config') {
-          const el = document.getElementById('upi-accounts-container');
-          if (el) el.innerHTML = '';
+        // Pre-render content into the DOM so it expands instantly without layout jumps
+        if (sectionId === 'categories' && typeof renderAdminCategoriesList === 'function') {
+          renderAdminCategoriesList(true);
+        } else if (sectionId === 'carousel' && typeof renderAdminBannerList === 'function') {
+          renderAdminBannerList(true);
+        } else if (sectionId === 'upi-config' && typeof renderAdminUpiSettings === 'function') {
+          if (typeof renderAdminUpiSettings === 'function') renderAdminUpiSettings(true);
         }
       }
     }
+
+    window.toggleSectionCollapse = toggleSectionCollapse;
+    window.initSectionCollapse = initSectionCollapse;
 
     let toastQueue = [];
     let isToastShowing = false;

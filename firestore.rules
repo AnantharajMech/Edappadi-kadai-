@@ -63,10 +63,20 @@ service cloud.firestore {
              );
     }
 
-    // Orders: customers can create and read own, admin can do everything, riders can claim and update
-    // Orders: anyone can read, create, update, or delete orders to prevent any checkout blockages
+    // Orders: customers can create and read/update own, admin can do everything, riders can read and operational update
     match /ek_orders/{orderId} {
-      allow read, write: if isAuthenticated();
+      allow get: if isAdmin() || isRider() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.customerId == request.auth.uid || resource.data.userId == 'guest_user'));
+      allow list: if isAdmin() || isRider() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.customerId == request.auth.uid));
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid || 
+        request.resource.data.customerId == request.auth.uid || 
+        request.resource.data.userId == 'guest_user' ||
+        isAdmin()
+      );
+      allow update: if isAdmin() || 
+                    (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.customerId == request.auth.uid)) || 
+                    (isRider() && isRiderUpdate(resource.data, request.resource.data));
+      allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
@@ -98,10 +108,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Products: anyone can read, create, or update products/stock to prevent checkout transaction failures
+    // Products: anyone can read, only admin can write (stock is deducted/restored via Cloud Functions with Admin SDK)
     match /ek_products/{productId} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     // Categories: anyone can read, only admin writes
@@ -147,6 +157,26 @@ service cloud.firestore {
     match /ek_fcm_queue/{docId} {
       allow create: if isAuthenticated();
       allow read, update, delete: if isAdmin();
+    }
+
+    match /ek_topic_broadcast_requests/{docId} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /ek_push_notifications/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /ek_broadcast_requests/{docId} {
+      allow create: if isAuthenticated();
+      allow read, write: if isAdmin();
+    }
+
+    match /ek_customer_broadcasts/{docId} {
+      allow create: if isAuthenticated();
+      allow read, write: if isAdmin();
     }
 
     // Admin accounts: only self or admin read, only admin write, but allow authenticated users to read active approved admins

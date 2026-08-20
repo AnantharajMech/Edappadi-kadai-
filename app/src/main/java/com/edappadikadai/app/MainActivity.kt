@@ -507,6 +507,7 @@ class MainActivity : ComponentActivity() {
                                     isVerticalScrollBarEnabled = false
                                     isHorizontalScrollBarEnabled = false
                                     overScrollMode = android.view.View.OVER_SCROLL_NEVER
+                                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                                     
 
                                     settings.apply {
@@ -992,6 +993,11 @@ class MainActivity : ComponentActivity() {
         }
 
         @JavascriptInterface
+        fun getData(key: String): String {
+            return getData(key, "")
+        }
+
+        @JavascriptInterface
         fun removeData(key: String) {
             sharedPreferences.edit().remove(key).apply()
         }
@@ -1181,8 +1187,32 @@ class MainActivity : ComponentActivity() {
                 return fallbackToken
             }
 
-            // Token இன்னும் fetch ஆகவில்லை எனில், synchronous-ஆக fetch முயற்சி செய்:
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> if (!token.isNullOrEmpty()) { sharedPreferences.edit().putString("real_fcm_token", token).putString("fcm_token", token).apply(); com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all_customers") } }.addOnFailureListener { e -> android.util.Log.e("FCM", "Async token fetch failed: ${e.message}") }; return ""
+            // Check cached token first
+            val cachedToken = sharedPreferences.getString("fcm_token", "")
+            if (!cachedToken.isNullOrEmpty()) {
+                return cachedToken
+            }
+
+            try {
+                com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                    .addOnSuccessListener { token ->
+                        if (!token.isNullOrEmpty()) {
+                            sharedPreferences.edit()
+                                .putString("real_fcm_token", token)
+                                .putString("fcm_token", token)
+                                .apply()
+                            try {
+                                com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all_customers")
+                            } catch (e: Exception) {}
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        android.util.Log.d("FCM", "Async token fetch status: ${e.message}")
+                    }
+            } catch (e: Exception) {
+                android.util.Log.d("FCM", "FirebaseMessaging token fetch skipped: ${e.message}")
+            }
+            return ""
         }
 
         @JavascriptInterface

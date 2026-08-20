@@ -975,9 +975,13 @@
         targetIds.forEach(id => {
           const el = document.getElementById(id);
           if (el) {
-            el.value = address;
-            el.setAttribute('data-lat', lat);
-            el.setAttribute('data-lng', lng);
+            el.value = address || "";
+            if (lat !== undefined && lat !== null && !isNaN(lat)) {
+              el.setAttribute('data-lat', lat);
+            }
+            if (lng !== undefined && lng !== null && !isNaN(lng)) {
+              el.setAttribute('data-lng', lng);
+            }
             el.dispatchEvent(new Event('input', { bubbles: true }));
           }
         });
@@ -988,24 +992,39 @@
       renderAllAddressCards();
 
       const session = getActiveSession();
-      if (session) {
-        const users = getData('ek_users', []);
-        let userIdx = users.findIndex(u => u.id === session.userId);
+      const users = getData('ek_users', []);
+      let userIdx = -1;
+      if (session && session.userId) {
+        userIdx = users.findIndex(u => u.id === session.userId);
         if (userIdx === -1 && session.phone) {
           userIdx = users.findIndex(u => u.phone === session.phone);
         }
-        if (userIdx !== -1) {
-          users[userIdx].address = address;
-          users[userIdx].latitude = lat;
-          users[userIdx].longitude = lng;
-          users[userIdx].updatedAt = new Date().toISOString();
-          saveData('ek_users', users);
+      }
+      if (userIdx !== -1) {
+        users[userIdx].address = address;
+        if (lat !== undefined && lat !== null && !isNaN(lat)) users[userIdx].latitude = lat;
+        if (lng !== undefined && lng !== null && !isNaN(lng)) users[userIdx].longitude = lng;
+        users[userIdx].updatedAt = new Date().toISOString();
 
-          if (typeof db !== 'undefined' && db) {
-            db.collection('ek_users').doc(users[userIdx].id).set(users[userIdx], { merge: true })
-              .then(() => debugLog("[Address Sync] Cloud profile updated successfully."))
-              .catch(e => console.warn("[Address Sync] Cloud profile update failed:", e));
-          }
+        // Also ensure savedAddresses has this primary address
+        let saved = users[userIdx].savedAddresses || [];
+        if (!saved.some(a => a.address === address)) {
+          saved.unshift({
+            id: 'addr_' + Math.floor(100000 + Math.random() * 900000),
+            label: 'Home 🏠',
+            address: address,
+            latitude: lat || 11.5815,
+            longitude: lng || 77.8488
+          });
+          users[userIdx].savedAddresses = saved;
+        }
+
+        saveData('ek_users', users);
+
+        if (typeof db !== 'undefined' && db) {
+          db.collection('ek_users').doc(users[userIdx].id).set(users[userIdx], { merge: true })
+            .then(() => debugLog("[Address Sync] Cloud profile updated successfully."))
+            .catch(e => console.warn("[Address Sync] Cloud profile update failed:", e));
         }
       }
 
@@ -1144,12 +1163,22 @@
       const userIdx = users.findIndex(u => u.id === user.id);
       if (userIdx !== -1) {
         users[userIdx].savedAddresses = saved;
+        if (!users[userIdx].address) {
+          users[userIdx].address = address;
+          users[userIdx].latitude = lat;
+          users[userIdx].longitude = lng;
+        }
         saveData('ek_users', users);
 
         if (typeof db !== 'undefined' && db) {
           db.collection('ek_users').doc(user.id).set(users[userIdx], { merge: true })
             .catch(e => console.warn("Saved addresses sync error:", e));
         }
+      }
+
+      // Automatically sync as primary address if user has no primary address set
+      if (!user.address || saved.length === 1) {
+        syncPrimaryUserAddress(address, lat, lng);
       }
 
       textInput.value = '';
@@ -1199,7 +1228,7 @@
       }
 
       const saved = user.savedAddresses || [];
-      if (saved.length < 2) {
+      if (saved.length < 1) {
         groupEl.style.setProperty('display', 'none', 'important');
         return;
       }
@@ -2228,9 +2257,8 @@
         return window._categoriesListCachedValue;
       }
       let catList = getData('ek_categories');
-      const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
       if (!Array.isArray(catList) || catList.length === 0) {
-        if (!isCloudSynced && typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
+        if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
           catList = DEFAULT_CATEGORIES.map((c, idx) => ({ ...c, isAvailable: true, order: (c.order !== undefined ? c.order : idx) }));
           try { saveData('ek_categories', catList); } catch (e) {}
         } else {
@@ -2240,15 +2268,25 @@
 
       catList = (catList || []).filter(c => c && c.id);
       let needsStorageSave = false;
-      catList.forEach((c) => {
-        if (c.order === undefined || c.order === null) {
+      catList.forEach((c, idx) => {
+        if (c.order === undefined || c.order === null || isNaN(Number(c.order))) {
           if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
             const defIndex = DEFAULT_CATEGORIES.findIndex(d => String(d.id).toLowerCase() === String(c.id).toLowerCase());
-            c.order = defIndex >= 0 ? defIndex : 999;
+            c.order = defIndex >= 0 ? defIndex : idx;
           } else {
-            c.order = 999;
+            c.order = idx;
           }
           needsStorageSave = true;
+        } else {
+          c.order = Number(c.order);
+        }
+
+        if (c.isScheduled) {
+          if (typeof updateCategoryAvailability === 'function') {
+            try { updateCategoryAvailability(c); } catch(e) {}
+          }
+        } else {
+          c.isAvailable = true;
         }
       });
 

@@ -875,31 +875,44 @@
     function calculateLyoItemDetails(product, parsedItem) {
       const p = product;
       const unitPrice = Number(p ? (p.pricePerKg || p.sellingPrice || p.price || 40) : 40);
-      const baseUnit = String(p ? (p.sellingUnit || p.unit || 'kg') : (parsedItem?.unit || 'kg')).toLowerCase().trim();
-      const isPieceProduct = ['piece', 'pcs', 'packet', 'pkt', 'box', 'bunch', 'dozen', 'doz', 'unit', 'nos', 'no', 'பீஸ்', 'பாக்கெட்', 'முட்டை'].includes(baseUnit);
+      const dbSellingUnit = p ? (p.sellingUnit || p.unit) : null;
+      const baseUnit = String(dbSellingUnit || parsedItem?.unit || 'kg').toLowerCase().trim();
+      const isPieceProduct = !isUnitWeight(baseUnit);
 
       let effectiveAmountType = parsedItem?.amountType || 'WEIGHT_KG';
       let effectiveUnit = parsedItem?.unit || baseUnit;
 
       const userTextHasExplicitUnit = Boolean(parsedItem?.hasExplicitUserUnit) || ['g', 'gm', 'gram', 'grams', 'kg', 'kilo', 'kilos', 'l', 'litre', 'liter', 'litres', 'ml', 'rs', 'rupees', 'rupee', '₹'].includes(String(parsedItem?.unit || '').toLowerCase().trim());
 
-      // Code-level safety net for ALL unit types driven by catalog sellingUnit
-      if (!userTextHasExplicitUnit && p) {
+      // Database product unit is the MANDATORY truth for AI Commerce Engine
+      if (p) {
         if (isPieceProduct) {
           effectiveAmountType = 'COUNT_PIECES';
-          effectiveUnit = baseUnit || 'pcs';
-        } else if (['litre', 'l', 'liter', 'litres'].includes(baseUnit)) {
-          effectiveAmountType = 'LIQUID_LITRE';
-          effectiveUnit = 'l';
-        } else if (['ml'].includes(baseUnit)) {
+          effectiveUnit = dbSellingUnit || 'piece';
+        } else if (['litre', 'l', 'liter', 'litres', 'லிட்டர்'].includes(baseUnit)) {
+          const userU = String(parsedItem?.unit || '').toLowerCase().trim();
+          if (parsedItem?.amountType === 'LIQUID_ML' || userU === 'ml' || userU === 'மி.லி') {
+            effectiveAmountType = 'LIQUID_ML';
+            effectiveUnit = 'ml';
+          } else {
+            effectiveAmountType = 'LIQUID_LITRE';
+            effectiveUnit = dbSellingUnit || 'Litre';
+          }
+        } else if (['ml', 'மி.லி'].includes(baseUnit)) {
           effectiveAmountType = 'LIQUID_ML';
-          effectiveUnit = 'ml';
-        } else if (['g', 'gm', 'gram', 'grams'].includes(baseUnit)) {
+          effectiveUnit = dbSellingUnit || 'ml';
+        } else if (['g', 'gm', 'gram', 'grams', 'கிராம்'].includes(baseUnit)) {
           effectiveAmountType = 'WEIGHT_GRAMS';
-          effectiveUnit = 'g';
-        } else if (['kg'].includes(baseUnit)) {
-          effectiveAmountType = 'WEIGHT_KG';
-          effectiveUnit = 'kg';
+          effectiveUnit = dbSellingUnit || 'g';
+        } else {
+          const userU = String(parsedItem?.unit || '').toLowerCase().trim();
+          if (parsedItem?.amountType === 'WEIGHT_GRAMS' || ['g', 'gm', 'gram', 'grams', 'கிராம்'].includes(userU)) {
+            effectiveAmountType = 'WEIGHT_GRAMS';
+            effectiveUnit = 'g';
+          } else {
+            effectiveAmountType = 'WEIGHT_KG';
+            effectiveUnit = dbSellingUnit || 'kg';
+          }
         }
       }
 
@@ -908,7 +921,15 @@
       let rawQty = parsedItem?.rawQtyVal || 1;
       let itemTotal = unitPrice;
 
-      if (effectiveAmountType === 'RUPEES') {
+      const isTaLang = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+
+      if (isPieceProduct || effectiveAmountType === 'COUNT_PIECES') {
+        rawQty = Math.max(1, Math.round(parsedItem?.rawQtyVal || 1));
+        const uLabel = getUnitDisplay(dbSellingUnit || baseUnit, isTaLang, rawQty);
+        displayQty = `${rawQty} ${uLabel}`;
+        selectorQty = `${rawQty} ${dbSellingUnit || baseUnit}`;
+        itemTotal = Math.round(rawQty * unitPrice);
+      } else if (effectiveAmountType === 'RUPEES') {
         const rupeeAmount = Math.max(1, parsedItem.rawQtyVal);
         if (baseUnit === 'kg' || baseUnit === 'g') {
           const qtyInKg = rupeeAmount / unitPrice;
@@ -935,8 +956,9 @@
         } else {
           const count = Math.max(1, Math.round(rupeeAmount / unitPrice));
           rawQty = count;
-          displayQty = `${count} ${baseUnit}`;
-          selectorQty = `${count} ${baseUnit}`;
+          const uLabel = getUnitDisplay(dbSellingUnit || baseUnit, isTaLang, count);
+          displayQty = `${count} ${uLabel}`;
+          selectorQty = `${count} ${dbSellingUnit || baseUnit}`;
         }
         itemTotal = rupeeAmount;
       } else if (effectiveAmountType === 'WEIGHT_GRAMS' || effectiveUnit === 'g') {
@@ -963,32 +985,17 @@
         itemTotal = Math.round(rawQty * unitPrice);
       } else if (effectiveAmountType === 'COUNT_DOZEN' || effectiveUnit === 'doz') {
         const dozens = parsedItem.rawQtyVal || 1;
-        rawQty = dozens * 12;
-        displayQty = `${dozens} Dozen (${rawQty} pcs)`;
+        rawQty = dozens;
+        const uLabel = getUnitDisplay('dozen', isTaLang, dozens);
+        displayQty = `${dozens} ${uLabel}`;
         selectorQty = `${dozens} doz`;
-        itemTotal = Math.round(dozens * (unitPrice * 12 || unitPrice));
+        itemTotal = Math.round(dozens * unitPrice);
       } else {
-        rawQty = parsedItem.rawQtyVal || 1;
-        if (isPieceProduct) {
-          const uLabel = p ? (p.sellingUnit || p.unit || 'pcs') : (parsedItem?.unit || 'pcs');
-          displayQty = `${rawQty} ${uLabel}`;
-          selectorQty = `${rawQty} ${uLabel}`;
-          itemTotal = Math.round(rawQty * unitPrice);
-        } else if (baseUnit === 'kg' || baseUnit === 'g') {
-          const estimatedKg = Number((rawQty * 0.1).toFixed(2));
-          displayQty = `${rawQty} pcs (${estimatedKg} Kg)`;
-          selectorQty = `${rawQty} pcs`;
-          itemTotal = Math.round(estimatedKg * unitPrice);
-        } else if (baseUnit === 'l' || baseUnit === 'litre' || baseUnit === 'ml') {
-          displayQty = `${rawQty} L`;
-          selectorQty = `${rawQty} L`;
-          itemTotal = Math.round(rawQty * unitPrice);
-        } else {
-          const uLabel = parsedItem?.unit || baseUnit || 'pcs';
-          displayQty = `${rawQty} ${uLabel}`;
-          selectorQty = `${rawQty} ${uLabel}`;
-          itemTotal = Math.round(rawQty * unitPrice);
-        }
+        rawQty = Math.max(1, Math.round(parsedItem.rawQtyVal || 1));
+        const uLabel = getUnitDisplay(dbSellingUnit || baseUnit, isTaLang, rawQty);
+        displayQty = `${rawQty} ${uLabel}`;
+        selectorQty = `${rawQty} ${dbSellingUnit || baseUnit}`;
+        itemTotal = Math.round(rawQty * unitPrice);
       }
 
       return {
@@ -1045,7 +1052,49 @@
       }
       const cleanKey = (apiKey || '').trim();
       const cleanModel = (model || '').trim();
-      const productCatalogList = (activeProducts || []).map(p => {
+
+      // Pre-filter catalog for AI parser call (scalability for 600-700+ products):
+      // Include products with token/substring overlap with user query + top popular products baseline
+      const queryTokens = (queryText || '')
+        .toLowerCase()
+        .replace(/[^\w\s\u0B80-\u0BFF]/g, ' ')
+        .split(/\s+/)
+        .filter(t => t.length >= 2);
+
+      const filteredAiProducts = (() => {
+        if (!activeProducts || activeProducts.length <= 40) return activeProducts || [];
+        const matchedSet = new Set();
+        const selected = [];
+
+        // 1. Products matching user query terms in English or Tamil
+        activeProducts.forEach(p => {
+          const en = (p.englishName || '').toLowerCase();
+          const ta = (p.tamilName || '').toLowerCase();
+          const pTerms = (p.searchKeywords || []).map(k => String(k).toLowerCase());
+          const isMatch = queryTokens.some(token => en.includes(token) || ta.includes(token) || pTerms.some(t => t.includes(token)));
+          if (isMatch) {
+            matchedSet.add(p.id || p.englishName);
+            selected.push(p);
+          }
+        });
+
+        // 2. Baseline popular/frequently ordered products (up to 30) for fallback/vague queries
+        const baselinePopular = [...activeProducts]
+          .sort((a, b) => (b.orderCount || b.salesCount || b.rating || 0) - (a.orderCount || a.salesCount || a.rating || 0))
+          .slice(0, 30);
+
+        baselinePopular.forEach(p => {
+          const key = p.id || p.englishName;
+          if (!matchedSet.has(key)) {
+            matchedSet.add(key);
+            selected.push(p);
+          }
+        });
+
+        return selected.length > 0 ? selected : activeProducts.slice(0, 50);
+      })();
+
+      const productCatalogList = filteredAiProducts.map(p => {
         const u = p.sellingUnit || p.unit || 'kg';
         return `- ${p.englishName} (${p.tamilName || ''}): price ${p.pricePerKg || p.price || 0}/${u} [sellingUnit: ${u}]`;
       }).join('\n');
@@ -1620,22 +1669,24 @@ function getActiveLyoProposalMsg() {
 
     function computeLyoDeliveryCharge(subtotal = 0, cartItems = []) {
       const settings = (typeof getSettings === 'function') ? getSettings() : ((typeof getData === 'function') ? getData('ek_settings', {}) : {});
-      const calc = (typeof LyoAiEngine !== 'undefined' && LyoAiEngine.DeliveryChargeCalculator)
-        ? LyoAiEngine.DeliveryChargeCalculator
-        : (typeof DeliveryChargeCalculator !== 'undefined' ? DeliveryChargeCalculator : null);
-      if (calc && typeof calc.calculateDelivery === 'function') {
-        const res = calc.calculateDelivery(subtotal, cartItems, settings);
-        return typeof res.deliveryCharge === 'number' ? res.deliveryCharge : 0;
+      let deliveryCharge = parseFloat(settings.deliveryCharge) || 40;
+
+      if (typeof getDynamicDeliveryCharge === 'function') {
+        const u = (typeof getActiveUser === 'function') ? getActiveUser() : null;
+        const dyn = getDynamicDeliveryCharge(subtotal, u);
+        if (dyn && typeof dyn.charge === 'number') {
+          deliveryCharge = dyn.charge;
+        }
+      } else {
+        const calc = (typeof LyoAiEngine !== 'undefined' && LyoAiEngine.DeliveryChargeCalculator)
+          ? LyoAiEngine.DeliveryChargeCalculator
+          : (typeof DeliveryChargeCalculator !== 'undefined' ? DeliveryChargeCalculator : null);
+        if (calc && typeof calc.calculateDelivery === 'function') {
+          const res = calc.calculateDelivery(subtotal, cartItems, settings);
+          if (typeof res.deliveryCharge === 'number') deliveryCharge = res.deliveryCharge;
+        }
       }
-      let deliveryCharge = parseInt(settings.deliveryCharge) || 0;
-      if (settings.useDynamicDistancePricing) {
-        deliveryCharge = parseInt(settings.deliveryBasePrice) || 20;
-      }
-      const subtotalFreeDelivery = subtotal >= 500;
-      const allItemsFree = Array.isArray(cartItems) && cartItems.length > 0 &&
-        cartItems.every(item => item && item.isFreeDeliveryEligible === true);
-      if (subtotalFreeDelivery || allItemsFree) deliveryCharge = 0;
-      return deliveryCharge;
+      return Math.round(deliveryCharge);
     }
 
     function syncLyoToManualCart() {
@@ -1764,12 +1815,13 @@ function getActiveLyoProposalMsg() {
       function isCartUpdateConfirmation(m) {
         if (!m || m.role !== 'assistant' || typeof m.text !== 'string') return false;
         const txt = m.text;
-        return txt.includes("Sure! Updated items in your active AI shopping cart") ||
+        return txt.includes("Updated items in your active AI shopping cart") ||
                txt.includes("கார்ட்டில் உள்ள பொருட்கள் புதுப்பிக்கப்பட்டன") ||
+               txt.includes("கார்ட்டில் சேர்க்கப்பட்டன") ||
                txt.includes("உங்கள் கட்டளைப்படி பொருட்கள் கார்ட்டில் சேர்க்கப்பட்டன");
       }
 
-      // Filter empty assistant messages and collapse consecutive "cart updated" confirmations
+      // Filter empty assistant messages and collapse consecutive "cart updated" confirmations (render only the last one)
       const displayMessages = [];
       for (let i = 0; i < _lyoChatMessages.length; i++) {
         const msg = _lyoChatMessages[i];
@@ -1780,11 +1832,23 @@ function getActiveLyoProposalMsg() {
           continue;
         }
 
-        // Collapse consecutive "cart updated" confirmations down to the last one in the run
+        // Collapse consecutive "cart updated" confirmations down to the LAST one in the run
         if (isCartUpdateConfirmation(msg)) {
-          const nextMsg = _lyoChatMessages[i + 1];
-          if (nextMsg && isCartUpdateConfirmation(nextMsg)) {
-            continue; // Skip earlier message in consecutive run
+          let hasLaterConsecutiveConfirmation = false;
+          for (let j = i + 1; j < _lyoChatMessages.length; j++) {
+            const nextMsg = _lyoChatMessages[j];
+            if (!nextMsg) continue;
+            if (nextMsg.role === 'assistant' && (!nextMsg.text || !nextMsg.text.trim()) && (!nextMsg.items || nextMsg.items.length === 0) && !nextMsg.actionHtml) {
+              continue;
+            }
+            if (isCartUpdateConfirmation(nextMsg)) {
+              hasLaterConsecutiveConfirmation = true;
+              break;
+            }
+            break;
+          }
+          if (hasLaterConsecutiveConfirmation) {
+            continue; // Skip earlier message in consecutive run; only render the last one
           }
         }
 
@@ -2036,9 +2100,7 @@ function getActiveLyoProposalMsg() {
           : `🛒 ${items.length} Item(s) in Cart • Total: ₹${financials.grandTotal}`;
       }
       if (subEl) {
-        const delStr = financials.deliveryFee === 0 
-          ? (isTa ? "இலவச டெலிவரி 🎉" : "FREE Delivery 🎉") 
-          : `₹${financials.deliveryFee} ${isTa ? 'டெலிவரி' : 'delivery'}`;
+        const delStr = `₹${financials.deliveryFee} ${isTa ? 'டெலிவரி' : 'delivery'}`;
         subEl.textContent = isTa
           ? `பொருட்கள்: ₹${financials.subtotal} | ${delStr} (1-Click Checkout)`
           : `Items: ₹${financials.subtotal} | ${delStr} (1-Click Checkout)`;
@@ -2073,6 +2135,22 @@ function getActiveLyoProposalMsg() {
     function checkoutLyoAiOrder() {
       window.isLyoAiCheckout = true;
       selectedPaymentMethod = 'Cash on Delivery';
+
+      const currentCart = (typeof cart !== "undefined" && Array.isArray(cart)) ? cart : [];
+      if (currentCart.length === 0) {
+        const activeMsg = (typeof getActiveLyoProposalMsg === 'function') ? getActiveLyoProposalMsg() : null;
+        if (activeMsg && Array.isArray(activeMsg.items) && activeMsg.items.length > 0) {
+          window.cart = activeMsg.items.map(it => convertAiItemToManualCartItem(it));
+          if (typeof saveCart === "function") {
+            saveCart();
+          } else {
+            if (typeof sanitizeCart === "function") window.cart = sanitizeCart(window.cart);
+            if (typeof saveData === "function") saveData("ek_cart", window.cart);
+            if (typeof updateCartBadge === "function") updateCartBadge();
+          }
+        }
+      }
+
       const items = (typeof cart !== "undefined" && Array.isArray(cart)) ? cart : [];
       const isTa = (typeof currentLang !== "undefined" && currentLang === "ta");
       if (items.length === 0) {
@@ -2084,14 +2162,25 @@ function getActiveLyoProposalMsg() {
         }
         return;
       }
-      if (typeof switchTab === "function") {
-        switchTab("cart");
-      } else if (typeof openCartPage === "function") {
-        openCartPage();
-      } else if (typeof navigateTo === "function") {
-        navigateTo("cart");
+
+      if (typeof showTab === "function") {
+        showTab("tab-cart");
+      } else if (typeof showScreen === "function") {
+        showScreen("screen-cart");
+      }
+
+      if (typeof renderCartScreen === "function") {
+        renderCartScreen();
+      }
+
+      if (typeof showToast === "function") {
+        showToast(
+          isTa ? "கார்ட் திறக்கப்படுகிறது... 🛍️" : "Opening checkout... 🛍️",
+          "success"
+        );
       }
     }
+    window.checkoutLyoAiOrder = checkoutLyoAiOrder;
 
     function playLyoChimeSound() {
       try {
@@ -2125,9 +2214,9 @@ function getActiveLyoProposalMsg() {
       const liveP = allProds.find(p => p.id === (it.productId || it.id));
       const unitPrice = Number(it.price || it.unitPrice || liveP?.pricePerKg || liveP?.sellingPrice || liveP?.price || 40);
       const unit = String(liveP?.sellingUnit || liveP?.unit || it.unit || "kg").toLowerCase().trim();
-      const isPieceSold = ['piece', 'pcs', 'packet', 'pkt', 'box', 'bunch', 'dozen', 'doz', 'unit', 'nos', 'no', 'பீஸ்', 'பாக்கெட்', 'முட்டை'].includes(unit);
-      const isWeight = !isPieceSold && (unit === "kg" || unit === "g" || unit === "gram" || unit === "kilo");
-      const isLiquid = !isPieceSold && (unit === "litre" || unit === "l" || unit === "ml" || unit === "liter");
+      const isPieceSold = !isUnitWeight(unit);
+      const isWeight = !isPieceSold && (unit === "kg" || unit === "g" || unit === "gram" || unit === "kilo" || unit === "கிலோ");
+      const isLiquid = !isPieceSold && (unit === "litre" || unit === "l" || unit === "ml" || unit === "liter" || unit === "லிட்டர்");
 
       if (isWeight) {
         let currentGram = (it.rawQty <= 50) ? Math.round(it.rawQty * 1000) : Math.round(it.rawQty);
@@ -2150,8 +2239,10 @@ function getActiveLyoProposalMsg() {
       } else {
         let newCount = Math.max(1, Math.round((it.rawQty || 1) + delta));
         it.rawQty = newCount;
-        it.unit = liveP?.sellingUnit || liveP?.unit || it.unit || "pcs";
-        it.displayQty = `${newCount} ${it.unit}`;
+        it.unit = liveP?.sellingUnit || liveP?.unit || it.unit || "piece";
+        const isTaLang = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+        const uLabel = getUnitDisplay(it.unit, isTaLang, newCount);
+        it.displayQty = `${newCount} ${uLabel}`;
         it.selectorQty = `${newCount} ${it.unit}`;
         it.itemTotal = Math.round(newCount * unitPrice);
       }
@@ -2163,6 +2254,7 @@ function getActiveLyoProposalMsg() {
       if (typeof updateCartBadge === "function") updateCartBadge();
       if (typeof updateCartUI === "function") updateCartUI();
     }
+    window.changeLyoCardItemQty = changeLyoCardItemQty;
 
     function addLyoCardItemToCart(productId, rawQty, unit) {
       if (!productId) return;
@@ -2195,7 +2287,11 @@ function getActiveLyoProposalMsg() {
       if (existingIdx !== -1) {
         cart[existingIdx].weightGrams += weightGrams;
         cart[existingIdx].pricePerKg = unitPrice;
+        const itemTotal = isWeight ? Math.round((unitPrice / 1000) * cart[existingIdx].weightGrams) : Math.round(unitPrice * cart[existingIdx].weightGrams);
+        cart[existingIdx].totalPrice = itemTotal;
+        cart[existingIdx].price = itemTotal;
       } else {
+        const itemTotal = isWeight ? Math.round((unitPrice / 1000) * weightGrams) : Math.round(unitPrice * weightGrams);
         cart.push({
           productId: prod.id,
           tamilName: prod.tamilName || prod.englishName,
@@ -2208,6 +2304,8 @@ function getActiveLyoProposalMsg() {
           category: prod.category || 'meat',
           specialNote: '',
           imageUrl: prod.imageUrl || "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&auto=format&fit=crop",
+          totalPrice: itemTotal,
+          price: itemTotal,
           isFreeDeliveryEligible: Boolean(prod.isFreeDeliveryEligible)
         });
       }
@@ -2230,6 +2328,7 @@ function getActiveLyoProposalMsg() {
         );
       }
     }
+    window.addLyoCardItemToCart = addLyoCardItemToCart;
 
     function removeLyoCardItem(proposalId, itemId) {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
@@ -2249,11 +2348,35 @@ function getActiveLyoProposalMsg() {
         );
       }
     }
+    window.removeLyoCardItem = removeLyoCardItem;
 
     function placeLyoProposalOrder(proposalId) {
       window.isLyoAiCheckout = true;
       selectedPaymentMethod = 'Cash on Delivery';
-      if (typeof syncLyoToManualCart === "function") syncLyoToManualCart();
+
+      let proposalMsg = null;
+      if (typeof _lyoChatMessages !== 'undefined' && Array.isArray(_lyoChatMessages)) {
+        if (proposalId) {
+          proposalMsg = _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId);
+        }
+        if (!proposalMsg) {
+          proposalMsg = getActiveLyoProposalMsg();
+        }
+      }
+
+      if (proposalMsg && Array.isArray(proposalMsg.items) && proposalMsg.items.length > 0) {
+        window.cart = proposalMsg.items.map(it => convertAiItemToManualCartItem(it));
+        if (typeof saveCart === "function") {
+          saveCart();
+        } else {
+          if (typeof sanitizeCart === "function") window.cart = sanitizeCart(window.cart);
+          if (typeof saveData === "function") saveData("ek_cart", window.cart);
+          if (typeof updateCartBadge === "function") updateCartBadge();
+        }
+      } else if (typeof syncLyoToManualCart === "function") {
+        syncLyoToManualCart();
+      }
+
       const items = (typeof cart !== "undefined" && Array.isArray(cart)) ? cart : [];
       const isTa = (typeof currentLang !== "undefined" && currentLang === "ta");
       if (items.length === 0) {
@@ -2262,15 +2385,22 @@ function getActiveLyoProposalMsg() {
         }
         return;
       }
-      if (typeof switchTab === "function") {
-        switchTab("cart");
-      } else if (typeof openCartPage === "function") {
-        openCartPage();
+
+      if (typeof showTab === "function") {
+        showTab("tab-cart");
+      } else if (typeof showScreen === "function") {
+        showScreen("screen-cart");
       }
+
+      if (typeof renderCartScreen === "function") {
+        renderCartScreen();
+      }
+
       if (typeof showToast === "function") {
         showToast(isTa ? "கார்ட் திறக்கப்படுகிறது... 🛍️" : "Opening checkout... 🛍️", "success");
       }
     }
+    window.placeLyoProposalOrder = placeLyoProposalOrder;
 
     function addAllLyoProposalToCart(proposalId) {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
@@ -2298,6 +2428,7 @@ function getActiveLyoProposalMsg() {
         );
       }
     }
+    window.addAllLyoProposalToCart = addAllLyoProposalToCart;
 
     function discardLyoProposal(proposalId) {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
@@ -2319,6 +2450,7 @@ function getActiveLyoProposalMsg() {
         );
       }
     }
+    window.discardLyoProposal = discardLyoProposal;
 
     function speakLyoMessage(proposalId) {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
@@ -2332,6 +2464,7 @@ function getActiveLyoProposalMsg() {
         window.speechSynthesis.speak(utterance);
       }
     }
+    window.speakLyoMessage = speakLyoMessage;
 
     function selectLyoProductCandidate(proposalId, productId, rawQtyVal, amountType) {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
@@ -2370,6 +2503,7 @@ function getActiveLyoProposalMsg() {
       if (typeof updateCartBadge === "function") updateCartBadge();
       if (typeof updateCartUI === "function") updateCartUI();
     }
+    window.selectLyoProductCandidate = selectLyoProductCandidate;
 
 
     function promiseWithTimeout(promise, ms = 5000, fallbackValue = null) {
@@ -2573,35 +2707,32 @@ async function onLyoSendBtnClick() {
 
         if (matchResult && matchResult.product && (matchResult.score >= 0.3 || activeProducts.length === 1)) {
           const matchedProd = matchResult.product;
-          const realSellingUnit = String(matchedProd.sellingUnit || matchedProd.unit || '').toLowerCase().trim();
-          const isPieceProduct = ['piece', 'pcs', 'packet', 'pkt', 'box', 'bunch', 'dozen', 'doz', 'unit', 'nos', 'no', 'பீஸ்', 'பாக்கெட்', 'முட்டை'].includes(realSellingUnit);
+          const realSellingUnit = String(matchedProd.sellingUnit || matchedProd.unit || 'kg').toLowerCase().trim();
+          const isPieceProduct = !isUnitWeight(realSellingUnit);
 
           let effectiveAmountType = parsed.amount_type || parsed.amountType || 'WEIGHT_KG';
-          let effectiveUnit = parsed.unit || 'kg';
+          let effectiveUnit = matchedProd.sellingUnit || matchedProd.unit || parsed.unit || 'kg';
 
           if (isPieceProduct) {
-            const userUnitLower = String(parsed.unit || '').toLowerCase();
-            const userHasExplicitWeight = ['g', 'gm', 'gram', 'grams', 'kg', 'kilo', 'kilos', 'l', 'litre', 'ml'].includes(userUnitLower);
-            if (!userHasExplicitWeight) {
-              parsed.amount_type = 'COUNT_PIECES';
-              parsed.amountType = 'COUNT_PIECES';
-              parsed.unit = matchedProd.sellingUnit || matchedProd.unit || 'pcs';
-              effectiveAmountType = 'COUNT_PIECES';
-              effectiveUnit = matchedProd.sellingUnit || matchedProd.unit || 'pcs';
-            }
+            parsed.amount_type = 'COUNT_PIECES';
+            parsed.amountType = 'COUNT_PIECES';
+            parsed.unit = matchedProd.sellingUnit || matchedProd.unit || 'piece';
+            effectiveAmountType = 'COUNT_PIECES';
+            effectiveUnit = matchedProd.sellingUnit || matchedProd.unit || 'piece';
           }
 
           const calcInput = {
             rawQtyVal: parsed.raw_quantity_val || parsed.rawQtyVal || 1,
             amountType: effectiveAmountType,
-            unit: effectiveUnit
+            unit: effectiveUnit,
+            hasExplicitUserUnit: parsed.hasExplicitUserUnit
           };
           const details = calculateLyoItemDetails(matchedProd, calcInput);
 
           const existingItem = activeProposalMsg.items.find(it => it.productId === matchedProd.id);
           if (existingItem) {
             quantityUpdatedCount++;
-            if (isUnitWeight(matchedProd.unit)) {
+            if (isUnitWeight(realSellingUnit)) {
               let currentGrams = (existingItem.unit === 'g' || existingItem.unit === 'gm' || existingItem.unit === 'gram')
                 ? (existingItem.rawQty || 0)
                 : ((existingItem.rawQty && existingItem.rawQty <= 50) ? existingItem.rawQty * 1000 : (existingItem.rawQty || 0));
@@ -2610,7 +2741,7 @@ async function onLyoSendBtnClick() {
                 ? (calcInput.rawQtyVal || 0)
                 : ((calcInput.rawQtyVal && calcInput.rawQtyVal <= 50) ? calcInput.rawQtyVal * 1000 : (calcInput.rawQtyVal || 0));
 
-              if (calcInput.amountType === 'AMOUNT_RS') {
+              if (calcInput.amountType === 'RUPEES' || calcInput.amountType === 'AMOUNT_RS') {
                 addedGrams = details.rawQty <= 50 ? details.rawQty * 1000 : details.rawQty;
               }
               const combinedGrams = currentGrams + addedGrams;
@@ -2628,7 +2759,7 @@ async function onLyoSendBtnClick() {
               existingItem.itemTotal = updatedDetails.itemTotal;
             } else {
               const newCount = (existingItem.rawQty || 1) + (calcInput.rawQtyVal || 1);
-              const updatedDetails = calculateLyoItemDetails(matchedProd, { rawQtyVal: newCount, amountType: 'COUNT_PCS', unit: matchedProd.unit || 'pcs' });
+              const updatedDetails = calculateLyoItemDetails(matchedProd, { rawQtyVal: newCount, amountType: 'COUNT_PIECES', unit: matchedProd.sellingUnit || matchedProd.unit || 'pcs' });
               existingItem.displayQty = updatedDetails.displayQty;
               existingItem.selectorQty = updatedDetails.selectorQty;
               existingItem.rawQty = updatedDetails.rawQty;

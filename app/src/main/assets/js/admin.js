@@ -239,9 +239,12 @@
           return;
         }
 
-        // 2. Re-fetch and verify role from Firestore on screen render (prevents stale cached role)
-        if (typeof db !== 'undefined' && db && !window._skipAdminFirestoreVerify) {
-          db.collection('ek_admin_accounts').doc(user.uid).get().then(docSnap => {
+        // 2. Re-fetch and verify role from Firestore on screen render (cached with 10-min TTL for high performance)
+        const targetAdminUid = (user && user.uid) || (adminSession && (adminSession.id || adminSession.uid));
+        const nowVerify = Date.now();
+        if (typeof db !== 'undefined' && db && !window._skipAdminFirestoreVerify && targetAdminUid && (!window._lastAdminFirestoreVerifyTime || (nowVerify - window._lastAdminFirestoreVerifyTime > 600000))) {
+          window._lastAdminFirestoreVerifyTime = nowVerify;
+          db.collection('ek_admin_accounts').doc(targetAdminUid).get().then(docSnap => {
             if (docSnap.exists) {
               const data = docSnap.data();
               if (data && (data.active === false || (data.role !== 'admin' && data.role !== 'superadmin' && data.role !== 'ADMIN' && data.role !== 'SUPERADMIN'))) {
@@ -384,65 +387,69 @@
         try { renderAdminReviews(true); } catch(e) { console.error(e); }
       }
 
-      const settings = getDataCached('ek_settings', DEFAULT_SETTINGS);
-      const elShopOpen = document.getElementById('setting-shop-open');
-      if (elShopOpen) elShopOpen.checked = settings.shopOpen;
+      // Only populate settings inputs when settings tab is active or explicitly triggered
+      if (currentAdminTab === 'tab-settings' || window._forceRenderAdminSettings) {
+        window._forceRenderAdminSettings = false;
+        const settings = getDataCached('ek_settings', DEFAULT_SETTINGS);
+        const elShopOpen = document.getElementById('setting-shop-open');
+        if (elShopOpen) elShopOpen.checked = settings.shopOpen;
 
-      const elLeaveMode = document.getElementById('setting-leave-mode');
-      if (elLeaveMode) {
-        elLeaveMode.checked = settings.leaveMode || false;
-        const groupLeaveNotice = document.getElementById('group-leave-notice');
-        if (groupLeaveNotice) {
-          groupLeaveNotice.style.display = settings.leaveMode ? 'block' : 'none';
+        const elLeaveMode = document.getElementById('setting-leave-mode');
+        if (elLeaveMode) {
+          elLeaveMode.checked = settings.leaveMode || false;
+          const groupLeaveNotice = document.getElementById('group-leave-notice');
+          if (groupLeaveNotice) {
+            groupLeaveNotice.style.display = settings.leaveMode ? 'block' : 'none';
+          }
         }
-      }
-      const elLeaveNotice = document.getElementById('setting-leave-notice');
-      if (elLeaveNotice) elLeaveNotice.value = settings.leaveNotice || '';
+        const elLeaveNotice = document.getElementById('setting-leave-notice');
+        if (elLeaveNotice) elLeaveNotice.value = settings.leaveNotice || '';
 
-      const elDelCharge = document.getElementById('setting-delivery-charge');
-      if (elDelCharge) elDelCharge.value = settings.deliveryCharge;
-      const elDynDel = document.getElementById('setting-dynamic-delivery');
-      if (elDynDel) {
-        elDynDel.checked = settings.useDynamicDistancePricing !== undefined ? settings.useDynamicDistancePricing : true;
-        if (typeof updateDeliveryModeUI === 'function') {
-          try { updateDeliveryModeUI(); } catch(e) {}
+        const elDelCharge = document.getElementById('setting-delivery-charge');
+        if (elDelCharge) elDelCharge.value = settings.deliveryCharge;
+        const elDynDel = document.getElementById('setting-dynamic-delivery');
+        if (elDynDel) {
+          elDynDel.checked = settings.useDynamicDistancePricing !== undefined ? settings.useDynamicDistancePricing : true;
+          if (typeof updateDeliveryModeUI === 'function') {
+            try { updateDeliveryModeUI(); } catch(e) {}
+          }
         }
-      }
-      const elDelBase = document.getElementById('setting-delivery-base-price');
-      if (elDelBase) elDelBase.value = settings.deliveryBasePrice !== undefined ? settings.deliveryBasePrice : 20;
-      const elDelKm = document.getElementById('setting-delivery-km-multiplier');
-      if (elDelKm) elDelKm.value = settings.deliveryKmMultiplier !== undefined ? settings.deliveryKmMultiplier : 12;
+        const elDelBase = document.getElementById('setting-delivery-base-price');
+        if (elDelBase) elDelBase.value = settings.deliveryBasePrice !== undefined ? settings.deliveryBasePrice : 20;
+        const elDelKm = document.getElementById('setting-delivery-km-multiplier');
+        if (elDelKm) elDelKm.value = settings.deliveryKmMultiplier !== undefined ? settings.deliveryKmMultiplier : 12;
 
-      const elRainMode = document.getElementById('setting-rain-mode');
-      if (elRainMode) elRainMode.checked = settings.rainMode || settings.rainSurchargeEnabled || false;
+        const elRainMode = document.getElementById('setting-rain-mode');
+        if (elRainMode) elRainMode.checked = settings.rainMode || settings.rainSurchargeEnabled || false;
 
-      const elRainCharge = document.getElementById('setting-rain-charge');
-      if (elRainCharge) elRainCharge.value = settings.rainCharge !== undefined ? settings.rainCharge : (settings.rainSurchargeFee || 20);
+        const elRainCharge = document.getElementById('setting-rain-charge');
+        if (elRainCharge) elRainCharge.value = settings.rainCharge !== undefined ? settings.rainCharge : (settings.rainSurchargeFee || 20);
 
-      const elMinWt = document.getElementById('setting-min-weight');
-      if (elMinWt) elMinWt.value = settings.minOrderWeight || 50;
-      const elMinAmt = document.getElementById('setting-min-amount');
-      if (elMinAmt) elMinAmt.value = settings.minOrderAmount !== undefined ? settings.minOrderAmount : 0;
+        const elMinWt = document.getElementById('setting-min-weight');
+        if (elMinWt) elMinWt.value = settings.minOrderWeight || 50;
+        const elMinAmt = document.getElementById('setting-min-amount');
+        if (elMinAmt) elMinAmt.value = settings.minOrderAmount !== undefined ? settings.minOrderAmount : 0;
 
-      if (typeof renderAdminUpiSettings === 'function') {
-        try { renderAdminUpiSettings(); } catch(e) {}
-      }
+        if (typeof renderAdminUpiSettings === 'function') {
+          try { renderAdminUpiSettings(); } catch(e) {}
+        }
 
-      const elBdTxt = document.getElementById('admin-broadcast-text');
-      if (elBdTxt) elBdTxt.value = settings.announcement || '';
+        const elBdTxt = document.getElementById('admin-broadcast-text');
+        if (elBdTxt) elBdTxt.value = settings.announcement || '';
 
-      try { renderAdminBannerSettings(); } catch(e) {}
+        try { renderAdminBannerSettings(); } catch(e) {}
 
-      if (typeof loadAdminSmsSettingsUI === 'function') {
-        try { loadAdminSmsSettingsUI(settings); } catch(e) {}
-      }
+        if (typeof loadAdminSmsSettingsUI === 'function') {
+          try { loadAdminSmsSettingsUI(settings); } catch(e) {}
+        }
 
-      if (typeof loadAdminEmailOtpConfig === 'function') {
-        try { loadAdminEmailOtpConfig(); } catch(e) {}
-      }
+        if (typeof loadAdminEmailOtpConfig === 'function') {
+          try { loadAdminEmailOtpConfig(); } catch(e) {}
+        }
 
-      if (typeof renderAdminDeliveryZones === 'function') {
-        try { renderAdminDeliveryZones(); } catch(e) {}
+        if (typeof renderAdminDeliveryZones === 'function') {
+          try { renderAdminDeliveryZones(); } catch(e) {}
+        }
       }
     }
 
@@ -530,10 +537,10 @@
             }
           } catch(e) {}
           try {
-            if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList();
+            if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true);
           } catch(err) { console.error("renderAdminCategoriesList error:", err); }
           try {
-            if (typeof renderAdminBannerList === 'function') renderAdminBannerList();
+            if (typeof renderAdminBannerList === 'function') renderAdminBannerList(true);
           } catch(err) { console.error("renderAdminBannerList error:", err); }
           setTimeout(() => {
             try { initAdminZonesMap(); } catch(err) { console.error("initAdminZonesMap error:", err); }
@@ -593,10 +600,72 @@
         firestorePath: 'ek_users',
         isDoc: false,
         name: 'Customer Accounts',
-        tamilName: 'வாடிக்கையாளர் முகவரிகள்',
+        tamilName: 'வாடிக்கையாளர் கணக்குகள்',
         icon: '👥',
         refreshFn: function() {
           if (typeof renderAdminCustomers === 'function') renderAdminCustomers();
+        }
+      },
+      {
+        id: 'categories',
+        localKey: 'ek_categories',
+        firestorePath: 'ek_categories',
+        isDoc: false,
+        name: 'Store Categories',
+        tamilName: 'பிரிவுகள் மற்றும் வகைகள்',
+        icon: '🏷️',
+        refreshFn: function() {
+          if (typeof renderCategoryPills === 'function') renderCategoryPills();
+          if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList();
+        }
+      },
+      {
+        id: 'delivery_persons',
+        localKey: 'ek_delivery_persons',
+        firestorePath: 'ek_delivery_persons',
+        isDoc: false,
+        name: 'Delivery Partners',
+        tamilName: 'டெலிவரி பார்ட்னர்கள்',
+        icon: '🛵',
+        refreshFn: function() {
+          if (typeof renderDeliveryExecutives === 'function') renderDeliveryExecutives();
+        }
+      },
+      {
+        id: 'delivery_zones',
+        localKey: 'ek_delivery_zones',
+        firestorePath: 'ek_delivery_zones',
+        isDoc: false,
+        name: 'Delivery Zones & Geofences',
+        tamilName: 'டெலிவரி மண்டலங்கள்',
+        icon: '📍',
+        refreshFn: function() {
+          if (typeof renderAdminZonesTable === 'function') renderAdminZonesTable();
+          if (typeof initAdminZonesMap === 'function') initAdminZonesMap();
+        }
+      },
+      {
+        id: 'coupons',
+        localKey: 'ek_coupons',
+        firestorePath: 'ek_coupons',
+        isDoc: false,
+        name: 'Promo Codes & Coupons',
+        tamilName: 'கூப்பன்கள் மற்றும் சலுகைகள்',
+        icon: '🎟️',
+        refreshFn: function() {
+          if (typeof renderAdminCoupons === 'function') renderAdminCoupons();
+        }
+      },
+      {
+        id: 'reviews',
+        localKey: 'ek_reviews',
+        firestorePath: 'ek_reviews',
+        isDoc: false,
+        name: 'Customer Reviews & Feedback',
+        tamilName: 'வாடிக்கையாளர் மதிப்புரைகள்',
+        icon: '⭐',
+        refreshFn: function() {
+          if (typeof renderAdminReviews === 'function') renderAdminReviews(true);
         }
       },
       {
@@ -627,6 +696,12 @@
     ];
 
     let lastSyncTimestamps = {};
+    try {
+      lastSyncTimestamps = JSON.parse(localStorage.getItem('ek_last_sync_timestamps') || '{}');
+    } catch(e) {
+      lastSyncTimestamps = {};
+    }
+    window.lastSyncTimestamps = lastSyncTimestamps;
 
     function toggleAdvancedManualSyncPanel() {
       const panel = document.getElementById('advanced-manual-sync-panel');
@@ -646,16 +721,19 @@
       if (!gate) return;
 
       const btn = document.getElementById(`btn-gate-sync-${gateId}`);
-      if (btn) {
-        btn.disabled = true;
-        btn.style.background = 'rgba(255,255,255,0.05)';
-        btn.style.borderColor = 'rgba(255,255,255,0.1)';
-        btn.style.color = '#888';
-        btn.innerHTML = '⚡ Syncing...';
-      }
+      const btnManual = document.getElementById(`btn-manual-sync-${gateId}`);
+      [btn, btnManual].forEach(b => {
+        if (b) {
+          b.disabled = true;
+          b.style.background = 'rgba(255,255,255,0.05)';
+          b.style.borderColor = 'rgba(255,255,255,0.1)';
+          b.style.color = '#888';
+          b.innerHTML = '⚡ Syncing...';
+        }
+      });
 
       try {
-        if (!db) {
+        if (typeof db === 'undefined' || !db) {
           throw new Error("Local databases only are ready, cloud connection missing!");
         }
 
@@ -664,61 +742,71 @@
           const docRef = db.collection(parts[0]).doc(parts[1]);
           const snap = await docRef.get();
           if (snap.exists) {
-            const data = snap.data() || {};
-            const jsonStr = JSON.stringify(data);
-            localStorage.setItem(gate.localKey, jsonStr);
-            if (typeof AndroidStorage !== 'undefined') {
-              AndroidStorage.saveData(gate.localKey, jsonStr);
-            }
+            const data = normalizeFirestoreData(snap.data()) || {};
+            saveData(gate.localKey, data);
+            if (typeof invalidateDataCache === 'function') invalidateDataCache(gate.localKey);
           }
         } else {
           const snapshot = await db.collection(gate.firestorePath).get();
-          const items = [];
+          let items = [];
 
           if (!snapshot.empty) {
             snapshot.forEach(doc => {
               const d = normalizeFirestoreData(doc.data());
-              if (d && (d.id || d.phone)) {
-                items.push(d);
+              if (d) {
+                items.push({ id: doc.id, ...d });
               }
             });
           }
 
-          if (items.length > 0) {
-            const jsonStr = JSON.stringify(items);
-            localStorage.setItem(gate.localKey, jsonStr);
-            if (typeof AndroidStorage !== 'undefined') {
-              AndroidStorage.saveData(gate.localKey, jsonStr);
+          if (gate.id === 'products') {
+            const deletedProductIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
+            if (deletedProductIds.length > 0) {
+              items = items.filter(p => p && p.id && !deletedProductIds.includes(p.id));
             }
+          }
+
+          if (items.length > 0 || snapshot.empty) {
+            saveData(gate.localKey, items);
+            if (typeof invalidateDataCache === 'function') invalidateDataCache(gate.localKey);
           }
         }
 
-        lastSyncTimestamps[gateId] = new Date().toLocaleTimeString();
-        if (btn) {
-          btn.style.background = 'rgba(16,185,129,0.12)';
-          btn.style.borderColor = 'rgba(16,185,129,0.4)';
-          btn.style.color = '#10b981';
-          btn.innerHTML = '✓ Done';
-        }
+        const nowStr = new Date().toLocaleTimeString();
+        lastSyncTimestamps[gateId] = nowStr;
+        try {
+          localStorage.setItem('ek_last_sync_timestamps', JSON.stringify(lastSyncTimestamps));
+        } catch(e) {}
+
+        [btn, btnManual].forEach(b => {
+          if (b) {
+            b.style.background = 'rgba(16,185,129,0.12)';
+            b.style.borderColor = 'rgba(16,185,129,0.4)';
+            b.style.color = '#10b981';
+            b.innerHTML = '✓ Done';
+          }
+        });
 
         setTimeout(() => {
           try {
-            gate.refreshFn();
+            if (typeof gate.refreshFn === 'function') gate.refreshFn();
           } catch(e) {
             console.warn("Refresh failed:", e);
           }
           renderSyncDashboard();
-          showToast(`✓ Cloud gate synchronized: ${gate.name}`);
-        }, 600);
+          showToast(`✓ Cloud collection synchronized: ${gate.name}`);
+        }, 400);
 
       } catch(err) {
         console.error("Gate sync failed:", err);
-        if (btn) {
-          btn.style.background = 'rgba(239,68,68,0.12)';
-          btn.style.borderColor = 'rgba(239,68,68,0.4)';
-          btn.style.color = '#ef4444';
-          btn.innerHTML = '⚠ Failed';
-        }
+        [btn, btnManual].forEach(b => {
+          if (b) {
+            b.style.background = 'rgba(239,68,68,0.12)';
+            b.style.borderColor = 'rgba(239,68,68,0.4)';
+            b.style.color = '#ef4444';
+            b.innerHTML = '⚠ Failed';
+          }
+        });
         showToast(`⚠ Sync error: ${err.message || 'Server timeout'}`);
         setTimeout(() => { renderSyncDashboard(); }, 2000);
       }
@@ -739,93 +827,188 @@
       if (syncAllBtn) {
         syncAllBtn.disabled = false;
         syncAllBtn.style.opacity = '1';
-        syncAllBtn.innerText = '⚡ SYNC ALL';
+        syncAllBtn.innerText = '⚡ FORCE SYNC ALL';
       }
 
       showToast("✓ All collections are 100% synchronized and up-to-date with secure cloud.");
     }
 
-    function testConnectionLatencySyncDash(silent = false) {
+    async function testConnectionLatencySyncDash(silent = false) {
       const dot = document.getElementById('sd-status-dot');
       const text = document.getElementById('sd-status-text');
       const latencyText = document.getElementById('sd-latency-text');
       const badge = document.getElementById('sd-latency-badge');
 
-      if (!db) {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
         if (dot) { dot.style.backgroundColor = '#ef4444'; }
-        if (text) { text.innerText = 'Disconnected (Offline)'; }
+        if (text) { text.innerText = 'Offline (Device Disconnected)'; }
         if (latencyText) { latencyText.innerText = 'Offline'; }
+        if (badge) {
+          badge.style.display = 'inline-block';
+          badge.style.background = 'rgba(239,68,68,0.15)';
+          badge.style.color = '#ef4444';
+          badge.innerText = 'Offline';
+        }
+        if (!silent) showToast('சாதனம் ஆஃப்லைனில் உள்ளது / Device is offline', 'error');
+        return;
+      }
+
+      if (typeof db === 'undefined' || !db) {
+        if (dot) { dot.style.backgroundColor = '#ef4444'; }
+        if (text) { text.innerText = 'Database Uninitialized'; }
+        if (latencyText) { latencyText.innerText = '-- ms'; }
         if (badge) { badge.style.display = 'none'; }
         return;
       }
 
       if (dot && !silent) { dot.style.backgroundColor = '#f59e0b'; }
-      if (text && !silent) { text.innerText = 'Measuring latency...'; }
+      if (text && !silent) { text.innerText = 'Pinging Cloud Server...'; }
 
       const start = performance.now();
-      db.collection('ek_settings').doc('global_config').get()
-        .then(() => {
-          const lat = Math.round(performance.now() - start);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("CLOUD_PING_TIMEOUT")), 6000);
+      });
 
-          if (dot) { dot.style.backgroundColor = '#10b981'; }
-          if (text) { text.innerText = 'Connected (Cloud Real-time)'; }
-          if (latencyText) { latencyText.innerText = `${lat} ms`; }
+      try {
+        const fetchPromise = (async () => {
+          try {
+            return await db.collection('ek_settings').doc('global_config').get({ source: 'server' });
+          } catch (serverErr) {
+            const fallbackSnap = await db.collection('ek_settings').doc('global_config').get();
+            if (fallbackSnap && fallbackSnap.metadata && fallbackSnap.metadata.fromCache) {
+              throw new Error("CACHED_ONLY");
+            }
+            return fallbackSnap;
+          }
+        })();
 
+        const docSnap = await Promise.race([fetchPromise, timeoutPromise]);
+        const lat = Math.max(12, Math.round(performance.now() - start));
+        const isFromCache = !!(docSnap && docSnap.metadata && docSnap.metadata.fromCache);
+
+        if (isFromCache) {
+          if (dot) { dot.style.backgroundColor = '#f59e0b'; }
+          if (text) { text.innerText = 'Offline Cache (Server Pending)'; }
+          if (latencyText) { latencyText.innerText = `${lat} ms (local)`; }
           if (badge) {
             badge.style.display = 'inline-block';
-            if (lat < 150) {
-              badge.style.background = 'rgba(16,185,129,0.15)';
-              badge.style.color = '#10b981';
-              badge.innerText = 'Excellent';
-            } else if (lat < 350) {
-              badge.style.background = 'rgba(245,158,11,0.15)';
-              badge.style.color = '#f59e0b';
-              badge.innerText = 'Fair';
-            } else {
-              badge.style.background = 'rgba(239,68,68,0.15)';
-              badge.style.color = '#ef4444';
-              badge.innerText = 'Delayed';
-            }
+            badge.style.background = 'rgba(245,158,11,0.15)';
+            badge.style.color = '#f59e0b';
+            badge.innerText = 'Local Cache';
           }
-          if (!silent) {
-            showToast(`📡 Ping latency verified: ${lat}ms`);
+          if (!silent) showToast("Cloud server unreachable - serving from local cache", "warning");
+          return;
+        }
+
+        if (dot) { dot.style.backgroundColor = '#10b981'; }
+        if (text) { text.innerText = 'Connected (Cloud Real-time)'; }
+        if (latencyText) { latencyText.innerText = `${lat} ms`; }
+
+        if (badge) {
+          badge.style.display = 'inline-block';
+          if (lat < 180) {
+            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.color = '#10b981';
+            badge.innerText = 'Excellent';
+          } else if (lat < 400) {
+            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.color = '#34d399';
+            badge.innerText = 'Good';
+          } else if (lat < 800) {
+            badge.style.background = 'rgba(245,158,11,0.15)';
+            badge.style.color = '#f59e0b';
+            badge.innerText = 'Fair';
+          } else {
+            badge.style.background = 'rgba(239,68,68,0.15)';
+            badge.style.color = '#ef4444';
+            badge.innerText = 'High Latency';
           }
-        })
-        .catch(err => {
-          console.warn("Ping failed:", err);
-          if (dot) { dot.style.backgroundColor = '#ef4444'; }
-          if (text) { text.innerText = 'Cloud Connect Error'; }
-          if (latencyText) { latencyText.innerText = '-- ms'; }
-          if (badge) { badge.style.display = 'none'; }
-        });
+        }
+
+        if (!silent) {
+          showToast(`📡 Ping latency verified: ${lat}ms (${badge ? badge.innerText : 'Connected'})`, 'success');
+        }
+      } catch (err) {
+        console.warn("Real Cloud Ping failed:", err);
+        if (dot) { dot.style.backgroundColor = '#ef4444'; }
+        if (text) {
+          text.innerText = err.message === 'CLOUD_PING_TIMEOUT' ? 'Connection Timed Out' : (err.message === 'CACHED_ONLY' ? 'Offline Cache Only' : 'Cloud Unreachable');
+        }
+        if (latencyText) { latencyText.innerText = '-- ms'; }
+        if (badge) {
+          badge.style.display = 'inline-block';
+          badge.style.background = 'rgba(239,68,68,0.15)';
+          badge.style.color = '#ef4444';
+          badge.innerText = 'Offline';
+        }
+        if (!silent) {
+          showToast("கிளவுட் இணைப்பு பிழை / Cloud ping failed: " + err.message, "error");
+        }
+      }
     }
 
     function renderSyncDashboard() {
       testConnectionLatencySyncDash(true);
 
       const listContainer = document.getElementById('sd-collections-list');
-      if (!listContainer) return;
+      if (listContainer) {
+        const html = SYNC_GATE_COLLECTIONS.map(gate => {
+          const lastSync = lastSyncTimestamps[gate.id] || "⚡ Real-time Stream Active";
+          const rawData = typeof getData === 'function' ? getData(gate.localKey, null) : null;
+          let countStr = "";
+          if (Array.isArray(rawData)) {
+            countStr = `${rawData.length} items`;
+          } else if (rawData && typeof rawData === 'object') {
+            countStr = `Configured`;
+          } else {
+            countStr = `Ready`;
+          }
 
-      const html = SYNC_GATE_COLLECTIONS.map(gate => {
-        const lastSync = lastSyncTimestamps[gate.id] || "Never synced";
-        return `
-          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-              <span style="font-size: 20px; flex-shrink: 0;">${gate.icon}</span>
-              <div style="min-width: 0; display: flex; flex-direction: column;">
-                <span style="color: #fff; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${gate.name}</span>
-                <span style="color: #888; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;">${gate.tamilName}</span>
-                <span style="color: #666; font-size: 9.5px; margin-top: 2px;">Last Synced: <span style="color: #aaa;">${lastSync}</span></span>
+          return `
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                <span style="font-size: 20px; flex-shrink: 0;">${gate.icon}</span>
+                <div style="min-width: 0; display: flex; flex-direction: column;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="color: #fff; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${gate.name}</span>
+                    <span style="font-size: 9px; padding: 1px 5px; border-radius: 4px; background: rgba(16,185,129,0.12); color: #10b981; font-weight: 700;">${countStr}</span>
+                  </div>
+                  <span style="color: #888; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;">${gate.tamilName}</span>
+                  <span style="color: #666; font-size: 9.5px; margin-top: 2px;">Status: <span style="color: #10b981; font-weight: 600;">${lastSync}</span></span>
+                </div>
               </div>
+              <button id="btn-gate-sync-${gate.id}" onclick="triggerIndividualGateSync('${gate.id}')" class="btn" style="width: auto; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: 800; border: 1px solid rgba(16,185,129,0.3); background: rgba(16,185,129,0.08); color: #10b981; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                🔄 Sync Now
+              </button>
             </div>
-            <button id="btn-gate-sync-${gate.id}" onclick="triggerIndividualGateSync('${gate.id}')" class="btn" style="width: auto; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: 800; border: 1px solid rgba(16,185,129,0.3); background: rgba(16,185,129,0.08); color: #10b981; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
-              🔄 Sync Now
-            </button>
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
 
-      listContainer.innerHTML = html;
+        listContainer.innerHTML = html;
+      }
+
+      const manualButtonsContainer = document.getElementById('sd-manual-buttons-container');
+      if (manualButtonsContainer) {
+        manualButtonsContainer.innerHTML = SYNC_GATE_COLLECTIONS.map(gate => `
+          <button id="btn-manual-sync-${gate.id}" onclick="triggerIndividualGateSync('${gate.id}')" class="btn" style="width: 100%; height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; font-size: 11px; color: #ccc; cursor: pointer;">
+            <span>${gate.icon} ${gate.name}</span>
+            <span style="color: #10b981; font-weight: 700;">🔄 Pull Cloud</span>
+          </button>
+        `).join('');
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        if (currentAdminTab === 'tab-sync-dashboard') {
+          testConnectionLatencySyncDash(true);
+        }
+      });
+      window.addEventListener('offline', () => {
+        if (currentAdminTab === 'tab-sync-dashboard') {
+          testConnectionLatencySyncDash(true);
+        }
+      });
     }
 
     function filterAdminOrdersByStatus(status, element) {
@@ -1043,6 +1226,23 @@
           return { ...dp, distToCust };
         }).sort((a, b) => a.distToCust - b.distToCust);
 
+        const categoriesList = typeof getUnifiedCategoryList === 'function' ? getUnifiedCategoryList() : getDataCached('ek_categories', []);
+        const currentOrderCategory = String(o.orderCategory || o.category || (o.items && o.items[0] && o.items[0].category) || 'meat').toLowerCase();
+        
+        let categoryOptionsHtml = '';
+        const allKnownCats = new Set(['meat', 'chicken', 'mutton', 'fish', 'seafood', 'veg', 'vegetables', 'fruits', 'dairy', 'eggs', 'groceries', 'bakery', 'combo', 'mixed']);
+        categoriesList.forEach(c => {
+          if (c && c.id) allKnownCats.add(String(c.id).toLowerCase());
+        });
+        if (currentOrderCategory) allKnownCats.add(currentOrderCategory);
+
+        Array.from(allKnownCats).forEach(catId => {
+          const isSel = (currentOrderCategory === catId) ? 'selected' : '';
+          const catObj = categoriesList.find(c => String(c.id).toLowerCase() === catId);
+          const catName = catObj ? (currentLang === 'ta' && catObj.tamilName ? catObj.tamilName : (catObj.name || catObj.englishName || catId)) : catId.toUpperCase();
+          categoryOptionsHtml += `<option value="${catId}" ${isSel}>${catName}</option>`;
+        });
+
         let deliveryOptionsHtml = `<option value="">${currentLang === 'ta' ? '-- நியமிக்கப்படவில்லை --' : '-- Unassigned --'}</option>`;
         sortedExecutives.forEach(dp => {
           const isSel = o.assignedExecutiveId === dp.id ? 'selected' : '';
@@ -1194,7 +1394,9 @@ ${o.items.map((it, idx) => {
                 <span style="font-size:10px; color:var(--text-secondary); text-transform:uppercase; font-weight:500;">TICKET</span>
                 <strong style="color:var(--accent-orange); display:block; font-size:14px; font-family:'JetBrains Mono', monospace;">${o.id}</strong>
               </div>
-              <div style="display:flex; align-items:center; gap:8px;" onclick="event.stopPropagation()">
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;" onclick="event.stopPropagation()">
+                <span class="badge" style="background: rgba(245, 158, 11, 0.15); border: 1.5px solid rgba(245, 158, 11, 0.4); color: #f59e0b; font-weight: 800; font-size: 10px; padding: 2px 7px; border-radius: 6px; text-transform: uppercase;">🏷️ ${escapeHtml(o.orderCategory || o.category || (o.items && o.items[0] && o.items[0].category) || 'General')}</span>
+                <span class="badge" style="background: rgba(59, 130, 246, 0.15); border: 1.5px solid rgba(59, 130, 246, 0.4); color: #60a5fa; font-weight: 800; font-size: 10px; padding: 2px 7px; border-radius: 6px;">⚙️ ${escapeHtml(o.orderStage || o.stage || 'Received')}</span>
                 <span class="badge ${badgeClass}">${o.status.toUpperCase()}</span>
                 <span style="font-size:16px; color:var(--text-muted); cursor:pointer; font-weight:700; width:24px; text-align:center;" onclick="toggleOrderDetails('${o.id}')">${isExpanded ? '▲' : '▼'}</span>
               </div>
@@ -1260,6 +1462,37 @@ ${o.items.map((it, idx) => {
               <div class="card" style="background:#0a0a0a; font-size:12px; padding:10px; border-color:#222; margin-bottom:10px; border-radius:8px;">
                 <span style="font-size:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">BASKET ITEMS</span>
                 <p style="margin-top:4px; line-height:1.5; margin-bottom: 0;">${itemRows}</p>
+              </div>
+
+              <div style="margin-bottom:10px; border-top: 1px dashed #262626; padding-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <label style="font-size:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">🏷️ ${currentLang === 'ta' ? 'ஆர்டர் வகை (Category)' : 'Order Category'}</label>
+                  <select class="form-control" style="background:#111; color:#fff; border:1px solid #333; font-size:12px; padding:6px; border-radius:6px; width:100%; font-weight:bold;" onchange="changeOrderCategory('${o.id}', this.value)" onclick="event.stopPropagation()">
+                    ${categoryOptionsHtml}
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">⚙️ ${currentLang === 'ta' ? 'ஆர்டர் நிலை (Stage)' : 'Order Stage'}</label>
+                  <select class="form-control" style="background:#111; color:#fff; border:1px solid #333; font-size:12px; padding:6px; border-radius:6px; width:100%; font-weight:bold;" onchange="changeOrderStage('${o.id}', this.value)" onclick="event.stopPropagation()">
+                    <option value="Received" ${(o.orderStage === 'Received' || o.stage === 'Received' || !o.orderStage) ? 'selected' : ''}>📥 Received / பெறப்பட்டது</option>
+                    <option value="Processing & Cut" ${(o.orderStage === 'Processing & Cut' || o.stage === 'Processing & Cut') ? 'selected' : ''}>✂️ Processing / வெட்டப்படுகிறது</option>
+                    <option value="Quality Checked" ${(o.orderStage === 'Quality Checked' || o.stage === 'Quality Checked') ? 'selected' : ''}>🔍 Quality Checked / சரிபார்க்கப்பட்டது</option>
+                    <option value="Packed & Ready" ${(o.orderStage === 'Packed & Ready' || o.stage === 'Packed & Ready') ? 'selected' : ''}>📦 Packed & Ready / பேக் செய்யப்பட்டது</option>
+                    <option value="Out for Delivery" ${(o.orderStage === 'Out for Delivery' || o.stage === 'Out for Delivery') ? 'selected' : ''}>🏍️ Out for Delivery / புறப்பட்டது</option>
+                    <option value="Delivered" ${(o.orderStage === 'Delivered' || o.stage === 'Delivered') ? 'selected' : ''}>✅ Delivered / வழங்கப்பட்டது</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Order Instructions & Notes from Admin -->
+              <div style="background: rgba(255,255,255,0.03); border: 1px dashed #333; padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;" onclick="event.stopPropagation()">
+                <div style="font-size: 11.5px; line-height: 1.4; flex: 1; padding-right: 8px;">
+                  <span style="color: var(--text-muted); font-weight: 700; font-size: 10px; text-transform: uppercase;">📝 ${currentLang === 'ta' ? 'ஆர்டர் குறிப்புகள் (Instructions):' : 'Order Instructions / Notes:'}</span>
+                  <p style="margin: 2px 0 0 0; color: #fff; font-style: ${(o.orderInstructions || o.specialInstructions || o.adminNotes) ? 'normal' : 'italic'};">
+                    ${escapeHtml(o.orderInstructions || o.specialInstructions || o.adminNotes || (currentLang === 'ta' ? 'குறிப்புகள் எதுவும் இல்லை' : 'No custom instructions'))}
+                  </p>
+                </div>
+                <button class="btn" style="background: rgba(245,158,11,0.12); color: var(--accent-orange); border: 1px solid rgba(245,158,11,0.3); font-size: 10.5px; padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;" onclick="event.stopPropagation(); promptEditOrderInstructions('${o.id}')">✏️ Edit</button>
               </div>
 
               <div style="margin-bottom:12px; border-top: 1px dashed #262626; padding-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
@@ -1465,6 +1698,122 @@ ${o.items.map((it, idx) => {
           }
         );
       }
+    }
+
+    function changeOrderCategory(orderId, newCategory) {
+      if (!orderId || !newCategory) return;
+      const cleanCat = String(newCategory).trim();
+      const orders = getData('ek_orders', []);
+      const idx = orders.findIndex(o => o && o.id === orderId);
+      if (idx === -1) {
+        showToast("Order not found", "error");
+        return;
+      }
+      const o = orders[idx];
+      o.category = cleanCat;
+      o.orderCategory = cleanCat;
+      o.categoryName = cleanCat;
+      o.updatedAt = new Date().toISOString();
+
+      saveData('ek_orders', orders);
+      if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+
+      if (typeof db !== 'undefined' && db) {
+        db.collection('ek_orders').doc(orderId).set({
+          category: cleanCat,
+          orderCategory: cleanCat,
+          categoryName: cleanCat,
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).then(() => {
+          showToast(currentLang === 'ta' ? `வகை (${cleanCat.toUpperCase()}) வெற்றிகரமாக மாற்றப்பட்டது! 🏷️` : `Order category updated to ${cleanCat.toUpperCase()}! 🏷️`, "success");
+        }).catch(err => {
+          console.warn("Firestore category update error:", err);
+          showToast("Cloud update notice: " + err.message, "warning");
+        });
+      } else {
+        showToast(currentLang === 'ta' ? `வகை (${cleanCat.toUpperCase()}) மாற்றப்பட்டது!` : `Order category updated!`, "success");
+      }
+
+      if (typeof renderAdminOrders === 'function') renderAdminOrders();
+    }
+
+    function changeOrderStage(orderId, newStage) {
+      if (!orderId || !newStage) return;
+      const cleanStage = String(newStage).trim();
+      const orders = getData('ek_orders', []);
+      const idx = orders.findIndex(o => o && o.id === orderId);
+      if (idx === -1) {
+        showToast("Order not found", "error");
+        return;
+      }
+      const o = orders[idx];
+      o.stage = cleanStage;
+      o.orderStage = cleanStage;
+      o.updatedAt = new Date().toISOString();
+
+      saveData('ek_orders', orders);
+      if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+
+      if (typeof db !== 'undefined' && db) {
+        db.collection('ek_orders').doc(orderId).set({
+          stage: cleanStage,
+          orderStage: cleanStage,
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).then(() => {
+          showToast(currentLang === 'ta' ? `நிலை (${cleanStage}) மாற்றப்பட்டது! ⚙️` : `Order stage updated to ${cleanStage}! ⚙️`, "success");
+        }).catch(err => {
+          console.warn("Firestore stage update error:", err);
+          showToast("Cloud update notice: " + err.message, "warning");
+        });
+      } else {
+        showToast(currentLang === 'ta' ? `நிலை (${cleanStage}) மாற்றப்பட்டது!` : `Order stage updated!`, "success");
+      }
+
+      if (typeof renderAdminOrders === 'function') renderAdminOrders();
+    }
+
+    function promptEditOrderInstructions(orderId) {
+      const orders = getData('ek_orders', []);
+      const o = orders.find(x => x && x.id === orderId);
+      if (!o) return;
+      const currentInst = o.orderInstructions || o.specialInstructions || o.adminNotes || '';
+      const promptText = currentLang === 'ta' ? 'ஆர்டர் தயாரிப்பு / விநியோக குறிப்புகள்:' : 'Enter Order Preparation / Delivery Instructions:';
+      const result = prompt(promptText, currentInst);
+      if (result !== null) {
+        updateOrderInstructions(orderId, result.trim());
+      }
+    }
+
+    function updateOrderInstructions(orderId, newInstructions) {
+      const cleanInst = String(newInstructions || '').trim();
+      const orders = getData('ek_orders', []);
+      const idx = orders.findIndex(o => o && o.id === orderId);
+      if (idx === -1) return;
+      const o = orders[idx];
+      o.orderInstructions = cleanInst;
+      o.specialInstructions = cleanInst;
+      o.adminNotes = cleanInst;
+      o.updatedAt = new Date().toISOString();
+
+      saveData('ek_orders', orders);
+      if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+
+      if (typeof db !== 'undefined' && db) {
+        db.collection('ek_orders').doc(orderId).set({
+          orderInstructions: cleanInst,
+          specialInstructions: cleanInst,
+          adminNotes: cleanInst,
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).then(() => {
+          showToast(currentLang === 'ta' ? "குறிப்புகள் சேமிக்கப்பட்டது! 📝" : "Instructions updated successfully! 📝", "success");
+        }).catch(err => {
+          console.warn("Firestore instructions update error:", err);
+        });
+      } else {
+        showToast("Instructions updated!", "success");
+      }
+
+      if (typeof renderAdminOrders === 'function') renderAdminOrders();
     }
 
     function markDeliveredAdminManual(id) {
@@ -2739,6 +3088,12 @@ ${o.items.map((it, idx) => {
         // OPTIMISTIC UI UPDATE: Update local state and show success popup INSTANTLY!
         products[idx] = targetProduct;
         saveData('ek_products', products);
+        invalidateDataCache('ek_products');
+        window._lastProductsHash = '';
+        if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
+        if (typeof renderHomeScreenProducts === 'function') {
+          renderHomeScreenProducts(true);
+        }
 
         if (oldImageUrl && oldImageUrl !== finalImg) {
           deleteStorageImageByUrl(oldImageUrl);
@@ -4282,13 +4637,60 @@ ${o.items.map((it, idx) => {
     function refreshAdminZonesMapSize() {
       if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
         try { window._adminZonesMapInstance.invalidateSize(); } catch(e) {}
+        setTimeout(() => {
+          try {
+            if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
+              window._adminZonesMapInstance.invalidateSize();
+            }
+          } catch(e) {}
+        }, 250);
       }
     }
     window.refreshAdminZonesMapSize = refreshAdminZonesMapSize;
 
     function changeAdminZonesMapLayer(type) {
       window._adminZonesMapType = type;
-      if (typeof initAdminZonesMap === 'function') initAdminZonesMap(false);
+      if (window._adminZonesMapInstance) {
+        let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        let subdomains = ['a', 'b', 'c', 'd'];
+        if (type === 'satellite') {
+          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+          subdomains = ['1', '2', '3', '4'];
+        } else if (type === 'google') {
+          tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+          subdomains = ['1', '2', '3', '4'];
+        } else if (type === 'dark') {
+          tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+          subdomains = ['a', 'b', 'c', 'd'];
+        }
+
+        try {
+          if (window._adminZonesActiveTileLayer) {
+            window._adminZonesMapInstance.removeLayer(window._adminZonesActiveTileLayer);
+          }
+          const newTiles = L.tileLayer(tileUrl, {
+            maxZoom: 19,
+            subdomains: subdomains,
+            attribution: '© OpenStreetMap © Google © CARTO'
+          });
+          newTiles.on('tileerror', function() {
+            try {
+              window._adminZonesMapInstance.removeLayer(newTiles);
+              L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+              }).addTo(window._adminZonesMapInstance);
+            } catch(e) {}
+          });
+          newTiles.addTo(window._adminZonesMapInstance);
+          window._adminZonesActiveTileLayer = newTiles;
+          refreshAdminZonesMapSize();
+          return;
+        } catch(e) {
+          console.warn("[Leaflet Layer Switch Fail]:", e);
+        }
+      }
+      initAdminZonesMap(false);
     }
     window.changeAdminZonesMapLayer = changeAdminZonesMapLayer;
 
@@ -4297,11 +4699,35 @@ ${o.items.map((it, idx) => {
       if (!mapContainer) return;
 
       if (typeof L === 'undefined') {
-        mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#f59e0b; font-size: 11px;">⚠️ Leaflet வரைபட நூலகம் ஏற்றப்படவில்லை</div>';
+        mapContainer.innerHTML = '<div style="padding:20px; text-align:center; color:#f59e0b; font-size: 11px;">⚠️ Leaflet வரைபட நூலகம் ஏற்றப்படவில்லை / Map library not loaded</div>';
         return;
       }
 
       try {
+        const storeLat = 11.5815;
+        const storeLng = 77.8488;
+
+        const containerVisible = mapContainer.offsetWidth > 0 && mapContainer.offsetHeight > 0;
+
+        if (window._adminZonesMapInstance && !resetCenter) {
+          try {
+            window._adminZonesMapInstance.invalidateSize();
+            setTimeout(() => {
+              try {
+                if (window._adminZonesMapInstance && typeof window._adminZonesMapInstance.invalidateSize === 'function') {
+                  window._adminZonesMapInstance.invalidateSize();
+                }
+              } catch(e) {}
+            }, 250);
+            if (containerVisible) {
+              window._adminZonesMapInstance.setView([storeLat, storeLng], window._adminZonesMapInstance.getZoom() || 12);
+            }
+            return;
+          } catch(e) {
+            console.warn("Map invalidateSize fallback:", e);
+          }
+        }
+
         if (window._adminZonesMapInstance) {
           try { window._adminZonesMapInstance.remove(); } catch(e) {}
           window._adminZonesMapInstance = null;
@@ -4310,44 +4736,51 @@ ${o.items.map((it, idx) => {
           try { mapContainer._leaflet_id = null; } catch(e) {}
         }
 
-        const storeLat = 11.5815;
-        const storeLng = 77.8488;
-
         const map = L.map('admin-zones-leaflet-map', {
           zoomControl: true,
-          attributionControl: false
+          attributionControl: false,
+          preferCanvas: true
         }).setView([storeLat, storeLng], 12);
         window._adminZonesMapInstance = map;
 
-        const layerType = window._adminZonesMapType || 'google';
-        let tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-        if (layerType === 'satellite') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-        } else if (layerType === 'carto') {
+        const layerType = window._adminZonesMapType || 'street';
+        let tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+        let subdomains = ['a', 'b', 'c'];
+        if (layerType === 'carto') {
           tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+          subdomains = ['a', 'b', 'c', 'd'];
+        } else if (layerType === 'satellite') {
+          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+          subdomains = ['1', '2', '3', '4'];
+        } else if (layerType === 'google') {
+          tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+          subdomains = ['1', '2', '3', '4'];
         } else if (layerType === 'dark') {
           tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+          subdomains = ['a', 'b', 'c', 'd'];
         }
 
         const primaryTiles = L.tileLayer(tileUrl, {
           maxZoom: 19,
-          subdomains: ['a', 'b', 'c', 'd'],
-          attribution: 'Google / CartoDB'
+          subdomains: subdomains,
+          attribution: '© OpenStreetMap contributors'
         });
 
         primaryTiles.on('tileerror', function() {
-          console.warn("[Leaflet Admin Map] Primary tile error, falling back to CartoDB Voyager...");
+          console.warn("[Leaflet Admin Map] Tile load error, switching to OpenStreetMap standard tiles...");
           try {
             map.removeLayer(primaryTiles);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            const fallbackTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
               maxZoom: 19,
-              subdomains: ['a', 'b', 'c', 'd'],
-              attribution: '© CARTO © OpenStreetMap'
-            }).addTo(map);
+              attribution: '© OpenStreetMap contributors'
+            });
+            fallbackTiles.addTo(map);
+            window._adminZonesActiveTileLayer = fallbackTiles;
           } catch(err) {}
         });
 
         primaryTiles.addTo(map);
+        window._adminZonesActiveTileLayer = primaryTiles;
 
         const storeIcon = L.divIcon({
           className: 'custom-map-icon',
@@ -4357,11 +4790,11 @@ ${o.items.map((it, idx) => {
         });
 
         L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(map)
-          .bindPopup('<b style="color:#f59e0b; font-size:13px;">🏪 எடப்பாடி கடை மையக் கிளை</b><br><span style="color:#000; font-size:11px;">Central Store Hub | Lat: 11.5815, Lng: 77.8488</span>');
+          .bindPopup('<b style="color:#f59e0b; font-size:13px;">🏪 எடப்பாடி கடை மையக் கிளை</b><br><span style="color:#fff; font-size:11px;">Central Store Hub | Lat: 11.5815, Lng: 77.8488</span>');
 
         const getZonesFn = typeof getDeliveryZones === 'function' ? getDeliveryZones : function() { return getData('ek_delivery_zones', []); };
         const zones = getZonesFn();
-        const sortedZones = [...zones].sort((a, b) => parseFloat(b.maxKm) - parseFloat(a.maxKm));
+        const sortedZones = Array.isArray(zones) ? [...zones].filter(z => z && !isNaN(parseFloat(z.maxKm)) && parseFloat(z.maxKm) > 0).sort((a, b) => parseFloat(b.maxKm) - parseFloat(a.maxKm)) : [];
         const colors = ['#ec4899', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6'];
 
         sortedZones.forEach((z, i) => {
@@ -4373,7 +4806,7 @@ ${o.items.map((it, idx) => {
             fillColor: color,
             fillOpacity: 0.18,
             weight: 2.5
-          }).addTo(map).bindPopup(`<b style="color:${color}; font-size:13px;">${z.nameTa || z.nameEn}</b><br><span style="color:#000; font-size:11px;">வரம்பு: <b>${z.maxKm} Km</b> | கட்டணம்: <b>₹${z.charge}</b></span>`);
+          }).addTo(map).bindPopup(`<b style="color:${color}; font-size:13px;">${z.nameTa || z.nameEn}</b><br><span style="color:#fff; font-size:11px;">வரம்பு: <b>${z.maxKm} Km</b> | கட்டணம்: <b>₹${z.charge}</b></span>`);
         });
 
         const triggerInvalidate = () => {
@@ -4384,7 +4817,7 @@ ${o.items.map((it, idx) => {
           } catch(e) {}
         };
 
-        [10, 50, 150, 300, 600, 1000, 2000].forEach(delay => setTimeout(triggerInvalidate, delay));
+        [0, 50, 150, 300, 600, 1200, 2500].forEach(delay => setTimeout(triggerInvalidate, delay));
 
         if (window.ResizeObserver && !mapContainer._hasResizeObserver) {
           mapContainer._hasResizeObserver = true;

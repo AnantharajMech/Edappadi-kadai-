@@ -440,11 +440,9 @@
             console.warn("[FCM Simulator Topic Fail]:", simErr);
           }
         }
-        return 1;
-      }
-
-      // 2. Selected Customer
-      if (item.targetAudience === 'selected' && item.targetUserId) {
+        enqueuedCount = 1;
+      } else if (item.targetAudience === 'selected' && item.targetUserId) {
+        // 2. Selected Customer
         let targetToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(item.targetUserId) : null;
         if (!targetToken) {
           let usersList = getData('ek_users', []);
@@ -480,62 +478,100 @@
             }
           }
         }
-        if (promises.length > 0) await Promise.all(promises);
-        return enqueuedCount;
-      }
-
-      // 3. All Customers (default)
-      let usersList = getData('ek_users', []);
-      try {
-        if (typeof db !== 'undefined' && db && getAdminSession()) {
-          const usersSnap = await db.collection('ek_users').get();
-          if (usersSnap && !usersSnap.empty) {
-            const fetched = [];
-            usersSnap.forEach(doc => {
-              if (doc.data()) fetched.push(doc.data());
-            });
-            if (fetched.length > 0) usersList = fetched;
+      } else {
+        // 3. All Customers (Broadcast to topic + individual queues)
+        const topicName = 'all_customers';
+        if (typeof db !== 'undefined' && db) {
+          promises.push(
+            db.collection('ek_topic_broadcast_requests').add({
+              topic: topicName,
+              title: item.title,
+              body: item.body,
+              createdAt: new Date().toISOString(),
+              notificationId: item.id || ''
+            }).catch(e => console.warn('[Topic Broadcast Queue Error]:', e))
+          );
+        }
+        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+          try {
+            AndroidStorage.simulateFcmPushNotification(
+              `/topics/${topicName}`,
+              item.title,
+              item.body,
+              JSON.stringify({ type: "topic_broadcast", topic: topicName, notificationId: item.id })
+            );
+          } catch (simErr) {
+            console.warn("[FCM Simulator Topic Fail]:", simErr);
           }
         }
-      } catch (e) {
-        console.warn('[Push Dispatch] Firestore user query fallback to local cache:', e);
-      }
+        enqueuedCount = 1;
 
-      usersList.forEach(u => {
-        const targetToken = u.fcmToken || u.realFcmToken;
-        if (targetToken && typeof targetToken === 'string' && targetToken.trim()) {
-          enqueuedCount++;
-          if (typeof db !== 'undefined' && db) {
-            promises.push(
-              db.collection('ek_fcm_queue').add({
-                targetToken: targetToken,
-                title: item.title,
-                body: item.body,
-                createdAt: new Date().toISOString(),
-                processed: false,
-                type: "push_module",
-                notificationId: item.id || ''
-              }).catch(e => console.warn('[Push Queue Error]:', e))
-            );
-          }
-
-          if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
-            try {
-              AndroidStorage.simulateFcmPushNotification(
-                targetToken,
-                item.title,
-                item.body,
-                JSON.stringify({ type: "push_module", notificationId: item.id })
-              );
-            } catch (simErr) {
-              console.warn("[FCM Simulator Push Fail]:", simErr);
+        let usersList = getData('ek_users', []);
+        try {
+          if (typeof db !== 'undefined' && db && getAdminSession()) {
+            const usersSnap = await db.collection('ek_users').get();
+            if (usersSnap && !usersSnap.empty) {
+              const fetched = [];
+              usersSnap.forEach(doc => {
+                if (doc.data()) fetched.push(doc.data());
+              });
+              if (fetched.length > 0) usersList = fetched;
             }
           }
+        } catch (e) {
+          console.warn('[Push Dispatch] Firestore user query fallback to local cache:', e);
         }
-      });
+
+        usersList.forEach(u => {
+          const targetToken = u.fcmToken || u.realFcmToken;
+          if (targetToken && typeof targetToken === 'string' && targetToken.trim()) {
+            enqueuedCount++;
+            if (typeof db !== 'undefined' && db) {
+              promises.push(
+                db.collection('ek_fcm_queue').add({
+                  targetToken: targetToken,
+                  title: item.title,
+                  body: item.body,
+                  createdAt: new Date().toISOString(),
+                  processed: false,
+                  type: "push_module",
+                  notificationId: item.id || ''
+                }).catch(e => console.warn('[Push Queue Error]:', e))
+              );
+            }
+
+            if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+              try {
+                AndroidStorage.simulateFcmPushNotification(
+                  targetToken,
+                  item.title,
+                  item.body,
+                  JSON.stringify({ type: "push_module", notificationId: item.id })
+                );
+              } catch (simErr) {
+                console.warn("[FCM Simulator Push Fail]:", simErr);
+              }
+            }
+          }
+        });
+      }
 
       if (promises.length > 0) {
         await Promise.all(promises);
+      }
+
+      // Sync sent notification record to Firestore
+      if (typeof db !== 'undefined' && db && item.id) {
+        try {
+          await db.collection('ek_push_notifications').doc(item.id).set(cleanFirestoreData({
+            ...item,
+            status: 'Sent',
+            sentAt: new Date().toISOString(),
+            reachedCount: enqueuedCount
+          }), { merge: true });
+        } catch(e) {
+          console.warn("[Push Record Sync Error]:", e);
+        }
       }
 
       return enqueuedCount;
@@ -598,49 +634,76 @@
       }
       notifItem.updatedAt = new Date().toISOString();
 
-      if (actionType === 'send') {
-        notifItem.status = 'Sending';
-        notifItem.scheduledAt = null;
+      const btn = actionType === 'send' 
+        ? document.getElementById('push-submit-send-btn') 
+        : (actionType === 'schedule' ? document.getElementById('push-submit-schedule-btn') : null);
 
-        if (isNew) list.unshift(notifItem);
-        savePushNotificationsList(list);
+      if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
 
-        const count = await dispatchPushNotification(notifItem);
-        notifItem.status = 'Sent';
-        notifItem.sentAt = new Date().toISOString();
-        notifItem.reachedCount = count;
+      try {
+        if (actionType === 'send') {
+          notifItem.status = 'Sending';
+          notifItem.scheduledAt = null;
 
-        savePushNotificationsList(list);
-        resetPushForm();
-        renderPushNotificationManager();
+          if (isNew) list.unshift(notifItem);
+          savePushNotificationsList(list);
 
-        showToast(`அறிவிப்பு அனுப்பப்பட்டது! (அடைந்தது: ${count} பயனர்கள்) 🚀`, 'success');
-        showAdminSuccessModal(
-          "📢 புஷ் அறிவிப்பு அனுப்பப்பட்டது!",
-          `உங்கள் அறிவிப்பு "${title}" குறிப்பிட்ட இலக்கு பயனர்களுக்கு (${count} சாதனங்கள்) வெற்றிகரமாக அனுப்பப்பட்டது.`
-        );
-      } else if (actionType === 'schedule') {
-        notifItem.status = 'Scheduled';
-        notifItem.scheduledAt = scheduledAt;
-        notifItem.sentAt = null;
+          const count = await dispatchPushNotification(notifItem);
+          notifItem.status = 'Sent';
+          notifItem.sentAt = new Date().toISOString();
+          notifItem.reachedCount = count;
 
-        if (isNew) list.unshift(notifItem);
-        savePushNotificationsList(list);
-        resetPushForm();
-        renderPushNotificationManager();
+          savePushNotificationsList(list);
+          resetPushForm();
+          renderPushNotificationManager();
 
-        const formattedTime = new Date(scheduledAt).toLocaleString();
-        showToast(`அறிவிப்பு திட்டமிடப்பட்டது! (${formattedTime}) ⏰`, 'success');
-      } else if (actionType === 'draft') {
-        notifItem.status = 'Draft';
-        notifItem.scheduledAt = isScheduledToggle ? scheduledAt : null;
+          showToast(`அறிவிப்பு அனுப்பப்பட்டது! (அடைந்தது: ${count} பயனர்கள்) 🚀`, 'success');
+          showAdminSuccessModal(
+            "📢 புஷ் அறிவிப்பு அனுப்பப்பட்டது!",
+            `உங்கள் அறிவிப்பு "${title}" குறிப்பிட்ட இலக்கு பயனர்களுக்கு (${count} சாதனங்கள்) வெற்றிகரமாக அனுப்பப்பட்டது.`
+          );
+        } else if (actionType === 'schedule') {
+          notifItem.status = 'Scheduled';
+          notifItem.scheduledAt = scheduledAt;
+          notifItem.sentAt = null;
 
-        if (isNew) list.unshift(notifItem);
-        savePushNotificationsList(list);
-        resetPushForm();
-        renderPushNotificationManager();
+          if (isNew) list.unshift(notifItem);
+          savePushNotificationsList(list);
 
-        showToast('அறிவிப்பு வரைவாக (Draft) சேமிக்கப்பட்டது! 💾', 'success');
+          if (typeof db !== 'undefined' && db && notifItem.id) {
+            try {
+              await db.collection('ek_push_notifications').doc(notifItem.id).set(cleanFirestoreData(notifItem), { merge: true });
+            } catch(e) {}
+          }
+
+          resetPushForm();
+          renderPushNotificationManager();
+
+          const formattedTime = new Date(scheduledAt).toLocaleString();
+          showToast(`அறிவிப்பு திட்டமிடப்பட்டது! (${formattedTime}) ⏰`, 'success');
+        } else if (actionType === 'draft') {
+          notifItem.status = 'Draft';
+          notifItem.scheduledAt = isScheduledToggle ? scheduledAt : null;
+
+          if (isNew) list.unshift(notifItem);
+          savePushNotificationsList(list);
+
+          if (typeof db !== 'undefined' && db && notifItem.id) {
+            try {
+              await db.collection('ek_push_notifications').doc(notifItem.id).set(cleanFirestoreData(notifItem), { merge: true });
+            } catch(e) {}
+          }
+
+          resetPushForm();
+          renderPushNotificationManager();
+
+          showToast('அறிவிப்பு வரைவாக (Draft) சேமிக்கப்பட்டது! 💾', 'success');
+        }
+      } catch(err) {
+        console.error("Push action error:", err);
+        showToast(`பிழை: ${err.message || 'அனுப்ப முடியவில்லை'}`, 'error');
+      } finally {
+        if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
     }
 

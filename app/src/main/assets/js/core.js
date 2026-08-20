@@ -50,8 +50,16 @@ window.checkAndUpdateFreshCloudData = function() {
   }
 };
 window.syncWithCloud = window.syncWithCloud || async function() {};
-window.triggerGlobalScreenRefresh = window.triggerGlobalScreenRefresh || function() {};
-window.triggerGlobalScreenRefreshActual = window.triggerGlobalScreenRefreshActual || function() {};
+window.triggerGlobalScreenRefresh = function() {
+  if (typeof window.executeUniversalPullRefresh === 'function') {
+    window.executeUniversalPullRefresh();
+  }
+};
+window.triggerGlobalScreenRefreshActual = function() {
+  if (typeof window.executeUniversalPullRefresh === 'function') {
+    window.executeUniversalPullRefresh();
+  }
+};
 
 window.setButtonLoading = function(btn, isLoading, loadingText = '') {
   if (typeof btn === 'string') btn = document.getElementById(btn);
@@ -121,6 +129,17 @@ let _realtimeUnsubscribers = {
   deliveryZones: null
 };
 
+window.recordCollectionSyncTime = function(colKey) {
+  try {
+    const tsMap = JSON.parse(localStorage.getItem('ek_last_sync_timestamps') || '{}');
+    tsMap[colKey] = new Date().toLocaleTimeString();
+    localStorage.setItem('ek_last_sync_timestamps', JSON.stringify(tsMap));
+    if (typeof lastSyncTimestamps !== 'undefined' && lastSyncTimestamps) {
+      lastSyncTimestamps[colKey] = tsMap[colKey];
+    }
+  } catch(e) {}
+};
+
 window.setupCloudRealtimeListeners2 = function() {
   if (typeof db === 'undefined' || !db) return;
 
@@ -133,6 +152,7 @@ window.setupCloudRealtimeListeners2 = function() {
           if (cloudData) {
             window._hasFreshSettings = true;
             window._hasFreshCloudData = true;
+            if (typeof window.recordCollectionSyncTime === 'function') window.recordCollectionSyncTime('settings');
             saveData('ek_settings_synced', true);
             saveData('ek_cloud_synced', true);
             saveData('ek_settings', cloudData);
@@ -160,18 +180,39 @@ window.setupCloudRealtimeListeners2 = function() {
       _realtimeUnsubscribers.categories = db.collection('ek_categories').onSnapshot(snapshot => {
         if (snapshot) {
           const list = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+          snapshot.forEach(d => {
+            const data = d.data();
+            if (data) {
+              list.push({ id: d.id, ...data });
+            }
+          });
+
+          list.sort((a, b) => {
+            const orderA = Number(a.order !== undefined && a.order !== null ? a.order : 999);
+            const orderB = Number(b.order !== undefined && b.order !== null ? b.order : 999);
+            if (orderA !== orderB) return orderA - orderB;
+            return String(a.id || "").localeCompare(String(b.id || ""));
+          });
+
           window._hasFreshCloudData = true;
+          if (typeof window.recordCollectionSyncTime === 'function') window.recordCollectionSyncTime('categories');
           saveData('ek_cloud_synced', true);
           saveData('ek_categories', list);
           if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_categories');
           window._lastCategoryPillsHash = '';
           _lastCategoryPillsHash = '';
           window._categoriesListCachedValue = null;
+          _categoriesListCachedValue = null;
+          window._lastDataSnapshotHash = '';
+          _lastDataSnapshotHash = '';
+          window._lastProductsHash = '';
+          _lastProductsHash = '';
 
           try { if (typeof renderCategoryPills === 'function') renderCategoryPills(); } catch(e) {}
-          try { if (typeof renderAdminCategoryList === 'function') renderAdminCategoryList(true); } catch(e) {}
+          try { if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true); } catch(e) {}
+          try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true); } catch(e) {}
           try { if (typeof renderHomeScreen === 'function') renderHomeScreen(true); } catch(e) {}
+          try { if (typeof populateProductCategoryOptions === 'function') populateProductCategoryOptions(); } catch(e) {}
         }
       }, err => console.warn("[Realtime Sync] Categories listener notice:", err));
     } catch(e) {
@@ -216,6 +257,9 @@ window.setupCloudRealtimeListeners2 = function() {
 
           window._hasFreshCloudData = !isFromCache;
           window._isProductsFromCache = isFromCache;
+          if (!isFromCache && typeof window.recordCollectionSyncTime === 'function') {
+            window.recordCollectionSyncTime('products');
+          }
           saveData('ek_cloud_synced', true);
 
           if (list && list.length > 0) {
@@ -268,6 +312,7 @@ window.setupCloudRealtimeListeners2 = function() {
             const list = [];
             snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
             if (list.length > 0) {
+              if (typeof window.recordCollectionSyncTime === 'function') window.recordCollectionSyncTime('delivery_zones');
               saveData('ek_delivery_zones', list);
               if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_delivery_zones');
               const settings = typeof getSettings === 'function' ? getSettings() : (getData('ek_settings') || {});
@@ -367,6 +412,7 @@ window.setupCloudRealtimeListeners2 = function() {
 
             saveData('ek_orders', mergedList);
             if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+            if (typeof window.recordCollectionSyncTime === 'function') window.recordCollectionSyncTime('orders');
 
             const curScreen = window.currentScreen || (typeof currentScreen !== 'undefined' ? currentScreen : '');
 
@@ -393,14 +439,26 @@ window.setupCloudRealtimeListeners2 = function() {
             }
 
             // Customer real-time updates
-            if (targetRole === 'customer' || targetRole === 'guest') {
-              if (curScreen === 'screen-my-orders' || curScreen === 'screen-orders') {
-                try { if (typeof renderMyOrdersList === 'function') renderMyOrdersList(); } catch(e) {}
-              }
-              if (curScreen === 'screen-tracker') {
+            if (targetRole === 'customer' || targetRole === 'guest' || curScreen === 'screen-track' || curScreen === 'screen-tracker' || curScreen === 'screen-profile' || curScreen === 'screen-home') {
+              if (curScreen === 'screen-track' || curScreen === 'screen-tracker' || curScreen === 'screen-my-orders' || curScreen === 'screen-orders') {
                 try { if (typeof updateActiveOrderTrackingUI === 'function') updateActiveOrderTrackingUI(); } catch(e) {}
                 try { if (typeof renderTrackerScreen === 'function') renderTrackerScreen(); } catch(e) {}
+                try { if (typeof renderMyOrdersList === 'function') renderMyOrdersList(); } catch(e) {}
               }
+              if (curScreen === 'screen-profile') {
+                try { if (typeof renderProfileScreen === 'function') renderProfileScreen(); } catch(e) {}
+              }
+
+              // If customer order detail modal is open, re-render it in real-time with authoritative cloud data
+              try {
+                const codModal = document.getElementById('customer-order-detail-modal');
+                if (codModal && (codModal.style.display === 'flex' || codModal.classList.contains('active'))) {
+                  const openId = document.getElementById('cod-order-id')?.innerText?.trim();
+                  if (openId && typeof openCustomerOrderDetail === 'function') {
+                    openCustomerOrderDetail(openId);
+                  }
+                }
+              } catch(e) {}
             }
           }
         };
@@ -451,6 +509,105 @@ window.setupCloudRealtimeListeners2 = function() {
     }
   }, 750);
 };
+
+window.teardownLiveListeners = function() {
+  try {
+    if (window._staggeredListenersTimeout) {
+      clearTimeout(window._staggeredListenersTimeout);
+      window._staggeredListenersTimeout = null;
+    }
+    if (_realtimeUnsubscribers) {
+      Object.keys(_realtimeUnsubscribers).forEach(key => {
+        if (typeof _realtimeUnsubscribers[key] === 'function') {
+          try { _realtimeUnsubscribers[key](); } catch(e) {}
+        }
+        _realtimeUnsubscribers[key] = null;
+      });
+    }
+    window._currentOrdersSubKey = null;
+    debugLog("[Realtime Sync] All live Firestore listeners torn down cleanly.");
+  } catch(e) {
+    console.warn("[Realtime Sync] Error during teardownLiveListeners:", e);
+  }
+};
+
+window._lastAndroidResumeTime = 0;
+window.onAndroidAppResume = function() {
+  const now = Date.now();
+  if (now - window._lastAndroidResumeTime < 800) return; // Debounce rapid triggers
+  window._lastAndroidResumeTime = now;
+  debugLog("[Lifecycle] onAndroidAppResume received.");
+
+  try {
+    // 1. Re-validate sessions
+    if (typeof validateAndSanitizeSessions === 'function') {
+      validateAndSanitizeSessions();
+    }
+
+    // 2. Ensure Firestore realtime listeners are active
+    if (typeof setupCloudRealtimeListeners2 === 'function') {
+      setupCloudRealtimeListeners2();
+    }
+
+    // 3. Process any pending sync queue items
+    if (typeof processPendingSyncQueue === 'function') {
+      processPendingSyncQueue().catch(e => console.warn("[Resume Sync] Queue process notice:", e));
+    }
+    if (typeof processPendingProductSyncQueue === 'function') {
+      try { processPendingProductSyncQueue(); } catch(e) {}
+    }
+
+    // 4. Smooth non-blocking UI update for active screen
+    const curScreen = window.currentScreen || (typeof currentScreen !== 'undefined' ? currentScreen : '');
+    if (curScreen === 'screen-home' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
+      if (typeof updateCartBadge === 'function') try { updateCartBadge(); } catch(e) {}
+      if (typeof updateNotificationUnreadCount === 'function') try { updateNotificationUnreadCount(); } catch(e) {}
+      if (typeof renderHomeScreenProducts === 'function') try { renderHomeScreenProducts(false); } catch(e) {}
+    } else if (curScreen === 'screen-admin') {
+      if (typeof renderAdminDashboard === 'function') try { renderAdminDashboard(); } catch(e) {}
+    } else if (curScreen === 'screen-delivery') {
+      if (typeof renderDeliveryScreen === 'function') try { renderDeliveryScreen(); } catch(e) {}
+    } else if (curScreen === 'screen-track' || curScreen === 'screen-tracker' || curScreen === 'screen-my-orders') {
+      if (typeof renderTrackerScreen === 'function') try { renderTrackerScreen(); } catch(e) {}
+      if (typeof renderMyOrdersList === 'function') try { renderMyOrdersList(); } catch(e) {}
+    }
+  } catch(err) {
+    console.warn("[Lifecycle] onAndroidAppResume execution error:", err);
+  }
+};
+
+// Auto-trigger resume handler when tab/app becomes visible
+try {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (typeof window.onAndroidAppResume === 'function') {
+        window.onAndroidAppResume();
+      }
+    }
+  });
+} catch(e) {}
+
+// Global online reconnection handler
+try {
+  window.addEventListener('online', () => {
+    debugLog("[Network] Connection restored. Re-synchronizing cloud listeners and pending queues...");
+    try {
+      if (typeof db !== 'undefined' && db && db.enableNetwork) {
+        db.enableNetwork().catch(e => console.warn("[Network] enableNetwork notice:", e));
+      }
+    } catch(e) {}
+    if (typeof setupCloudRealtimeListeners2 === 'function') {
+      setupCloudRealtimeListeners2();
+    }
+    if (typeof processPendingSyncQueue === 'function') {
+      processPendingSyncQueue().catch(e => console.warn("[Network] Pending sync process notice:", e));
+    }
+    if (typeof processPendingProductSyncQueue === 'function') {
+      try { processPendingProductSyncQueue(); } catch(e) {}
+    }
+  });
+} catch(e) {}
+
 window.renderAdminUpiSettings = window.renderAdminUpiSettings || function() {};
 window.initApp = window.initApp || function() {};
 window.runAbsoluteCleanupForThreeProducts = window.runAbsoluteCleanupForThreeProducts || function() {};
@@ -664,10 +821,12 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
       window.locallyModifiedOrders = {};
     }
 
+    let _lastAdminPermissionCheck = 0;
+    let _lastAdminDocUpsert = 0;
+
     async function verifyAdminWritePermission(operation) {
       debugLog(`[Admin Permission Audit] Pre-write verification started for: ${operation}`);
       if (typeof firebase === 'undefined' || !firebase.auth) {
-        console.warn(`[Admin Permission Audit] Firebase Auth library is not loaded.`);
         return true;
       }
 
@@ -675,7 +834,9 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
       const user = firebase.auth().currentUser;
 
       if (adminSess && adminSess.loggedIn) {
-        if (user && typeof db !== 'undefined' && db) {
+        const now = Date.now();
+        if (user && typeof db !== 'undefined' && db && (now - _lastAdminDocUpsert > 600000)) {
+          _lastAdminDocUpsert = now;
           db.collection('ek_admin_accounts').doc(user.uid).set({
             id: user.uid,
             uid: user.uid,
@@ -700,14 +861,18 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
         return false;
       }
 
+      const now = Date.now();
+      if (now - _lastAdminPermissionCheck < 120000) {
+        return true;
+      }
+
       if (typeof db !== 'undefined' && db) {
         try {
           const docSnap = await db.collection('ek_admin_accounts').doc(user.uid).get();
+          _lastAdminPermissionCheck = now;
           if (docSnap.exists) {
             const adminData = docSnap.data();
-            debugLog(`[Admin Permission Audit] Database lookup result:`, JSON.stringify(adminData));
             if (adminData && (adminData.role === 'admin' || adminData.role === 'superadmin') && adminData.active !== false) {
-              debugLog(`[Admin Permission Audit] GRANTED ✓. Safe to execute database write.`);
               return true;
             }
           }
@@ -838,6 +1003,23 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
         fbApp = firebase.initializeApp(firebaseConfig);
         debugLog('[Diagnostic Step 1] firebase.initializeApp SUCCEEDED! ProjectId:', firebaseConfig ? firebaseConfig.projectId : 'N/A');
         db = firebase.firestore();
+
+        if (db && typeof db.enablePersistence === 'function') {
+          db.enablePersistence({ synchronizeTabs: true })
+            .then(() => {
+              debugLog("Firestore offline persistence loaded successfully! ✓");
+            })
+            .catch(err => {
+              if (err.code === 'failed-precondition') {
+                console.warn("Firestore offline persistence: multiple tabs open or already running.");
+              } else if (err.code === 'unimplemented') {
+                console.warn("Firestore offline persistence: current browser does not support it.");
+              } else {
+                console.warn("Firestore offline persistence execution error:", err);
+              }
+            });
+        }
+
         if (typeof setupCloudRealtimeListeners2 === 'function') {
           try { setupCloudRealtimeListeners2(); } catch (e) {}
         }
@@ -892,22 +1074,6 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
               firebase.storage().setMaxUploadRetryTime(10000);
             }
           } catch (e) {}
-        }
-
-        if (db && typeof db.enablePersistence === 'function') {
-          db.enablePersistence({ synchronizeTabs: true })
-            .then(() => {
-              debugLog("Firestore offline persistence loaded successfully! ✓");
-            })
-            .catch(err => {
-              if (err.code === 'failed-precondition') {
-                console.warn("Firestore offline persistence: multiple tabs open.");
-              } else if (err.code === 'unimplemented') {
-                console.warn("Firestore offline persistence: current browser does not support it.");
-              } else {
-                console.warn("Firestore offline persistence execution error:", err);
-              }
-            });
         }
 
         if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -1176,30 +1342,31 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
     }
 
     async function resolveFirebaseUserSafely() {
-      if (isFirebaseAuthRestoring) {
-        showToast(currentLang === 'ta' ? "பயனர் விபரம் சரிபார்க்கப்படுகிறது... ⏳" : "Verifying user session... ⏳", "info");
-      }
-      let attempts = 0;
-      while (isFirebaseAuthRestoring && attempts < 30) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
       if (typeof firebase !== 'undefined' && firebase.auth) {
         const user = firebase.auth().currentUser;
         if (user && !user.isAnonymous) {
           return user;
         }
       }
+      let attempts = 0;
+      while (isFirebaseAuthRestoring && attempts < 5) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        attempts++;
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          const u = firebase.auth().currentUser;
+          if (u && !u.isAnonymous) return u;
+        }
+      }
       return null;
     }
 
     async function getAuthenticatedCustomerUser() {
+      const localActiveUser = typeof getActiveUser === 'function' ? getActiveUser() : null;
       const authUser = await resolveFirebaseUserSafely();
+      
       if (!authUser) {
-        console.warn("[Diagnostic] Authentication unavailable: Firebase currentUser is null or anonymous. Falling back to active local session.");
-        const localUser = getActiveUser();
-        if (localUser) {
-          return localUser;
+        if (localActiveUser) {
+          return localActiveUser;
         }
         return null;
       }
@@ -1240,6 +1407,18 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
             loyaltyPoints: 10,
             tier: "bronze"
           };
+        }
+      }
+
+      // Preserve local address & saved addresses if missing in Cloud user record
+      if (localActiveUser) {
+        if (!user.address && localActiveUser.address) {
+          user.address = localActiveUser.address;
+          user.latitude = localActiveUser.latitude;
+          user.longitude = localActiveUser.longitude;
+        }
+        if ((!user.savedAddresses || user.savedAddresses.length === 0) && localActiveUser.savedAddresses && localActiveUser.savedAddresses.length > 0) {
+          user.savedAddresses = localActiveUser.savedAddresses;
         }
       }
 
@@ -1297,6 +1476,11 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
 
     function cleanFirestoreData(obj) {
       if (obj === null || obj === undefined) return null;
+      if (typeof obj === 'number') {
+        if (isNaN(obj) || !isFinite(obj)) return null;
+        return obj;
+      }
+      if (typeof obj === 'function' || typeof obj === 'symbol') return null;
       if (typeof obj !== 'object') return obj;
       if (Array.isArray(obj)) {
         return obj.map(cleanFirestoreData);
@@ -1305,7 +1489,7 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
       for (const key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
           const val = obj[key];
-          if (val === undefined) {
+          if (val === undefined || typeof val === 'function' || typeof val === 'symbol') {
             res[key] = null;
           } else {
             res[key] = cleanFirestoreData(val);
@@ -1651,11 +1835,18 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
 
     function isUnitWeight(unit) {
       if (!unit) return true;
-      const u = unit.toLowerCase();
-      if (u === 'piece' || u === 'pc' || u === 'packet' || u === 'pack' ||
-          u === 'bunch' || u === 'dozen' || u === 'unit' || u === 'bottle' ||
-          u === 'box' || u === 'bundle' || u === 'tray' || u === 'can' ||
-          u === 'tin' || u === 'cup' || u === 'loaf' || u === 'roll' || u === 'set') {
+      const u = String(unit).toLowerCase().trim();
+      if (u === 'piece' || u === 'pieces' || u === 'pc' || u === 'pcs' ||
+          u === 'packet' || u === 'packets' || u === 'pack' || u === 'pkt' ||
+          u === 'bunch' || u === 'bunches' || u === 'dozen' || u === 'dozens' || u === 'doz' ||
+          u === 'unit' || u === 'units' || u === 'bottle' || u === 'bottles' || u === 'bot' ||
+          u === 'box' || u === 'boxes' || u === 'bundle' || u === 'bundles' ||
+          u === 'tray' || u === 'trays' || u === 'can' || u === 'cans' ||
+          u === 'tin' || u === 'tins' || u === 'cup' || u === 'cups' ||
+          u === 'loaf' || u === 'loaves' || u === 'roll' || u === 'rolls' ||
+          u === 'set' || u === 'sets' || u === 'nos' || u === 'no' || u === 'pouch' || u === 'pouches' ||
+          u === 'பீஸ்' || u === 'பாக்கெட்' || u === 'பாக்கெட்டுகள்' || u === 'முட்டை' ||
+          u === 'டஜன்' || u === 'கட்டு' || u === 'பெட்டி' || u === 'செட்' || u === 'அலகு') {
         return false;
       }
       return true;
@@ -1663,7 +1854,7 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
 
     function getUnitDisplay(unit, isTa = false, qty = 1) {
       if (!unit) return isTa ? 'கிலோ' : 'Kg';
-      const u = unit.toLowerCase();
+      const u = String(unit).toLowerCase().trim();
       if (typeof isTa !== 'boolean') {
         isTa = (isTa === 'ta');
       }
@@ -1679,14 +1870,23 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
         'milli litre': { sEn: 'ml', pEn: 'ml', sTa: 'மி.லி', pTa: 'மி.லி' },
         'milli litres': { sEn: 'ml', pEn: 'ml', sTa: 'மி.லி', pTa: 'மி.லி' },
         'piece': { sEn: 'Piece', pEn: 'Pieces', sTa: 'பீஸ்', pTa: 'பீஸ்' },
+        'pieces': { sEn: 'Piece', pEn: 'Pieces', sTa: 'பீஸ்', pTa: 'பீஸ்' },
         'pc': { sEn: 'Piece', pEn: 'Pieces', sTa: 'பீஸ்', pTa: 'பீஸ்' },
+        'pcs': { sEn: 'Piece', pEn: 'Pieces', sTa: 'பீஸ்', pTa: 'பீஸ்' },
+        'nos': { sEn: 'Piece', pEn: 'Pieces', sTa: 'பீஸ்', pTa: 'பீஸ்' },
+        'no': { sEn: 'Piece', pEn: 'Pieces', sTa: 'பீஸ்', pTa: 'பீஸ்' },
         'packet': { sEn: 'Packet', pEn: 'Packets', sTa: 'பாக்கெட்', pTa: 'பாக்கெட்டுகள்' },
+        'packets': { sEn: 'Packet', pEn: 'Packets', sTa: 'பாக்கெட்', pTa: 'பாக்கெட்டுகள்' },
         'pack': { sEn: 'Packet', pEn: 'Packets', sTa: 'பாக்கெட்', pTa: 'பாக்கெட்டுகள்' },
+        'pkt': { sEn: 'Packet', pEn: 'Packets', sTa: 'பாக்கெட்', pTa: 'பாக்கெட்டுகள்' },
         'bottle': { sEn: 'Bottle', pEn: 'Bottles', sTa: 'பாட்டில்', pTa: 'பாட்டில்கள்' },
+        'bot': { sEn: 'Bottle', pEn: 'Bottles', sTa: 'பாட்டில்', pTa: 'பாட்டில்கள்' },
         'box': { sEn: 'Box', pEn: 'Boxes', sTa: 'பெட்டி', pTa: 'பெட்டிகள்' },
+        'boxes': { sEn: 'Box', pEn: 'Boxes', sTa: 'பெட்டி', pTa: 'பெட்டிகள்' },
         'bunch': { sEn: 'Bunch', pEn: 'Bunches', sTa: 'கட்டு', pTa: 'கட்டுகள்' },
         'bundle': { sEn: 'Bundle', pEn: 'Bundles', sTa: 'கட்டு', pTa: 'கட்டுகள்' },
         'dozen': { sEn: 'Dozen', pEn: 'Dozens', sTa: 'டஜன்', pTa: 'டஜன்' },
+        'doz': { sEn: 'Dozen', pEn: 'Dozens', sTa: 'டஜன்', pTa: 'டஜன்' },
         'tray': { sEn: 'Tray', pEn: 'Trays', sTa: 'தட்டு', pTa: 'தட்டுகள்' },
         'can': { sEn: 'Can', pEn: 'Cans', sTa: 'கேன்', pTa: 'கேன்கள்' },
         'tin': { sEn: 'Tin', pEn: 'Tins', sTa: 'டின்', pTa: 'டின்கள்' },
@@ -1981,9 +2181,13 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
         localStorage.setItem(key, jsonStr);
 
         if (key === 'ek_settings' && typeof db !== 'undefined' && db && data && data._isAdminModified === true) {
-          db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(data))
-            .then(() => debugLog("[Cloud Sync] Settings auto-synced with Firestore!"))
-            .catch(e => console.error("[Cloud Sync] Settings auto-sync failed:", e));
+          const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+          const isAdmin = !!(adminSession && adminSession.loggedIn);
+          if (isAdmin) {
+            db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(data))
+              .then(() => debugLog("[Cloud Sync] Settings auto-synced with Firestore!"))
+              .catch(e => console.error("[Cloud Sync] Settings auto-sync failed:", e));
+          }
         }
 
         if (key === 'ek_orders') {
@@ -2053,11 +2257,15 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
                   }
                 });
               } else if (key === 'ek_settings') {
-                const settingsPayload = cleanFirestoreData(data);
-                db.collection('ek_settings').doc('global_config').set(settingsPayload)
-                  .catch(err => console.error("Firestore settings auto-upload fail (global_config):", err));
-                db.collection('ek_settings').doc('global').set(settingsPayload, { merge: true })
-                  .catch(err => console.error("Firestore settings auto-upload fail (global):", err));
+                const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+                const isAdmin = !!(adminSession && adminSession.loggedIn);
+                if (isAdmin && data && data._isAdminModified === true) {
+                  const settingsPayload = cleanFirestoreData(data);
+                  db.collection('ek_settings').doc('global_config').set(settingsPayload)
+                    .catch(err => console.error("Firestore settings auto-upload fail (global_config):", err));
+                  db.collection('ek_settings').doc('global').set(settingsPayload, { merge: true })
+                    .catch(err => console.error("Firestore settings auto-upload fail (global):", err));
+                }
               }
             } catch (err) {
               console.error("Non-blocking background sync fail:", err);
@@ -2092,7 +2300,12 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
             'ek_lang'
           ];
           for (const k of keys) {
-            const val = AndroidStorage.getData ? AndroidStorage.getData(k) : null;
+            let val = null;
+            if (typeof AndroidStorage.getData === 'function') {
+              try { val = AndroidStorage.getData(k, ""); } catch(e1) {
+                try { val = AndroidStorage.getData(k); } catch(e2) {}
+              }
+            }
             if (val) {
               localStorage.setItem(k, val);
             }

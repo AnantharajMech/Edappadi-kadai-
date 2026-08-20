@@ -64,6 +64,9 @@
     }
 
     function checkoutLyoAiOrder() {
+      if (typeof window.checkoutLyoAiOrder === 'function' && window.checkoutLyoAiOrder !== checkoutLyoAiOrder) {
+        return window.checkoutLyoAiOrder();
+      }
       window.isLyoAiCheckout = true;
       selectedPaymentMethod = 'Cash on Delivery';
       const items = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart : [];
@@ -74,12 +77,13 @@
         );
         return;
       }
-      if (typeof openQuickOrderScreen === 'function') {
-        openQuickOrderScreen();
-      } else if (typeof reviewQuickOrder === 'function') {
-        reviewQuickOrder();
+      if (typeof showTab === 'function') {
+        showTab('tab-cart');
       } else if (typeof showScreen === 'function') {
         showScreen('screen-cart');
+      }
+      if (typeof renderCartScreen === 'function') {
+        renderCartScreen();
       }
     }
 
@@ -375,8 +379,8 @@
           </div>
           <div style="display: flex; justify-content: space-between;">
             <span>${currentLang === 'ta' ? 'டெலிவரி கட்டணம்' : 'Delivery Charge'}</span>
-            <span style="font-weight: 700; color: ${pricing.isFreeDelivery ? '#34d399' : '#fff'};">
-              ${pricing.isFreeDelivery ? (currentLang === 'ta' ? 'இலவசம் 🎉' : 'FREE 🎉') : `₹${pricing.deliveryCharge}`}
+            <span style="font-weight: 700; color: #fff;">
+              ₹${pricing.deliveryCharge}
             </span>
           </div>
           ${pricing.discount > 0 ? `
@@ -881,16 +885,24 @@ function updateRiderLiveLocation() {
         } else {
           cardHtml = `
             <div class="card" style="margin-bottom:12px; padding:12px; border-color:${o.status === 'delivering' ? 'var(--accent-orange)' : (o.status === 'delivered' ? '#18181b' : '#222')}; border-left:4px solid ${borderLeftColor}; contain: layout style paint;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px dashed #222; padding-bottom:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px dashed #222; padding-bottom:6px; flex-wrap:wrap; gap:4px;">
                 <div style="display:flex; align-items:center; gap:6px;">
                   <strong style="color:#f59e0b; font-family:'JetBrains Mono',monospace; font-size:15px;">${o.id}</strong>
+                  <span class="badge" style="background:rgba(245,158,11,0.12); color:var(--accent-orange); border:1px solid rgba(245,158,11,0.3); font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:4px; text-transform:uppercase;">🏷️ ${escapeHtml(o.orderCategory || o.category || (o.items && o.items[0] && o.items[0].category) || 'General')}</span>
                   <span style="font-size:11px; color:#888;">${dateStr}</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:6px;">
+                  <span class="badge" style="background:rgba(59,130,246,0.12); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:4px;">⚙️ ${escapeHtml(o.orderStage || o.stage || (o.status === 'delivering' ? 'Out for Delivery' : (o.status === 'ready' ? 'Packed' : o.status)))}</span>
                   ${paymentBadge}
                   ${statusBadge}
                 </div>
               </div>
+
+              ${(o.orderInstructions || o.specialInstructions || o.adminNotes) ? `
+                <div style="background: rgba(245,158,11,0.06); border: 1px dashed rgba(245,158,11,0.3); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; font-size: 11.5px; color: #fbbf24;">
+                  <strong>📝 Instructions / குறிப்புகள்:</strong> ${escapeHtml(o.orderInstructions || o.specialInstructions || o.adminNotes)}
+                </div>
+              ` : ''}
 
               <div style="font-size:13px; margin-bottom:10px;">
                 <p style="font-weight:700; color:#fff; font-size:14px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">👤 ${escapeHtml(o.customerName)}</p>
@@ -2279,69 +2291,83 @@ function updateRiderLiveLocation() {
       const settings = getData('ek_settings', DEFAULT_SETTINGS);
       const rainAdd = (settings.rainMode || settings.rainSurchargeEnabled) ? (parseFloat(settings.rainCharge) || parseFloat(settings.rainSurchargeFee) || 20) : 0;
 
-      if (user && user.tier === 'gold') {
-        return { charge: 0, distance: 0, zoneName: 'Gold Member Free Delivery' }; // Gold tier always gets FREE delivery
-      }
-
       const textAddress = document.getElementById('cart-delivery-address');
       let custLat = textAddress ? parseFloat(textAddress.getAttribute('data-lat')) : null;
       let custLng = textAddress ? parseFloat(textAddress.getAttribute('data-lng')) : null;
 
-      if (!custLat && user) {
-        custLat = user.latitude;
-        custLng = user.longitude;
+      if ((!custLat || isNaN(custLat)) && user) {
+        custLat = parseFloat(user.latitude) || null;
+        custLng = parseFloat(user.longitude) || null;
       }
 
-      if (settings.useDynamicDistancePricing) {
-        let dist = null;
-        if (custLat && custLng) {
-          const storeLat = 11.5815;
-          const storeLng = 77.8488;
-          dist = calculateDistanceKm(storeLat, storeLng, custLat, custLng);
-        }
-
-        const zones = getDeliveryZones();
-        const sortedZones = [...zones].sort((a, b) => parseFloat(a.maxKm) - parseFloat(b.maxKm));
-
-        if (dist !== null && dist !== undefined && !isNaN(dist)) {
-          let matchedZone = null;
-          for (const zone of sortedZones) {
-            if (dist <= parseFloat(zone.maxKm)) {
-              matchedZone = zone;
-              break;
-            }
-          }
-
-          if (matchedZone) {
-            const zName = (matchedZone.nameTa || matchedZone.nameEn || matchedZone.name || 'GPS Zone') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '');
-            return {
-              charge: (parseFloat(matchedZone.charge) || 0) + rainAdd,
-              distance: dist,
-              zoneName: zName
-            };
-          } else if (sortedZones.length > 0) {
-            const lastZone = sortedZones[sortedZones.length - 1];
-            const basePrice = parseFloat(lastZone.charge) || (parseFloat(settings.deliveryBasePrice) || 20);
-            const extraKm = dist - parseFloat(lastZone.maxKm);
-            const mult = parseFloat(settings.deliveryKmMultiplier) || 12;
-            const computed = Math.round(basePrice + (extraKm * mult)) + rainAdd;
-            return {
-              charge: computed,
-              distance: dist,
-              zoneName: 'Outer Limits' + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '')
-            };
-          }
-        } else {
-          // If distance unavailable, use first zone charge as base rate
-          const firstZone = sortedZones[0];
-          const baseCharge = firstZone ? (parseFloat(firstZone.charge) || 20) + rainAdd : (parseFloat(settings.deliveryCharge) || 40) + rainAdd;
-          const zoneTitle = firstZone ? (firstZone.nameTa || firstZone.nameEn || 'Zone 1') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '') : 'Flat Rate';
-          return { charge: baseCharge, distance: null, zoneName: zoneTitle };
+      // Check stored custom delivery pin or coordinates
+      if ((!custLat || isNaN(custLat)) && typeof window !== 'undefined') {
+        if (window._currentCustomerLat && window._currentCustomerLng) {
+          custLat = parseFloat(window._currentCustomerLat);
+          custLng = parseFloat(window._currentCustomerLng);
         }
       }
 
-      const baseCharge = (parseFloat(settings.deliveryCharge) || 40) + rainAdd;
-      return { charge: baseCharge, distance: null, zoneName: 'Flat Rate' + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '') };
+      const storeLat = parseFloat(settings.storeLat) || 11.5815;
+      const storeLng = parseFloat(settings.storeLng) || 77.8488;
+      const zones = getDeliveryZones();
+      const sortedZones = [...zones].sort((a, b) => parseFloat(a.maxKm) - parseFloat(b.maxKm));
+
+      let dist = null;
+      if (custLat && custLng && !isNaN(custLat) && !isNaN(custLng)) {
+        dist = calculateDistanceKm(storeLat, storeLng, custLat, custLng);
+      }
+
+      // If exact GPS not found, estimate based on address keyword matching with delivery zones
+      if (dist === null) {
+        const addressText = (textAddress ? textAddress.value : '') || (user ? user.address : '') || '';
+        const lowerAddr = addressText.toLowerCase();
+        if (lowerAddr.includes('town') || lowerAddr.includes('bus stand') || lowerAddr.includes('market') || lowerAddr.includes('bazaar') || lowerAddr.includes('main road') || lowerAddr.includes('kovil') || lowerAddr.includes('street')) {
+          dist = 1.8; // Local Town Zone 1
+        } else if (lowerAddr.includes('vellandivalasai') || lowerAddr.includes('avaniperur') || lowerAddr.includes('chithur') || lowerAddr.includes('dadapuram')) {
+          dist = 4.5; // Suburbs Near Zone 2
+        } else if (lowerAddr.includes('poolampatti') || lowerAddr.includes('konganapuram') || lowerAddr.includes('nedungulam')) {
+          dist = 8.2; // Suburbs Far Zone 3
+        } else if (lowerAddr.includes('jalakandapuram') || lowerAddr.includes('tharamangalam') || lowerAddr.includes('sankari') || lowerAddr.includes('mecheri')) {
+          dist = 13.5; // Outer Boundary Zone 4
+        }
+      }
+
+      if (dist !== null && dist !== undefined && !isNaN(dist)) {
+        let matchedZone = null;
+        for (const zone of sortedZones) {
+          if (dist <= parseFloat(zone.maxKm)) {
+            matchedZone = zone;
+            break;
+          }
+        }
+
+        if (matchedZone) {
+          const zName = (matchedZone.nameTa || matchedZone.nameEn || matchedZone.name || 'GPS Zone') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '');
+          return {
+            charge: (parseFloat(matchedZone.charge) || 20) + rainAdd,
+            distance: dist,
+            zoneName: zName
+          };
+        } else if (sortedZones.length > 0) {
+          const lastZone = sortedZones[sortedZones.length - 1];
+          const basePrice = parseFloat(lastZone.charge) || (parseFloat(settings.deliveryBasePrice) || 20);
+          const extraKm = dist - parseFloat(lastZone.maxKm);
+          const mult = parseFloat(settings.deliveryKmMultiplier) || 12;
+          const computed = Math.round(basePrice + (extraKm * mult)) + rainAdd;
+          return {
+            charge: computed,
+            distance: dist,
+            zoneName: 'Outer Limits' + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '')
+          };
+        }
+      }
+
+      // If distance still unavailable, use first zone charge as standard baseline rate
+      const firstZone = sortedZones[0];
+      const baseCharge = firstZone ? (parseFloat(firstZone.charge) || 20) + rainAdd : (parseFloat(settings.deliveryCharge) || 40) + rainAdd;
+      const zoneTitle = firstZone ? (firstZone.nameTa || firstZone.nameEn || 'Zone 1') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '') : 'Flat Rate';
+      return { charge: baseCharge, distance: null, zoneName: zoneTitle };
     }
 
     window.getDeliveryZones = getDeliveryZones;

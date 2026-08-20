@@ -3,17 +3,16 @@
       const container = document.getElementById('admin-categories-list');
       if (!container) return;
 
-      const isExpanded = force || sessionStorage.getItem('collapse_categories') === 'expanded';
-      if (!isExpanded) {
-        container.innerHTML = '';
-        return;
-      }
-
       const catList = getCategoriesList();
 
       const badge = document.getElementById('admin-categories-count-badge');
       if (badge) {
         badge.textContent = `${catList.length} ${catList.length === 1 ? 'Category' : 'Categories'}`;
+      }
+
+      if (!catList || catList.length === 0) {
+        container.innerHTML = `<p style="color: var(--text-secondary); font-size: 12px; text-align: center; padding: 12px;">No categories available.</p>`;
+        return;
       }
 
       container.innerHTML = catList.map((c, index) => {
@@ -174,6 +173,14 @@
 
           saveData('ek_categories', catList);
           invalidateDataCache('ek_categories');
+          window._categoriesListCachedValue = null;
+          _categoriesListCachedValue = null;
+          window._lastCategoryPillsHash = '';
+          _lastCategoryPillsHash = '';
+          window._lastDataSnapshotHash = '';
+          _lastDataSnapshotHash = '';
+          window._lastProductsHash = '';
+          _lastProductsHash = '';
 
           if (typeof db !== 'undefined' && db) {
             try {
@@ -194,7 +201,9 @@
 
           showToast("Category updated successfully!", "success");
           renderAdminDashboard();
-          renderCategoryPills();
+          if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true);
+          if (typeof renderCategoryPills === 'function') renderCategoryPills();
+          if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true);
           if (typeof populateProductCategoryOptions === 'function') {
             populateProductCategoryOptions();
           }
@@ -223,8 +232,17 @@
         const idx = catList.findIndex(c => c.id === id);
         if (idx !== -1) {
           const deleted = catList.splice(idx, 1);
+          catList.forEach((c, i) => { c.order = i; });
           saveData('ek_categories', catList);
-          _categoriesListCachedValue = null; // Clear cache
+          invalidateDataCache('ek_categories');
+          window._categoriesListCachedValue = null;
+          _categoriesListCachedValue = null;
+          window._lastCategoryPillsHash = '';
+          _lastCategoryPillsHash = '';
+          window._lastDataSnapshotHash = '';
+          _lastDataSnapshotHash = '';
+          window._lastProductsHash = '';
+          _lastProductsHash = '';
 
           if (typeof db !== 'undefined' && db) {
             db.collection('ek_categories').doc(id).delete()
@@ -234,7 +252,9 @@
 
           showToast("Category deleted successfully!", "success");
           renderAdminDashboard();
-          renderCategoryPills();
+          if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true);
+          if (typeof renderCategoryPills === 'function') renderCategoryPills();
+          if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true);
           if (typeof populateProductCategoryOptions === 'function') {
             populateProductCategoryOptions();
           }
@@ -251,6 +271,15 @@
         matched.isHidden = !matched.isHidden;
         matched.updatedAt = new Date().toISOString();
         saveData('ek_categories', catList);
+        invalidateDataCache('ek_categories');
+        window._categoriesListCachedValue = null;
+        _categoriesListCachedValue = null;
+        window._lastCategoryPillsHash = '';
+        _lastCategoryPillsHash = '';
+        window._lastDataSnapshotHash = '';
+        _lastDataSnapshotHash = '';
+        window._lastProductsHash = '';
+        _lastProductsHash = '';
 
         if (typeof db !== 'undefined' && db) {
           db.collection('ek_categories').doc(id).set(cleanFirestoreData(matched))
@@ -264,7 +293,9 @@
           `பிரிவு <strong>${matched.nameTa} (${matched.nameEn})</strong>-இன் பார்வை நிலை (Visibility Status) வெற்றிகரமாக மாற்றி அமைக்கப்பட்டது.<br><br><span style="font-size:11.5px;color:var(--text-muted);">Successfully Updated! Category visibility status has been modified.</span>`
         );
         renderAdminDashboard();
-        renderCategoryPills();
+        if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true);
+        if (typeof renderCategoryPills === 'function') renderCategoryPills();
+        if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true);
       }
     }
 
@@ -320,6 +351,7 @@
     }
 
     function reorderCategoryItem(index, direction) {
+      window._categoriesListCachedValue = null;
       _categoriesListCachedValue = null;
       const catList = getCategoriesList();
       const targetIndex = index + direction;
@@ -334,10 +366,16 @@
           c.updatedAt = new Date().toISOString();
         });
 
+        window._categoriesListCachedValue = null;
         _categoriesListCachedValue = null;
+        window._lastCategoryPillsHash = '';
         _lastCategoryPillsHash = '';
+        window._lastDataSnapshotHash = '';
         _lastDataSnapshotHash = '';
+        window._lastProductsHash = '';
+        _lastProductsHash = '';
         saveData('ek_categories', catList);
+        invalidateDataCache('ek_categories');
 
         if (typeof db !== 'undefined' && db) {
           try {
@@ -359,7 +397,8 @@
 
         showToast("Category order updated!", "success");
         renderAdminDashboard();
-        renderCategoryPills();
+        if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true);
+        if (typeof renderCategoryPills === 'function') renderCategoryPills();
         if (typeof renderHomeScreenProducts === 'function') {
           renderHomeScreenProducts(true);
         }
@@ -406,6 +445,15 @@
 
       list.push(newCat);
       saveData('ek_categories', list);
+      invalidateDataCache('ek_categories');
+      window._categoriesListCachedValue = null;
+      _categoriesListCachedValue = null;
+      window._lastCategoryPillsHash = '';
+      _lastCategoryPillsHash = '';
+      window._lastDataSnapshotHash = '';
+      _lastDataSnapshotHash = '';
+      window._lastProductsHash = '';
+      _lastProductsHash = '';
 
       if (typeof db !== 'undefined' && db) {
         db.collection('ek_categories').doc(newId).set(cleanFirestoreData(newCat))
@@ -676,33 +724,64 @@ function startCarouselAutoSlide(count) {
 window._editingBannerId = null;
 
 function compressAndCacheBannerImage(event) {
-  const file = event?.target?.files?.[0];
+  const file = event?.target?.files?.[0] || document.getElementById('admin-banner-file-input')?.files?.[0];
   if (!file) return;
+
+  const emptyState = document.getElementById('admin-banner-empty-state');
+  const previewContainer = document.getElementById('admin-banner-preview-container');
+  const previewImg = document.getElementById('admin-banner-preview-img');
+  const urlInp = document.getElementById('admin-banner-url-input');
+
+  if (previewContainer) previewContainer.style.display = 'block';
+  if (emptyState) emptyState.style.display = 'none';
+
+  showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "படம் சுருக்கப்படுகிறது... ⏳" : "Compressing image... ⏳", "info");
+
   const reader = new FileReader();
+  reader.onerror = function() {
+    showToast("Error reading selected file", "error");
+    if (emptyState) emptyState.style.display = 'flex';
+    if (previewContainer) previewContainer.style.display = 'none';
+  };
   reader.onload = function(e) {
     const base64Str = e.target.result;
     const img = new Image();
     img.onload = function() {
-      const canvas = document.createElement('canvas');
-      const maxW = 800;
-      let w = img.width;
-      let h = img.height;
-      if (w > maxW) {
-        h = Math.round((h * maxW) / w);
-        w = maxW;
+      try {
+        const canvas = document.createElement('canvas');
+        const maxW = 800;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW) {
+          h = Math.round((h * maxW) / w);
+          w = maxW;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        
+        if (urlInp) urlInp.value = compressed;
+        if (previewImg) {
+          previewImg.style.borderColor = '#10b981';
+          previewImg.src = compressed;
+        }
+        if (previewContainer) previewContainer.style.display = 'block';
+        if (emptyState) emptyState.style.display = 'none';
+        showToast(typeof currentLang !== 'undefined' && currentLang === 'ta' ? "படம் தயார் ✓" : "Banner image ready ✓", "success");
+      } catch(err) {
+        console.error("Image compression error:", err);
+        if (urlInp) urlInp.value = base64Str;
+        if (previewImg) previewImg.src = base64Str;
+        if (previewContainer) previewContainer.style.display = 'block';
+        if (emptyState) emptyState.style.display = 'none';
       }
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const compressed = canvas.toDataURL('image/jpeg', 0.8);
-      
-      const urlInp = document.getElementById('admin-banner-url-input');
-      const previewImg = document.getElementById('admin-banner-preview-img');
-      const previewContainer = document.getElementById('admin-banner-preview-container');
-      if (urlInp) urlInp.value = compressed;
-      if (previewImg) previewImg.src = compressed;
-      if (previewContainer) previewContainer.style.display = 'block';
+    };
+    img.onerror = function() {
+      showToast("Invalid image file", "error");
+      if (emptyState) emptyState.style.display = 'flex';
+      if (previewContainer) previewContainer.style.display = 'none';
     };
     img.src = base64Str;
   };
@@ -713,13 +792,22 @@ function updateAdminBannerUrlPreview() {
   const urlInp = document.getElementById('admin-banner-url-input');
   const previewImg = document.getElementById('admin-banner-preview-img');
   const previewContainer = document.getElementById('admin-banner-preview-container');
+  const emptyState = document.getElementById('admin-banner-empty-state');
   if (urlInp && previewImg && previewContainer) {
     const val = urlInp.value.trim();
     if (val) {
+      previewImg.onerror = function() {
+        previewImg.style.borderColor = '#ef4444';
+      };
+      previewImg.onload = function() {
+        previewImg.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+      };
       previewImg.src = val;
       previewContainer.style.display = 'block';
+      if (emptyState) emptyState.style.display = 'none';
     } else {
       previewContainer.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'flex';
     }
   }
 }
@@ -729,10 +817,15 @@ function deleteSelectedBannerPhoto() {
   const urlInp = document.getElementById('admin-banner-url-input');
   const previewImg = document.getElementById('admin-banner-preview-img');
   const previewContainer = document.getElementById('admin-banner-preview-container');
+  const emptyState = document.getElementById('admin-banner-empty-state');
   if (fileInp) fileInp.value = '';
   if (urlInp) urlInp.value = '';
-  if (previewImg) previewImg.src = '';
+  if (previewImg) {
+    previewImg.src = '';
+    previewImg.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+  }
   if (previewContainer) previewContainer.style.display = 'none';
+  if (emptyState) emptyState.style.display = 'flex';
 }
 
 function addNewSlidingBanner() {
@@ -816,9 +909,16 @@ function editSlidingBanner(bannerId) {
 
   window._editingBannerId = bannerId;
 
+  try {
+    if (typeof initSectionCollapse === 'function') {
+      initSectionCollapse('carousel', 'open');
+    }
+  } catch(e) {}
+
   const urlInp = document.getElementById('admin-banner-url-input');
   const previewImg = document.getElementById('admin-banner-preview-img');
   const previewContainer = document.getElementById('admin-banner-preview-container');
+  const emptyState = document.getElementById('admin-banner-empty-state');
   const titleTaInp = document.getElementById('admin-banner-title-ta');
   const titleEnInp = document.getElementById('admin-banner-title-en');
   const subTaInp = document.getElementById('admin-banner-sub-ta');
@@ -828,8 +928,12 @@ function editSlidingBanner(bannerId) {
   const cancelBtn = document.getElementById('admin-banner-cancel-btn');
 
   if (urlInp) urlInp.value = b.image || '';
-  if (previewImg) previewImg.src = b.image || '';
+  if (previewImg) {
+    previewImg.src = b.image || '';
+    previewImg.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+  }
   if (previewContainer) previewContainer.style.display = b.image ? 'block' : 'none';
+  if (emptyState) emptyState.style.display = b.image ? 'none' : 'flex';
 
   if (titleTaInp) titleTaInp.value = b.titleTa || '';
   if (titleEnInp) titleEnInp.value = b.titleEn || '';
@@ -934,12 +1038,11 @@ function renderAdminBannerList(force = false) {
   const badgeEl = document.getElementById('admin-carousel-count-badge');
   if (!listEl) return;
 
-  const isCloudSynced = window._hasFreshCloudData || window._hasFreshSettings || getData('ek_settings_synced') === true || getData('ek_cloud_synced') === true;
   const settings = typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS);
   let banners = [];
-  if (settings && Array.isArray(settings.slidingBanners)) {
+  if (settings && Array.isArray(settings.slidingBanners) && settings.slidingBanners.length > 0) {
     banners = settings.slidingBanners;
-  } else if (!isCloudSynced && typeof DEFAULT_SETTINGS !== 'undefined' && Array.isArray(DEFAULT_SETTINGS.slidingBanners)) {
+  } else if (typeof DEFAULT_SETTINGS !== 'undefined' && Array.isArray(DEFAULT_SETTINGS.slidingBanners)) {
     banners = DEFAULT_SETTINGS.slidingBanners;
   }
 
@@ -1255,6 +1358,7 @@ function renderHomeScreen(forceReRender = false) {
                 const image = entry.target;
                 const src = image.getAttribute('data-src');
                 if (src) {
+                  image.decoding = 'async';
                   image.onload = function() {
                     if (image.classList.contains('loaded')) return;
                     image.classList.add('loaded');
@@ -3367,6 +3471,8 @@ function renderHomeScreen(forceReRender = false) {
     /**
      * Infallible order financial calculation formula to ensure identical values everywhere,
      * including Subtotal, Delivery Fee, Loyalty Discount, Coupon Discount, and Grand Total.
+     * Delivery fee is strictly calculated based on Delivery Zone and distance for all customers.
+     * Wallet points provide optional item discounts on the subtotal.
      */
     function calculateOrderFinancials(subtotal, user, appliedCouponCode, useLoyaltyPts, cartItems = null) {
       const numericSubtotal = Math.max(0, parseFloat(subtotal) || 0);
@@ -3388,45 +3494,28 @@ function renderHomeScreen(forceReRender = false) {
       const settings = getSettings();
       const currentCart = Array.isArray(cartItems) ? cartItems : (typeof cart !== 'undefined' ? cart : []);
 
-      let deliveryFee = settings.deliveryCharge !== undefined ? parseFloat(settings.deliveryCharge) : 40;
+      // 1. Calculate Delivery Fee strictly based on Customer & Restaurant Delivery Zone / Distance
+      let deliveryFee = parseFloat(settings.deliveryCharge) || 40;
       let distance = null;
       let zoneName = 'Flat Rate';
 
-      let isFreeDel = false;
-      let freeDelReason = null;
-
-      if (typeof LyoAiEngine !== 'undefined' && LyoAiEngine.DeliveryChargeCalculator) {
-        const delRes = LyoAiEngine.DeliveryChargeCalculator.calculateDelivery(numericSubtotal, currentCart, settings);
-        isFreeDel = delRes.isFreeDelivery;
-        freeDelReason = delRes.freeDeliveryReason;
-      } else {
-        const subtotalFree = numericSubtotal >= 500;
-        const allEligible = currentCart.length > 0 && currentCart.every(item => item && item.isFreeDeliveryEligible === true);
-        isFreeDel = subtotalFree || allEligible;
-        freeDelReason = allEligible ? 'product' : (subtotalFree ? 'subtotal' : null);
-      }
-
-      if (user && (user.tier || '').toLowerCase() === 'gold') {
-        deliveryFee = 0;
-        zoneName = 'Gold Member Free Delivery';
-      } else if (isFreeDel) {
-        deliveryFee = 0;
-        zoneName = freeDelReason === 'product' ? 'Free Delivery - Eligible Product(s)' : 'Free Delivery';
-      } else if (settings.useDynamicDistancePricing) {
+      if (typeof getDynamicDeliveryCharge === 'function') {
         const dynFee = getDynamicDeliveryCharge(numericSubtotal, user);
-        deliveryFee = parseFloat(dynFee.charge) || 0;
+        deliveryFee = parseFloat(dynFee.charge) || deliveryFee;
         distance = dynFee.distance;
-        zoneName = dynFee.zoneName;
+        zoneName = dynFee.zoneName || 'Delivery Zone';
       }
 
+      // 2. Loyalty / Wallet Points Discount:
+      // Points can be used ONLY as a discount on the order subtotal, never eliminating the mandatory delivery fee!
       let loyaltyDiscount = 0;
       if (useLoyaltyPts && user && user.loyaltyPoints > 0) {
         const maxPointsDiscount = Math.floor(parseFloat(user.loyaltyPoints) / 10) || 0;
         loyaltyDiscount = Math.min(maxPointsDiscount, numericSubtotal);
       }
 
+      // 3. Coupon Discount:
       let couponDiscount = 0;
-
       if (appliedCouponCode) {
         const coupons = getCoupons();
         const c = coupons.find(x => x.code === appliedCouponCode);
@@ -3436,10 +3525,8 @@ function renderHomeScreen(forceReRender = false) {
             const couponRate = parseFloat(c.rate) || 0;
             if (c.type === 'percentage') {
               couponDiscount = Math.round((numericSubtotal * couponRate) / 100);
-            } else if (c.type === 'fixed') {
-              couponDiscount = couponRate;
-            } else if (c.type === 'freeship') {
-              deliveryFee = 0;
+            } else if (c.type === 'fixed' || c.type === 'freeship') {
+              couponDiscount = couponRate || 20;
             }
 
             const maxRemainingSubtotal = Math.max(0, numericSubtotal - loyaltyDiscount);
@@ -3449,15 +3536,15 @@ function renderHomeScreen(forceReRender = false) {
         }
       }
 
-      const baseSum = numericSubtotal + deliveryFee;
-      const totalDiscounts = loyaltyDiscount + couponDiscount;
-      const grandTotal = Math.max(0, Math.round(baseSum - totalDiscounts));
+      // 4. Grand Total = Discounted Items Subtotal + Mandatory Delivery Fee
+      const discountedSubtotal = Math.max(0, numericSubtotal - loyaltyDiscount - couponDiscount);
+      const grandTotal = Math.max(0, Math.round(discountedSubtotal + deliveryFee));
 
       return {
         subtotal: numericSubtotal,
         deliveryFee: Math.round(deliveryFee),
-        isFreeDelivery: isFreeDel,
-        freeDeliveryReason: freeDelReason,
+        isFreeDelivery: false,
+        freeDeliveryReason: null,
         loyaltyDiscount: Math.round(loyaltyDiscount),
         couponDiscount: Math.round(couponDiscount),
         grandTotal: grandTotal,
@@ -3493,41 +3580,12 @@ function renderHomeScreen(forceReRender = false) {
 
       const deliveryEl = document.getElementById('bill-delivery');
       if (deliveryEl) {
-        if (financials.deliveryFee === 0) {
-          deliveryEl.innerText = currentLang === 'ta' ? 'இலவசம் 🎉' : 'FREE 🎉';
-        } else {
-          deliveryEl.innerText = `₹${financials.deliveryFee}`;
-        }
+        deliveryEl.innerText = `₹${financials.deliveryFee}`;
       }
 
       let deliveryNoteEl = document.getElementById('bill-delivery-note');
-      if (!deliveryNoteEl && deliveryEl && deliveryEl.parentElement) {
-        deliveryNoteEl = document.createElement('div');
-        deliveryNoteEl.id = 'bill-delivery-note';
-        deliveryNoteEl.style.fontSize = '11px';
-        deliveryNoteEl.style.fontWeight = '700';
-        deliveryNoteEl.style.textAlign = 'right';
-        deliveryNoteEl.style.marginTop = '2px';
-        deliveryNoteEl.style.marginBottom = '6px';
-        deliveryEl.parentElement.insertAdjacentElement('afterend', deliveryNoteEl);
-      }
-
       if (deliveryNoteEl) {
-        if (financials.isFreeDelivery && financials.freeDeliveryReason === 'product') {
-          deliveryNoteEl.style.display = 'block';
-          deliveryNoteEl.style.color = 'var(--accent-green, #10b981)';
-          deliveryNoteEl.innerText = currentLang === 'ta'
-            ? '🎉 இலவச டெலிவரி - தகுதியான பொருள்'
-            : '🎉 Free Delivery - Eligible Product(s) in Cart';
-        } else if (financials.isFreeDelivery && financials.freeDeliveryReason === 'subtotal') {
-          deliveryNoteEl.style.display = 'block';
-          deliveryNoteEl.style.color = 'var(--accent-green, #10b981)';
-          deliveryNoteEl.innerText = currentLang === 'ta'
-            ? '🎉 ₹500 மேலான ஆர்டர்களுக்கு இலவச டெலிவரி'
-            : '🎉 Free Delivery on orders above ₹500';
-        } else {
-          deliveryNoteEl.style.display = 'none';
-        }
+        deliveryNoteEl.style.display = 'none';
       }
 
       const discountRow = document.getElementById('bill-discount-row');

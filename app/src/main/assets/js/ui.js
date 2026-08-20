@@ -1519,11 +1519,16 @@
         const productNames = o.items.map(item => item.englishName || item.tamilName).join(', ');
         const weights = o.items.map(item => getFormattedItemQty(item, currentLang)).join(', ');
         const dateStrFull = orderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' • ' + orderDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        const itemCatBadge = escapeHtml(o.orderCategory || o.category || (o.items && o.items[0] && o.items[0].category) || 'General').toUpperCase();
+        const stageBadgeVal = escapeHtml(o.orderStage || o.stage || displayStatus);
 
         const record = `
           <div class="card" style="padding:10px 14px; margin-bottom:10px; cursor:pointer; background:#0c0d0f; border:1px solid rgba(255,255,255,0.08); border-radius:12px; box-sizing:border-box; ${trackingHighlightStyle}" onclick="openCustomerOrderDetail('${o.id}')">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <strong style="font-size:11.5px; color:#a1a1aa; font-family:'Poppins', sans-serif; font-weight:600; letter-spacing:0.5px;">${o.id}</strong>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <strong style="font-size:11.5px; color:#a1a1aa; font-family:'Poppins', sans-serif; font-weight:600; letter-spacing:0.5px;">${o.id}</strong>
+                <span class="badge" style="background:rgba(245,158,11,0.12); color:var(--accent-orange); border:1px solid rgba(245,158,11,0.3); font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:4px; text-transform:uppercase;">🏷️ ${itemCatBadge}</span>
+              </div>
               <div style="display:flex; align-items:center; gap:6px;">
                 ${trackingIndicator}
                 <span class="badge ${badgeClass}" ${deliveryBadgeStyle} style="font-size:9.5px; font-weight:700; padding:3px 8px; border-radius:6px; text-transform:uppercase; font-family:'Poppins', sans-serif; letter-spacing:0.3px;">${displayStatus}</span>
@@ -1539,8 +1544,9 @@
               <span style="font-size:14px; font-weight:800; color:var(--accent-green); font-family:'Poppins', sans-serif;">₹${o.totalAmount}</span>
             </div>
 
-            <div style="font-size:10px; color:var(--text-muted); text-align:left; font-weight:500; margin-bottom:8px; font-family:'Poppins', sans-serif;">
-              ${dateStrFull}
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--text-muted); margin-bottom:8px; font-family:'Poppins', sans-serif;">
+              <span>${dateStrFull}</span>
+              <span style="color:#60a5fa; font-weight:600;">⚙️ ${stageBadgeVal}</span>
             </div>
 
             ${actionButtonHtml}
@@ -1576,6 +1582,32 @@
       statusBadge.innerText = o.status.toUpperCase();
       const badgeClass = isPendingOrderStatus(o.status) ? 'badge-pending' : isReadyOrderStatus(o.status) ? 'badge-ready' : isDeliveredOrderStatus(o.status) ? 'badge-delivered' : 'badge-rejected';
       statusBadge.className = `badge ${badgeClass}`;
+
+      const catBadge = document.getElementById('cod-order-category');
+      const orderCategoryVal = o.orderCategory || o.category || (o.items && o.items[0] && o.items[0].category) || 'General';
+      if (catBadge) {
+        catBadge.innerText = `🏷️ ${orderCategoryVal.toUpperCase()}`;
+        catBadge.style.display = 'inline-block';
+      }
+
+      const stageBadge = document.getElementById('cod-order-stage');
+      const orderStageVal = o.orderStage || o.stage || (isPendingOrderStatus(o.status) ? 'Received' : isReadyOrderStatus(o.status) ? 'Packed & Ready' : isDeliveredOrderStatus(o.status) ? 'Delivered' : o.status);
+      if (stageBadge) {
+        stageBadge.innerText = `⚙️ ${orderStageVal}`;
+        stageBadge.style.display = 'inline-block';
+      }
+
+      const instBox = document.getElementById('cod-instructions-box');
+      const instText = document.getElementById('cod-instructions-text');
+      const instructionsVal = o.orderInstructions || o.specialInstructions || o.adminNotes || '';
+      if (instBox && instText) {
+        if (instructionsVal) {
+          instBox.style.display = 'block';
+          instText.innerText = instructionsVal;
+        } else {
+          instBox.style.display = 'none';
+        }
+      }
 
       const listContainer = document.getElementById('cod-items-list');
       listContainer.innerHTML = '';
@@ -2967,7 +2999,7 @@
         badgeElem.className = "badge";
         badgeElem.style.background = "rgba(234,179,8,0.15)";
         badgeElem.style.color = "#eab308";
-        badgeElem.innerText = "🥇 Gold Tier Member (Free Ship)";
+        badgeElem.innerText = "🥇 Gold Tier Member (2.0x Points)";
       } else if (user.tier === 'silver') {
         badgeElem.className = "badge";
         badgeElem.style.background = "rgba(156,163,175,0.15)";
@@ -2977,7 +3009,7 @@
         badgeElem.className = "badge";
         badgeElem.style.background = "rgba(249,115,22,0.15)";
         badgeElem.style.color = "#f97316";
-        badgeElem.innerText = "🥉 Bronze Tier Member";
+        badgeElem.innerText = "🥉 Bronze Tier Member (1.0x Points)";
       }
 
       const pts = Math.round(user.loyaltyPoints);
@@ -2998,7 +3030,7 @@
         progressText.innerText = `${pts} / 500 pts (${pct}%) • Earn ${req} more pts as landmark to Gold!`;
         progressBar.style.width = `${pct}%`;
       } else {
-        progressText.innerText = `${pts} pts • Ultimate GOLD LEVEL reached. Wave free delivery charge!`;
+        progressText.innerText = `${pts} pts • Ultimate GOLD LEVEL reached. Enjoy 2x loyalty rewards on all orders!`;
         progressBar.style.width = "100%";
       }
 
@@ -3289,8 +3321,17 @@ function saveProfileChanges() {
 
       if (userIdx !== -1) {
         const userObj = users[userIdx];
+        const registeredPhone = userObj.phone || session.phone;
+        
+        // Prevent changing registered phone number
+        if (phoneVal && registeredPhone && phoneVal !== registeredPhone) {
+          showToast(currentLang === 'ta' ? "பதிவு செய்யப்பட்ட மொபைல் எண்ணை மாற்ற முடியாது!" : "Registered mobile number cannot be changed!", "error");
+          if (profEditPhone) profEditPhone.value = registeredPhone;
+          return;
+        }
+
         userObj.name = nameVal;
-        userObj.phone = phoneVal;
+        userObj.phone = registeredPhone || phoneVal;
         if (emailVal) userObj.email = emailVal;
         userObj.address = adrVal;
         userObj.latitude = lat;
@@ -3940,3 +3981,530 @@ function saveProfileChanges() {
       }, 200);
     }
     window.debouncedSearchTracker = debouncedSearchTracker;
+
+    /* ==========================================================================
+       ★ UNIVERSAL MOBILE PULL-TO-REFRESH SYSTEM
+       Provides consistent pull-down data refreshing for:
+       - Customer Pages (Home, Cart, Tracker, Profile, Offers, Quick Order)
+       - Delivery Partner Pages (Assigned orders, ready orders, earnings, GPS)
+       - Admin Pages (Dashboard, Orders, Products, Customers, Zones, Sync)
+       ========================================================================== */
+    window._ptrRefreshing = false;
+
+    async function refreshCurrentScreenData(screenId) {
+      debugLog("[Universal PTR] Refreshing data for screen:", screenId);
+
+      // --- CUSTOMER PAGES ---
+      if (screenId === 'screen-home') {
+        try {
+          if (typeof fetchSettingsOnce === 'function') await fetchSettingsOnce();
+          if (typeof fetchProductsOnce === 'function') await fetchProductsOnce();
+        } catch (e) {
+          console.warn("[PTR Home] Cloud fetch notice:", e);
+        }
+        if (typeof renderHomeScreen === 'function') renderHomeScreen();
+        if (typeof renderSlidingBanners === 'function') renderSlidingBanners();
+        if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts();
+        if (typeof renderCategoryPills === 'function') renderCategoryPills();
+        if (typeof updateCartBadge === 'function') updateCartBadge();
+        if (typeof updateLyoDeliveryBanner === 'function') updateLyoDeliveryBanner();
+        return;
+      }
+
+      if (screenId === 'screen-cart') {
+        try {
+          if (typeof fetchSettingsOnce === 'function') await fetchSettingsOnce();
+        } catch (e) {
+          console.warn("[PTR Cart] Settings sync notice:", e);
+        }
+        if (typeof renderCartScreen === 'function') renderCartScreen();
+        if (typeof updateCartBadge === 'function') updateCartBadge();
+        if (typeof refreshLiveBriefing === 'function') refreshLiveBriefing(false);
+        return;
+      }
+
+      if (screenId === 'screen-track') {
+        try {
+          const session = typeof getActiveSession === 'function' ? getActiveSession() : null;
+          if (session && typeof db !== 'undefined' && db) {
+            const custId = session.userId || session.id || session.uid;
+            const custPhone = session.phone;
+            let snap = null;
+            if (custId && custId !== 'guest_tracker') {
+              snap = await db.collection('ek_orders').where('customerId', '==', String(custId)).limit(40).get().catch(() => null);
+            } else if (custPhone) {
+              snap = await db.collection('ek_orders').where('customerPhone', '==', String(custPhone)).limit(40).get().catch(() => null);
+            }
+            if (snap && !snap.empty) {
+              const snapList = [];
+              snap.forEach(d => {
+                const data = d.data();
+                if (data) snapList.push({ ...data, id: d.id || data.id });
+              });
+              const prev = getData('ek_orders', []);
+              const orderMap = new Map();
+              if (Array.isArray(prev)) prev.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+              snapList.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+              saveData('ek_orders', Array.from(orderMap.values()));
+              if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+            }
+          }
+        } catch (e) {
+          console.warn("[PTR Track] Orders sync notice:", e);
+        }
+        if (typeof renderTrackerScreen === 'function') renderTrackerScreen();
+        return;
+      }
+
+      if (screenId === 'screen-profile') {
+        try {
+          const session = typeof getActiveSession === 'function' ? getActiveSession() : null;
+          if (session && session.userId && typeof loadUserData === 'function') {
+            await loadUserData(session.userId).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("[PTR Profile] User sync notice:", e);
+        }
+        if (typeof renderProfileScreen === 'function') renderProfileScreen();
+        return;
+      }
+
+      if (screenId === 'screen-offers') {
+        try {
+          if (typeof fetchSettingsOnce === 'function') await fetchSettingsOnce();
+        } catch (e) {
+          console.warn("[PTR Offers] Sync notice:", e);
+        }
+        if (typeof updateClaimBoxState === 'function') updateClaimBoxState();
+        return;
+      }
+
+      if (screenId === 'screen-quick-order') {
+        try {
+          if (typeof fetchProductsOnce === 'function') await fetchProductsOnce();
+        } catch (e) {
+          console.warn("[PTR Quick Order] Sync notice:", e);
+        }
+        if (typeof renderQuickOrderScreen === 'function') renderQuickOrderScreen();
+        return;
+      }
+
+      if (screenId === 'screen-lyo-ai') {
+        if (typeof updateLyoDeliveryBanner === 'function') updateLyoDeliveryBanner();
+        if (typeof updateLyoDraftCartBar === 'function') updateLyoDraftCartBar();
+        return;
+      }
+
+      // --- DELIVERY PARTNER PAGES ---
+      if (screenId === 'screen-delivery') {
+        try {
+          const session = getData('ek_delivery_session', null);
+          if (session && typeof db !== 'undefined' && db) {
+            const riderId = session.id || session.phone;
+            const [q1Snap, q2Snap, dpDoc] = await Promise.all([
+              db.collection('ek_orders').where('assignedExecutiveId', '==', String(riderId)).limit(40).get().catch(() => null),
+              db.collection('ek_orders').where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'delivering', 'out_for_delivery']).limit(40).get().catch(() => null),
+              db.collection('ek_settings').doc('delivery_persons').get().catch(() => null)
+            ]);
+
+            const snapList = [];
+            if (q1Snap && !q1Snap.empty) q1Snap.forEach(d => { const dt = d.data(); if (dt) snapList.push({ ...dt, id: d.id || dt.id }); });
+            if (q2Snap && !q2Snap.empty) q2Snap.forEach(d => { const dt = d.data(); if (dt) snapList.push({ ...dt, id: d.id || dt.id }); });
+
+            if (snapList.length > 0) {
+              const prev = getData('ek_orders', []);
+              const orderMap = new Map();
+              if (Array.isArray(prev)) prev.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+              snapList.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+              saveData('ek_orders', Array.from(orderMap.values()));
+              if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
+            }
+
+            if (dpDoc && dpDoc.exists) {
+              const dpData = dpDoc.data();
+              if (dpData && Array.isArray(dpData.list)) {
+                saveData('ek_delivery_persons', dpData.list);
+                if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_delivery_persons');
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[PTR Delivery] Sync notice:", e);
+        }
+        if (typeof renderDeliveryScreen === 'function') renderDeliveryScreen();
+        if (typeof updateRiderLiveLocation === 'function') updateRiderLiveLocation();
+        return;
+      }
+
+      // --- ADMIN PAGES ---
+      if (screenId === 'screen-admin') {
+        const curTab = typeof currentAdminTab !== 'undefined' ? currentAdminTab : 'tab-dashboard';
+        try {
+          if (curTab === 'tab-orders' || curTab === 'tab-dashboard') {
+            if (typeof fetchAdminOrdersLive === 'function') await fetchAdminOrdersLive(true);
+          }
+          if (curTab === 'tab-products') {
+            if (typeof fetchProductsOnce === 'function') await fetchProductsOnce();
+          }
+          if (curTab === 'tab-banners' || curTab === 'tab-zones' || curTab === 'tab-settings') {
+            if (typeof fetchSettingsOnce === 'function') await fetchSettingsOnce();
+          }
+        } catch (e) {
+          console.warn("[PTR Admin] Data sync notice:", e);
+        }
+
+        // Sub-tab specific renders
+        if (curTab === 'tab-orders' && typeof renderAdminOrdersList === 'function') {
+          renderAdminOrdersList(true);
+        } else if (curTab === 'tab-products' && typeof renderAdminProducts === 'function') {
+          renderAdminProducts();
+        } else if (curTab === 'tab-customers' && typeof renderAdminCustomers === 'function') {
+          renderAdminCustomers();
+        } else if (curTab === 'tab-delivery' && typeof renderDeliveryExecutives === 'function') {
+          renderDeliveryExecutives();
+        } else if (curTab === 'tab-banners' && typeof renderAdminBannerList === 'function') {
+          renderAdminBannerList();
+        } else if (curTab === 'tab-zones' && typeof renderAdminDeliveryZones === 'function') {
+          renderAdminDeliveryZones();
+        } else if (curTab === 'tab-sync-dashboard' && typeof renderSyncDashboard === 'function') {
+          renderSyncDashboard();
+        } else if (curTab === 'tab-push' && typeof renderPushHistoryList === 'function') {
+          renderPushHistoryList();
+        } else if (curTab === 'tab-reviews' && typeof renderAdminReviews === 'function') {
+          renderAdminReviews();
+        } else if (curTab === 'tab-analytics' && typeof renderAdminAnalytics === 'function') {
+          renderAdminAnalytics();
+        } else {
+          if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+          if (typeof renderAdminOrders === 'function') renderAdminOrders();
+        }
+        return;
+      }
+
+      // Default fallback
+      try {
+        if (typeof fetchSettingsOnce === 'function') await fetchSettingsOnce();
+        if (typeof fetchProductsOnce === 'function') await fetchProductsOnce();
+      } catch (e) {}
+    }
+
+    async function executeUniversalPullRefresh() {
+      if (window._ptrRefreshing) return;
+      window._ptrRefreshing = true;
+
+      const ptrEl = document.getElementById('universal-pull-refresh');
+      const statusText = document.getElementById('ptr-status-text');
+      const subText = document.getElementById('ptr-sub-text');
+      const arrowIcon = ptrEl?.querySelector('.ptr-arrow-icon');
+
+      if (ptrEl) {
+        ptrEl.classList.remove('ptr-pulling', 'ptr-ready', 'ptr-hiding', 'ptr-completing');
+        ptrEl.classList.add('ptr-refreshing');
+        ptrEl.style.transform = 'translateY(12px)';
+        ptrEl.style.opacity = '1';
+        if (statusText) {
+          statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+            ? "புதுப்பிக்கப்படுகிறது... ⏳"
+            : "Refreshing latest data... ⏳";
+        }
+        if (subText) {
+          subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+            ? "தயவுசெய்து காத்திருக்கவும்..."
+            : "Connecting to cloud...";
+        }
+      }
+
+      const activeScreenEl = document.querySelector('.screen.active');
+      const targetScreenId = activeScreenEl ? activeScreenEl.id : (typeof currentScreen !== 'undefined' ? currentScreen : 'screen-home');
+
+      const minDelayPromise = new Promise(resolve => setTimeout(resolve, 550));
+      try {
+        await Promise.all([
+          refreshCurrentScreenData(targetScreenId),
+          minDelayPromise
+        ]);
+
+        if (ptrEl) {
+          ptrEl.classList.remove('ptr-refreshing');
+          ptrEl.classList.add('ptr-completing');
+          if (statusText) {
+            statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+              ? "புதுப்பிக்கப்பட்டது ✓"
+              : "Updated successfully ✓";
+          }
+          if (subText) {
+            subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+              ? "சமீபத்திய தரவு தயாராக உள்ளது"
+              : "Latest data synced";
+          }
+          try {
+            if (navigator.vibrate) navigator.vibrate([12, 35, 18]);
+          } catch(e) {}
+        }
+        await new Promise(r => setTimeout(r, 450));
+      } catch (err) {
+        console.error("[Universal PTR] Refresh error:", err);
+        if (ptrEl) {
+          ptrEl.classList.remove('ptr-refreshing');
+          if (statusText) {
+            statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+              ? "புதுப்பிப்பதில் பிழை ⚠️"
+              : "Sync error ⚠️";
+          }
+        }
+        await new Promise(r => setTimeout(r, 400));
+      } finally {
+        if (ptrEl) {
+          ptrEl.classList.remove('ptr-refreshing', 'ptr-completing', 'ptr-ready', 'ptr-pulling');
+          ptrEl.classList.add('ptr-hiding');
+          setTimeout(() => {
+            ptrEl.classList.remove('ptr-hiding');
+            ptrEl.style.transform = '';
+            ptrEl.style.opacity = '';
+            if (arrowIcon) arrowIcon.style.transform = '';
+            window._ptrRefreshing = false;
+          }, 320);
+        } else {
+          window._ptrRefreshing = false;
+        }
+      }
+    }
+    window.executeUniversalPullRefresh = executeUniversalPullRefresh;
+
+    function initUniversalPullToRefresh() {
+      if (window._universalPtrInitialized) return;
+      window._universalPtrInitialized = true;
+
+      const appContainer = document.getElementById('app-container') || document.body;
+      const ptrEl = document.getElementById('universal-pull-refresh');
+      const statusText = document.getElementById('ptr-status-text');
+      const subText = document.getElementById('ptr-sub-text');
+      const arrowIcon = ptrEl?.querySelector('.ptr-arrow-icon');
+
+      let startY = 0;
+      let startX = 0;
+      let isTracking = false;
+      let directionLocked = false;
+      let isValidPull = false;
+      let pullDistance = 0;
+      let thresholdReachedOnce = false;
+      let activeScreen = null;
+
+      const THRESHOLD = 68;
+      const MAX_PULL = 115;
+
+      function isInteractiveOrExcludedElement(target) {
+        if (!target || !(target instanceof Element)) return false;
+
+        // Form controls & typing elements
+        if (target.closest('input, textarea, select, [contenteditable="true"], .ql-editor, .signature-pad')) {
+          return true;
+        }
+
+        // Clickable buttons, links or explicit opt-out classes
+        if (target.closest('button, .btn, a, .no-pull, .no-ptr, [data-no-pull="true"]')) {
+          return true;
+        }
+
+        // Maps and Leaflet interactive containers
+        if (target.closest('.leaflet-container, .leaflet-pane, .leaflet-control, .leaflet-marker-pane, #admin-zones-map-canvas, #delivery-rider-map, #tracker-leaflet-map, #manual-pin-map')) {
+          return true;
+        }
+
+        // Open visible modals or dialogs
+        const visibleModal = target.closest('.modal-backdrop, .modal, [role="dialog"], [role="alertdialog"]');
+        if (visibleModal) {
+          const style = window.getComputedStyle(visibleModal);
+          if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+            return true;
+          }
+        }
+
+        // Horizontal carousels and sliders
+        if (target.closest('.carousel-container, .product-horizontal-scroll, .category-pill-container, .horizontal-scroll-container, .ql-toolbar')) {
+          return false; // let deltaX check handle horizontal cancellation
+        }
+
+        return false;
+      }
+
+      function hasVisibleModalOpen() {
+        const modals = document.querySelectorAll('.modal-backdrop, .modal');
+        for (let i = 0; i < modals.length; i++) {
+          const m = modals[i];
+          if (m.style.display && m.style.display !== 'none') {
+            return true;
+          }
+          if (m.classList.contains('active') && window.getComputedStyle(m).display !== 'none') {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function onTouchStart(e) {
+        if (window._ptrRefreshing) return;
+        if (!e.touches || e.touches.length !== 1) return;
+
+        // Check if any modal is currently visible
+        if (hasVisibleModalOpen()) return;
+
+        const touch = e.touches[0];
+        if (isInteractiveOrExcludedElement(touch.target)) return;
+
+        // Identify active screen
+        activeScreen = document.querySelector('.screen.active');
+        if (!activeScreen) return;
+
+        // Splash and onboarding are not refreshable screens
+        if (activeScreen.id === 'screen-splash' || activeScreen.id === 'screen-onboarding') {
+          return;
+        }
+
+        // Check if active screen is at the very top
+        if (activeScreen.scrollTop > 0) return;
+        if (window.scrollY > 0 || (document.scrollingElement && document.scrollingElement.scrollTop > 0)) return;
+
+        startY = touch.clientY;
+        startX = touch.clientX;
+        isTracking = true;
+        directionLocked = false;
+        isValidPull = false;
+        pullDistance = 0;
+        thresholdReachedOnce = false;
+      }
+
+      function onTouchMove(e) {
+        if (!isTracking || window._ptrRefreshing) return;
+        if (!e.touches || e.touches.length !== 1) return;
+
+        const touch = e.touches[0];
+        const deltaY = touch.clientY - startY;
+        const deltaX = touch.clientX - startX;
+
+        if (!directionLocked) {
+          // If scrolling up or horizontal swiping, abort immediately
+          if (deltaY <= 0) {
+            isTracking = false;
+            return;
+          }
+          if (Math.abs(deltaX) > deltaY * 0.85) {
+            isTracking = false;
+            return;
+          }
+          // Confirmed downward pull from top
+          if (deltaY > 6 && deltaY > Math.abs(deltaX) * 1.2) {
+            if (activeScreen && activeScreen.scrollTop > 0) {
+              isTracking = false;
+              return;
+            }
+            directionLocked = true;
+            isValidPull = true;
+          }
+        }
+
+        if (isValidPull && ptrEl) {
+          if (e.cancelable) e.preventDefault();
+
+          const rawDistance = Math.max(0, deltaY - 6);
+          const dampedDistance = Math.min(MAX_PULL, Math.pow(rawDistance, 0.82) * 1.55);
+          pullDistance = dampedDistance;
+
+          // Indicator layout
+          ptrEl.classList.add('ptr-pulling');
+          ptrEl.style.opacity = String(Math.min(1, dampedDistance / 32));
+          ptrEl.style.transform = `translateY(${Math.min(dampedDistance - 44, 16)}px)`;
+
+          // Screen elastic offset
+          if (activeScreen) {
+            activeScreen.classList.add('ptr-screen-pulling');
+            activeScreen.style.transform = `translateY(${dampedDistance * 0.38}px)`;
+          }
+
+          // Arrow rotation
+          const progress = Math.min(1, dampedDistance / THRESHOLD);
+          if (arrowIcon) {
+            arrowIcon.style.transform = `rotate(${progress * 180}deg)`;
+          }
+
+          // Threshold state
+          if (dampedDistance >= THRESHOLD) {
+            ptrEl.classList.add('ptr-ready');
+            if (statusText) {
+              statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                ? "புதுப்பிக்க விரலை எடுக்கவும்"
+                : "Release to refresh";
+            }
+            if (subText) {
+              subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                ? "தற்போதைய தகவலைப் புதுப்பிக்க"
+                : "Sync latest data";
+            }
+            if (!thresholdReachedOnce) {
+              try { if (navigator.vibrate) navigator.vibrate(15); } catch(e) {}
+              thresholdReachedOnce = true;
+            }
+          } else {
+            ptrEl.classList.remove('ptr-ready');
+            if (statusText) {
+              statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                ? "கீழே இழுக்கவும்..."
+                : "Pull down to refresh";
+            }
+            if (subText) {
+              subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                ? "சமீபத்திய தகவல்கள்"
+                : "Get latest updates";
+            }
+            thresholdReachedOnce = false;
+          }
+        }
+      }
+
+      function onTouchEnd() {
+        if (!isTracking) return;
+        isTracking = false;
+
+        if (activeScreen) {
+          activeScreen.classList.remove('ptr-screen-pulling');
+          activeScreen.classList.add('ptr-screen-releasing');
+          activeScreen.style.transform = '';
+          setTimeout(() => {
+            if (activeScreen) activeScreen.classList.remove('ptr-screen-releasing');
+          }, 280);
+        }
+
+        if (isValidPull && pullDistance >= THRESHOLD && !window._ptrRefreshing) {
+          executeUniversalPullRefresh();
+        } else if (ptrEl) {
+          ptrEl.classList.remove('ptr-pulling', 'ptr-ready');
+          ptrEl.classList.add('ptr-hiding');
+          setTimeout(() => {
+            ptrEl.classList.remove('ptr-hiding');
+            ptrEl.style.transform = '';
+            ptrEl.style.opacity = '';
+            if (arrowIcon) arrowIcon.style.transform = '';
+          }, 320);
+        }
+
+        isValidPull = false;
+        pullDistance = 0;
+      }
+
+      // Attach non-passive touchmove so e.preventDefault() works cleanly during active pull gesture
+      appContainer.addEventListener('touchstart', onTouchStart, { passive: true });
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('touchend', onTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+      debugLog("[Universal PTR] Pull-to-refresh listener initialized successfully.");
+    }
+
+    window.initUniversalPullToRefresh = initUniversalPullToRefresh;
+    if (typeof document !== 'undefined') {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initUniversalPullToRefresh);
+      } else {
+        setTimeout(initUniversalPullToRefresh, 50);
+      }
+    }

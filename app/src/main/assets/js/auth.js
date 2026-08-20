@@ -409,6 +409,14 @@
         checkAndUpdateFreshCloudData();
         return;
       }
+      if (window._hasFreshSettings) {
+        const cachedSettings = getData('ek_settings', null);
+        if (cachedSettings) {
+          window._isSettingsFetched = true;
+          checkAndUpdateFreshCloudData();
+          return;
+        }
+      }
       try {
         const doc = await db.collection('ek_settings').doc('global_config').get();
         if (doc.exists) {
@@ -490,16 +498,14 @@
       isCategoriesLoading = !cachedCats || cachedCats.length === 0;
       productsLoadError = null;
       categoriesLoadError = null;
-      if (typeof renderHomeScreenProducts === 'function') {
-        renderHomeScreenProducts();
-      }
 
-      // If realtime listener is already active and we already have products, skip redundant get() call
-      if (window._hasFreshCloudData && cachedProds && cachedProds.length > 0) {
-        debugLog('[DEBUG fetchProductsOnce] Realtime listener already provided fresh products, skipping redundant query.');
+      // If we already have products from cache or realtime listener, skip redundant get() call
+      if (cachedProds && cachedProds.length > 0) {
+        debugLog('[DEBUG fetchProductsOnce] Cached or realtime products already present, skipping redundant query.');
         window._isProductsFetched = true;
         isProductsLoading = false;
         isCategoriesLoading = false;
+        checkAndUpdateFreshCloudData();
         return;
       }
       try {
@@ -1726,15 +1732,16 @@ async function verifyOtpAndResetPassword() {
           }
 
           if (!selectedRider) {
-            // Self-healing default rider object so rider login is never blocked
-            selectedRider = {
-              id: phoneInput,
-              uid: phoneInput,
-              name: "Rider " + phoneInput,
-              phone: phoneInput,
-              email: `rider_${phoneInput}@lyo.delivery`,
-              role: "RIDER"
-            };
+            loginCompleted = true;
+            cleanupTimers();
+            showToast(
+              currentLang === 'ta'
+                ? "டெலிவரி பார்ட்னர் கணக்கு எதுவும் இல்லை. நிர்வாகியைத் தொடர்பு கொள்ளவும் ❌"
+                : "No delivery partner account found with this number. Please contact admin ❌",
+              "error"
+            );
+            restoreButton();
+            return;
           }
 
           const authEmail = selectedRider.email || selectedRider.authEmail || `rider_${selectedRider.phone || phoneInput}@lyo.delivery`;
@@ -1862,34 +1869,59 @@ async function verifyOtpAndResetPassword() {
         if (!identifier.includes('@')) {
           const rawDigits = identifier.replace(/\D/g, '');
           const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+
+          if (phone10.length !== 10) {
+            loginCompleted = true;
+            cleanupTimers();
+            showToast(
+              currentLang === 'ta'
+                ? "தயவுசெய்து சரியான 10 இலக்க மொபைல் எண்ணை உள்ளிடவும்."
+                : "Please enter a valid 10-digit phone number.",
+              "error"
+            );
+            restoreButton();
+            return;
+          }
+
           const localUsers = getData('ek_users', []) || [];
-          const localMatched = localUsers.find(u => {
+          matched = localUsers.find(u => {
             if (!u || !u.phone) return false;
             const uDigits = String(u.phone).replace(/\D/g, '');
             const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
-            return u10 === phone10 || uDigits === rawDigits;
+            return u10 === phone10 || uDigits === rawDigits || u.phone === identifier;
           });
 
-          if (localMatched && localMatched.email) {
-            matched = localMatched;
-            authEmail = localMatched.email.trim().toLowerCase();
-          } else {
-            // Check Firestore for phone lookup if missing locally
-            if (typeof db !== 'undefined' && db) {
-              try {
-                const phoneDocSnap = await db.collection('ek_users').where('phone', '==', phone10).get().catch(() => null);
+          // Check Firestore for phone lookup if missing in local cache
+          if (!matched && typeof db !== 'undefined' && db) {
+            try {
+              const phoneVariants = [phone10, `+91${phone10}`, `91${phone10}`, identifier];
+              for (const variant of phoneVariants) {
+                const phoneDocSnap = await db.collection('ek_users').where('phone', '==', variant).limit(1).get().catch(() => null);
                 if (phoneDocSnap && !phoneDocSnap.empty) {
                   matched = phoneDocSnap.docs[0].data();
-                  if (matched.email) authEmail = matched.email.trim().toLowerCase();
+                  break;
                 }
-              } catch (pErr) {
-                console.warn("[Customer Phone Lookup Warning]:", pErr);
               }
-            }
-            if (!authEmail || !authEmail.includes('@')) {
-              authEmail = `${phone10}@app.com`;
+            } catch (pErr) {
+              console.warn("[Customer Phone Lookup Warning]:", pErr);
             }
           }
+
+          // STRICT CHECK: If mobile number is NOT registered, REJECT IMMEDIATELY.
+          if (!matched) {
+            loginCompleted = true;
+            cleanupTimers();
+            showToast(
+              currentLang === 'ta'
+                ? `இந்த மொபைல் எண் (${phone10}) பதிவு செய்யப்படவில்லை! தயவுசெய்து முதலில் கணக்கு தொடங்குங்கள் (Register) ❌`
+                : `This mobile number (${phone10}) is not registered! Please register first ❌`,
+              "error"
+            );
+            restoreButton();
+            return;
+          }
+
+          authEmail = (matched.email && matched.email.includes('@')) ? matched.email.trim().toLowerCase() : `${phone10}@app.com`;
         }
 
         if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -1904,18 +1936,19 @@ async function verifyOtpAndResetPassword() {
             try {
               cred = await firebase.auth().signInWithEmailAndPassword(authEmail, pass);
             } catch (signInErr) {
-              // Retry with phone fallback or createUserWithEmailAndPassword if phone user
-              if (!identifier.includes('@')) {
+              // If email failed for phone user, retry with phone-based email format strictly using signIn
+              if (!identifier.includes('@') && matched) {
                 const rawDigits = identifier.replace(/\D/g, '');
                 const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
-                try {
-                  cred = await firebase.auth().signInWithEmailAndPassword(`${phone10}@app.com`, pass);
-                } catch (retryErr) {
+                const fallbackEmail = `${phone10}@app.com`;
+                if (authEmail !== fallbackEmail) {
                   try {
-                    cred = await firebase.auth().createUserWithEmailAndPassword(`${phone10}@app.com`, pass);
-                  } catch (cErr) {
+                    cred = await firebase.auth().signInWithEmailAndPassword(fallbackEmail, pass);
+                  } catch (retryErr) {
                     throw signInErr;
                   }
+                } else {
+                  throw signInErr;
                 }
               } else {
                 throw signInErr;
@@ -1944,15 +1977,14 @@ async function verifyOtpAndResetPassword() {
               }
             }
 
-            // Self-healing profile creation if still null
             if (!matched) {
-              const cleanPhone = identifier.includes('@') ? '' : identifier.replace(/[\s\-\(\)\+]/g, '');
+              // If account exists in Firebase Auth but no profile was found, load basic verified record
               matched = {
                 id: uid,
-                name: identifier.split('@')[0],
-                phone: cleanPhone || '1000000000',
+                name: (cred.user.displayName || identifier.split('@')[0]),
+                phone: (!identifier.includes('@') ? identifier.replace(/\D/g, '').slice(-10) : ''),
                 email: authEmail,
-                password: 'hash:' + await hashPassword(pass),
+                password: '',
                 address: '',
                 latitude: null,
                 longitude: null,
@@ -1966,19 +1998,14 @@ async function verifyOtpAndResetPassword() {
                 referredBy: '',
                 referralRewardClaimed: false
               };
-              if (typeof db !== 'undefined' && db) {
-                db.collection('ek_users').doc(uid).set(matched).catch(err => console.error("Self-healing set failed:", err));
-              }
             }
 
             loginCompleted = true;
             cleanupTimers();
 
-            matched.password = 'hash:' + await hashPassword(pass);
-
-            const uIdx = localUsers.findIndex(u => u.id === matched.id || u.phone === matched.phone);
+            const uIdx = localUsers.findIndex(u => u.id === matched.id || (matched.phone && u.phone === matched.phone));
             if (uIdx !== -1) {
-              localUsers[uIdx] = matched;
+              localUsers[uIdx] = { ...localUsers[uIdx], ...matched };
             } else {
               localUsers.push(matched);
             }
@@ -2033,12 +2060,12 @@ async function verifyOtpAndResetPassword() {
               const code = authErr.code;
               if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
                 friendlyError = currentLang === 'ta'
-                  ? "தவறான கடவுச்சொல். தயவுசெய்து மீண்டும் முயற்சிக்கவும்."
-                  : "Incorrect password. Please try again.";
+                  ? "கடவுச்சொல் தவறானது! தயவுசெய்து உங்கள் சரியான கடவுச்சொல்லை உள்ளிடவும் ❌"
+                  : "Incorrect password! Please enter the correct password ❌";
               } else if (code === 'auth/user-not-found') {
                 friendlyError = currentLang === 'ta'
-                  ? "இந்த மின்னஞ்சல் அல்லது போன் எண்ணில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும்."
-                  : "No account found with this email or phone number. Please register.";
+                  ? "இந்த மின்னஞ்சல் அல்லது போன் எண்ணில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும் ❌"
+                  : "No account found with this email or phone number. Please register first ❌";
               } else if (code === 'auth/user-disabled') {
                 friendlyError = currentLang === 'ta'
                   ? "உங்கள் கணக்கு முடக்கப்பட்டுள்ளது. நிர்வாகியைத் தொடர்பு கொள்ளவும்."

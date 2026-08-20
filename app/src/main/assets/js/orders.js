@@ -396,39 +396,34 @@
 
         try {
           const docRef = db.collection(item.collectionName).doc(item.docId);
+          const sanitizedData = cleanFirestoreData(item.data);
+
           if (item.action === 'set') {
-            if (['ek_orders', 'ek_products', 'products', 'ek_users', 'users', 'ek_delivery_persons'].includes(item.collectionName)) {
+            // Only perform conflict checks for non-order collections
+            if (['ek_products', 'products', 'ek_users', 'users', 'ek_delivery_persons'].includes(item.collectionName)) {
               try {
                 const cloudDoc = await docRef.get();
                 if (cloudDoc.exists) {
                   const cloudData = cloudDoc.data();
                   const cloudTime = cloudData && cloudData.updatedAt ? new Date(cloudData.updatedAt).getTime() : 0;
-                  const localTime = item.data && item.data.updatedAt ? new Date(item.data.updatedAt).getTime() : 0;
+                  const localTime = sanitizedData && sanitizedData.updatedAt ? new Date(sanitizedData.updatedAt).getTime() : 0;
                   if (cloudTime > localTime) {
                     debugLog(`[Queue Sync] Stale update bypassed for ${item.collectionName}/${item.docId} to protect newer cloud data (${cloudTime} > ${localTime})`);
                     continue; // Skip writing this item but let it clear from the queue
                   }
                 }
               } catch (getErr) {
-                console.warn(`[Queue Sync] Cloud get failed for conflict check:`, getErr);
-                remainingQueue.push(item);
-                if (item.collectionName === 'ek_orders') {
-                  const timeInQueue = now - item.firstFailedAt;
-                  if (timeInQueue > 180000) {
-                    handleStuckOrderSyncFailure(item, timeInQueue, getErr);
-                  }
-                }
-                continue;
+                console.warn(`[Queue Sync] Cloud get conflict check failed, proceeding to direct write for ${item.collectionName}/${item.docId}:`, getErr);
               }
             }
 
             if (item.collectionName === 'ek_orders') {
-              await docRef.set(item.data, { merge: true });
+              await docRef.set(sanitizedData, { merge: true });
             } else {
-              await docRef.set(item.data);
+              await docRef.set(sanitizedData, { merge: true });
             }
           } else if (item.action === 'update') {
-            await docRef.update(item.data);
+            await docRef.update(sanitizedData);
           } else if (item.action === 'delete') {
             await docRef.delete();
           }
@@ -592,6 +587,10 @@
       }
       const pointsEarned = Math.floor((financials.grandTotal / 100) * 10 * loyaltyMultiplier);
 
+      // Derive primary order category from cart items
+      const cartCategories = [...new Set(cart.map(it => (it.category || '').toLowerCase().trim()).filter(Boolean))];
+      const primaryCategory = cartCategories.length === 1 ? cartCategories[0] : (cartCategories.length > 1 ? cartCategories.join(', ') : 'meat');
+
       const order = {
         id: randomID,
         userId: orderUserId,
@@ -605,9 +604,14 @@
         needsManualLocationPin: needsManualLocationPin,
         deliveryTimeSlot: selectedDeliverySlot,
         paymentMethod: selectedPaymentMethod,
+        category: primaryCategory,
+        orderCategory: primaryCategory,
+        orderStage: 'Received',
+        orderInstructions: '',
         items: [...cart],
         subtotalAmount: financials.subtotal,
         deliveryFee: financials.deliveryFee,
+        deliveryCharge: financials.deliveryFee,
         expressDelivery: false,
         loyaltyPointsUsed: financials.loyaltyDiscount * 10,
         loyaltyDiscount: financials.loyaltyDiscount,
@@ -1015,244 +1019,112 @@ function parseAndroidUpiPaymentResult(statusString) {
       removeData('ek_pending_upi_order_data');
     }
 
-async function completeOrderPlacement(order, customerProfile, address, finalLat, finalLng, pointsEarned, financials, user, cartItems, appliedCoupon) {
-      // Ensure Firebase Auth session is active & ID token is retrieved before writing
+    async function completeOrderPlacement(order, customerProfile, address, finalLat, finalLng, pointsEarned, financials, user, cartItems, appliedCoupon) {
+      // Step 1: Ensure user / customer IDs match
       let authUser = user || ((typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null);
-      if (authUser) {
-        try { authUser.getIdToken(false); } catch(e) {}
-      } else if (typeof firebase !== 'undefined' && firebase.auth) {
-        const authStart = Date.now();
-        const maxWaitMs = 1200;
-        while (Date.now() - authStart < maxWaitMs) {
-          let currentAuthUser = firebase.auth().currentUser;
-          if (!currentAuthUser) {
-            try {
-              if (typeof firebase.auth().signInAnonymously === 'function') {
-                const anonRes = await firebase.auth().signInAnonymously().catch(e => null);
-                if (anonRes && anonRes.user) currentAuthUser = anonRes.user;
-              }
-            } catch (e) {}
-          }
-          if (currentAuthUser) {
-            authUser = currentAuthUser;
-            break;
-          }
-          await new Promise(r => setTimeout(r, 100));
-        }
-      }
-
       if (authUser && authUser.uid) {
-        user = authUser;
-        if (!order.userId || order.userId === 'offline_guest') order.userId = authUser.uid;
-        if (!order.customerId || order.customerId === 'offline_guest') order.customerId = authUser.uid;
-      }
-
-      if (typeof db !== 'undefined' && db && user) {
-        try {
-          await db.runTransaction(async (transaction) => {
-            const productDocs = [];
-            for (const item of cartItems) {
-              const prodRef = db.collection('ek_products').doc(item.productId);
-              debugLog("[Diagnostic Checkout] Path:", `ek_products/${item.productId}`, "| Operation: transaction read | UID:", user ? user.uid : 'offline', "| order.userId:", order.userId, "| order.customerId:", order.customerId);
-              const docSnap = await transaction.get(prodRef);
-              productDocs.push({ item, docSnap, prodRef });
-            }
-
-            for (const { item, docSnap, prodRef } of productDocs) {
-              if (!docSnap.exists) {
-                throw new Error(`Product ${item.name || item.productId} not found!`);
-              }
-              const pData = docSnap.data();
-              const serverStock = parseFloat(pData.stockKg || 0);
-              const unit = pData.unit || 'kg';
-              const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-              const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
-
-              if (serverStock < needed) {
-                const prodName = pData.englishName || pData.tamilName || item.name || 'Selected item';
-                throw new Error(`STOCK_INSUFFICIENT:${prodName}`);
-              }
-
-              const newStock = parseFloat(Math.max(0, serverStock - needed).toFixed(3));
-              const isOutOfStock = newStock <= 0;
-              transaction.update(prodRef, {
-                stockKg: newStock,
-                isOutOfStock: isOutOfStock,
-                updatedAt: new Date().toISOString()
-              });
-            }
-
-            const orderRef = db.collection('ek_orders').doc(order.id);
-            debugLog("[Diagnostic Checkout] Path:", `ek_orders/${order.id}`, "| Operation: transaction set | UID:", user ? user.uid : 'offline', "| order.userId:", order.userId, "| order.customerId:", order.customerId);
-            transaction.set(orderRef, cleanFirestoreData(order));
-          });
-
-          debugLog(`[Cloud Sync] Success order placed and stock deducted via transaction: ${order.id}`);
-          removePendingSync('ek_orders', order.id);
-
-          try {
-            sendFcmPushNotification(order, 'none', 'pending');
-          } catch (fcmErr) {
-            console.warn("[FCM Order Placed Error]", fcmErr);
-          }
-
-          const localProducts = getData('ek_products', []);
-          for (const item of cartItems) {
-            const prod = localProducts.find(p => p.id === item.productId);
-            if (prod) {
-              const unit = prod.unit || 'kg';
-              const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-              const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
-              prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
-              if (prod.stockKg <= 0) prod.isOutOfStock = true;
-              prod.updatedAt = new Date().toISOString();
-            }
-          }
-          saveData('ek_products', localProducts);
-
-          const orders = getData('ek_orders', []);
-          orders.push(order);
-          saveData('ek_orders', orders);
-
-        } catch (txnErr) {
-          const errCode = txnErr.code || 'N/A';
-          const errMsg = txnErr.message || txnErr.toString();
-          console.error(`[Firebase Checkout Error] Code: ${errCode}, Message: ${errMsg}`, txnErr);
-
-          if (txnErr.message && txnErr.message.startsWith("STOCK_INSUFFICIENT:")) {
-            const prodName = txnErr.message.split(":")[1];
-            showToast(`மன்னிக்கவும்! ${prodName} போதுமான அளவு இல்லை. (Sorry, ${prodName} does not have sufficient stock!)`, "error");
-            window.isPlacingOrder = false;
-            throw txnErr; // Abort on out of stock
-          }
-
-          // Fallback to direct write to ek_orders collection before offline queue
-          debugLog("[Graceful Fallback] Transaction write hit an error. Attempting direct online write to ek_orders collection...");
-          try {
-            const orderRef = db.collection('ek_orders').doc(order.id);
-            await orderRef.set(cleanFirestoreData(order));
-            debugLog("[Graceful Fallback] Successfully placed order via direct online write to ek_orders!");
-
-            // Deduct stock locally
-            const localProducts = getData('ek_products', []);
-            for (const item of cartItems) {
-              const prod = localProducts.find(p => p.id === item.productId);
-              if (prod) {
-                const unit = prod.unit || 'kg';
-                const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-                const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
-                prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
-                if (prod.stockKg <= 0) prod.isOutOfStock = true;
-                prod.updatedAt = new Date().toISOString();
-              }
-            }
-            saveData('ek_products', localProducts);
-
-            const orders = getData('ek_orders', []);
-            orders.push(order);
-            saveData('ek_orders', orders);
-
-            removePendingSync('ek_orders', order.id);
-          } catch (fallbackErr) {
-            console.warn("[Graceful Fallback] Direct write to ek_orders failed. Falling back to local offline order queue:", fallbackErr);
-            queueFailedSync('ek_orders', order.id, 'set', order);
-            setTimeout(() => { if (typeof processPendingSyncQueue === 'function') processPendingSyncQueue(); }, 800);
-
-            try {
-              sendFcmPushNotification(order, 'none', 'pending');
-            } catch (fcmErr) {
-              console.warn("[FCM Order Placed Offline Error]", fcmErr);
-            }
-
-            const orders = getData('ek_orders', []);
-            orders.push(order);
-            saveData('ek_orders', orders);
-
-            const products = getData('ek_products', []);
-            for (const item of cartItems) {
-              const prod = products.find(p => p.id === item.productId);
-              if (prod) {
-                const unit = prod.unit || 'kg';
-                const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-                const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
-                prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
-                if (prod.stockKg <= 0) {
-                  prod.isOutOfStock = true;
-                }
-                prod.updatedAt = new Date().toISOString();
-              }
-            }
-            saveData('ek_products', products);
-          }
-        }
+        order.userId = authUser.uid;
+        order.customerId = authUser.uid;
+      } else if (customerProfile && customerProfile.id) {
+        order.userId = customerProfile.id;
+        order.customerId = customerProfile.id;
       } else {
-        queueFailedSync('ek_orders', order.id, 'set', order);
-        setTimeout(() => { if (typeof processPendingSyncQueue === 'function') processPendingSyncQueue(); }, 800);
-
-        const orders = getData('ek_orders', []);
-        orders.push(order);
-        saveData('ek_orders', orders);
-
-        const products = getData('ek_products', []);
-        for (const item of cartItems) {
-          const prod = products.find(p => p.id === item.productId);
-          if (prod) {
-            const unit = prod.unit || 'kg';
-            const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-            const needed = isWeight ? (item.weightGrams / 1000) : item.weightGrams;
-            prod.stockKg = parseFloat(Math.max(0, prod.stockKg - needed).toFixed(3));
-            if (prod.stockKg <= 0) {
-              prod.isOutOfStock = true;
-            }
-            prod.updatedAt = new Date().toISOString();
-          }
-        }
-        saveData('ek_products', products);
+        order.userId = order.userId || 'guest_user';
+        order.customerId = order.customerId || 'guest_user';
       }
 
-      const users = getData('ek_users', []);
-      const uIdx = users.findIndex(u => u.id === customerProfile.id);
+      // Step 2: Ensure all numbers in order object are valid (no NaN/undefined)
+      order.deliveryLatitude = (finalLat !== undefined && finalLat !== null && !isNaN(finalLat)) ? parseFloat(finalLat) : 11.5815;
+      order.deliveryLongitude = (finalLng !== undefined && finalLng !== null && !isNaN(finalLng)) ? parseFloat(finalLng) : 77.8488;
+      order.address = address || order.address || "Edappadi Main Location";
+      order.totalAmount = (order.totalAmount && !isNaN(order.totalAmount)) ? parseFloat(order.totalAmount) : 0;
+      order.createdAt = order.createdAt || new Date().toISOString();
+      order.updatedAt = new Date().toISOString();
+      order.status = order.status || 'pending';
 
-      if (uIdx !== -1) {
+      const sanitizedOrder = cleanFirestoreData(order);
+
+      // Step 3: INSTANT LOCAL PERSISTENCE FIRST
+      // A. Save order to local ek_orders array
+      const localOrders = getData('ek_orders', []);
+      const existingOrderIdx = localOrders.findIndex(o => o.id === order.id);
+      if (existingOrderIdx !== -1) {
+        localOrders[existingOrderIdx] = sanitizedOrder;
+      } else {
+        localOrders.push(sanitizedOrder);
+      }
+      saveData('ek_orders', localOrders);
+
+      // B. Update local product stock
+      const localProducts = getData('ek_products', []);
+      for (const item of (cartItems || [])) {
+        const prod = localProducts.find(p => p.id === item.productId);
+        if (prod) {
+          const unit = prod.unit || 'kg';
+          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+          const needed = isWeight ? ((parseFloat(item.weightGrams) || 0) / 1000) : (parseFloat(item.weightGrams) || 0);
+          const currentStock = parseFloat(prod.stockKg || 0);
+          prod.stockKg = parseFloat(Math.max(0, currentStock - needed).toFixed(3));
+          if (prod.stockKg <= 0) prod.isOutOfStock = true;
+          prod.updatedAt = new Date().toISOString();
+        }
+      }
+      saveData('ek_products', localProducts);
+
+      // C. Update user profile & primary address persistence
+      if (customerProfile && customerProfile.id) {
+        const users = getData('ek_users', []);
+        const uIdx = users.findIndex(u => u.id === customerProfile.id);
         const existingPoints = parseInt(customerProfile.loyaltyPoints) || 0;
-        customerProfile.loyaltyPoints = Math.max(0, existingPoints - (financials.loyaltyDiscount * 10)) + pointsEarned;
-        customerProfile.tier = computeLoyaltyTier(customerProfile.loyaltyPoints);
-
+        const discountPoints = financials && financials.loyaltyDiscount ? (financials.loyaltyDiscount * 10) : 0;
+        customerProfile.loyaltyPoints = Math.max(0, existingPoints - discountPoints) + (pointsEarned || 0);
+        customerProfile.tier = typeof computeLoyaltyTier === 'function' ? computeLoyaltyTier(customerProfile.loyaltyPoints) : "bronze";
         customerProfile.address = address;
-        customerProfile.latitude = finalLat;
-        customerProfile.longitude = finalLng;
+        customerProfile.latitude = order.deliveryLatitude;
+        customerProfile.longitude = order.deliveryLongitude;
 
-        users[uIdx] = customerProfile;
-        saveData('ek_users', users);
-        if (typeof db !== 'undefined' && db) {
-          debugLog("[Diagnostic Checkout] Path:", `ek_users/${customerProfile.id}`, "| Operation: set | UID:", user ? user.uid : 'offline', "| order.userId:", order.userId, "| order.customerId:", order.customerId);
-          db.collection('ek_users').doc(customerProfile.id).set(customerProfile)
-            .catch(err => {
-              console.error("Cloud user level status sync failed, queueing for retry:", err);
-              queueFailedSync('ek_users', customerProfile.id, 'set', customerProfile);
-            });
+        // Persist primary address in savedAddresses list
+        let saved = customerProfile.savedAddresses || [];
+        if (!saved.some(a => a.address === address)) {
+          saved.unshift({
+            id: 'addr_' + Math.floor(100000 + Math.random() * 900000),
+            label: 'Home 🏠',
+            address: address,
+            latitude: order.deliveryLatitude,
+            longitude: order.deliveryLongitude
+          });
+          customerProfile.savedAddresses = saved;
+        }
+
+        if (uIdx !== -1) {
+          users[uIdx] = customerProfile;
         } else {
-          queueFailedSync('ek_users', customerProfile.id, 'set', customerProfile);
+          users.push(customerProfile);
+        }
+        saveData('ek_users', users);
+
+        // Sync customer session
+        const currentSession = getData('ek_customer_session', null);
+        if (currentSession) {
+          currentSession.address = address;
+          saveData('ek_customer_session', currentSession);
         }
       }
 
+      // D. Clear Cart & Reset UI State
       cart = [];
       saveCart();
       appliedCouponCode = null;
       renderCartScreen();
-
       window.isPlacingOrder = false;
 
-      if (typeof AndroidStorage !== 'undefined') {
-        try {
-          if (!AndroidStorage.hasNotificationPermission()) {
-            debugLog("[Contextual Alerts] Notification permission is missing. Requesting contextually for order status alerts...");
-            AndroidStorage.requestNotificationPermission();
-          }
-        } catch (e) {
-          console.error("Error with native notification permission request:", e);
-        }
-      }
+      // E. Show Success Modal & Toast Immediately
+      if (document.getElementById('success-modal-id')) document.getElementById('success-modal-id').innerText = order.id;
+      if (document.getElementById('success-modal-total')) document.getElementById('success-modal-total').innerText = `₹${order.totalAmount}`;
+      if (document.getElementById('success-modal-points')) document.getElementById('success-modal-points').innerText = `+${pointsEarned || 0} pts`;
+      const modalEl = document.getElementById('order-success-modal');
+      if (modalEl) modalEl.style.display = 'flex';
+      if (typeof triggerSuccessCheckmarkReplay === 'function') triggerSuccessCheckmarkReplay();
 
       addNotification(
         "ஆர்டர் வெற்றிகரமாக செய்யப்பட்டது! 🎉",
@@ -1262,13 +1134,45 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
         "📦"
       );
 
-      document.getElementById('success-modal-id').innerText = order.id;
-      document.getElementById('success-modal-total').innerText = `₹${order.totalAmount}`;
-      document.getElementById('success-modal-points').innerText = `+${pointsEarned} pts`;
-      document.getElementById('order-success-modal').style.display = 'flex';
-      triggerSuccessCheckmarkReplay();
-
       showToast(currentLang === 'ta' ? "உங்கள் ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது! 🎉" : "Your order has been placed successfully. 🎉", "success");
+
+      // Step 4: NON-BLOCKING BACKGROUND CLOUD SYNC
+      setTimeout(async () => {
+        if (typeof db !== 'undefined' && db) {
+          try {
+            const orderRef = db.collection('ek_orders').doc(order.id);
+            await orderRef.set(sanitizedOrder, { merge: true });
+            debugLog(`[Cloud Sync] Success: Order ${order.id} saved to Firestore ek_orders!`);
+            removePendingSync('ek_orders', order.id);
+
+            // Also update user profile on Firestore
+            if (customerProfile && customerProfile.id) {
+              db.collection('ek_users').doc(customerProfile.id).set(cleanFirestoreData(customerProfile), { merge: true })
+                .catch(err => console.warn("[Cloud Sync] User profile cloud update notice:", err));
+            }
+
+            // Attempt background FCM push
+            try {
+              if (typeof sendFcmPushNotification === 'function') {
+                sendFcmPushNotification(sanitizedOrder, 'none', 'pending');
+              }
+            } catch (fcmErr) {
+              console.warn("[FCM Push Notice]", fcmErr);
+            }
+          } catch (cloudErr) {
+            console.warn(`[Cloud Sync] Direct set failed for order ${order.id}. Queueing in pending syncs:`, cloudErr);
+            queueFailedSync('ek_orders', order.id, 'set', sanitizedOrder);
+            if (typeof processPendingSyncQueue === 'function') {
+              processPendingSyncQueue();
+            }
+          }
+        } else {
+          queueFailedSync('ek_orders', order.id, 'set', sanitizedOrder);
+          if (typeof processPendingSyncQueue === 'function') {
+            processPendingSyncQueue();
+          }
+        }
+      }, 50);
     }
 
     let quickOrderCart = [];
@@ -1993,85 +1897,46 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
 
       debugLog("[Slate Purge] Bypassed legacy demo products purge block to preserve active user products and deletion safeguards.");
 
-      try {
-        if (typeof db !== 'undefined' && db) {
-          db.collection('ek_tombstones').get().then(snapshot => {
-            if (snapshot && !snapshot.empty) {
-              snapshot.forEach(doc => {
-                const docId = doc.id;
-                const cloudIds = doc.data()?.ids || [];
-                if (Array.isArray(cloudIds) && cloudIds.length > 0) {
-                  let localList = [];
-                  if (docId === 'ek_deleted_product_ids') localList = getDeletedProductIds();
-                  else if (docId === 'ek_deleted_order_ids') localList = getDeletedOrderIds();
-                  else if (docId === 'ek_deleted_user_ids') localList = getDeletedUserIds();
-                  else if (docId === 'ek_deleted_rider_ids') localList = getDeletedRiderIds();
+      // Run heavy background maintenance tasks asynchronously to keep startup instantaneous
+      setTimeout(() => {
+        try {
+          if (typeof db !== 'undefined' && db) {
+            db.collection('ek_tombstones').get().then(snapshot => {
+              if (snapshot && !snapshot.empty) {
+                snapshot.forEach(doc => {
+                  const docId = doc.id;
+                  const cloudIds = doc.data()?.ids || [];
+                  if (Array.isArray(cloudIds) && cloudIds.length > 0) {
+                    let localList = [];
+                    if (docId === 'ek_deleted_product_ids') localList = getDeletedProductIds();
+                    else if (docId === 'ek_deleted_order_ids') localList = getDeletedOrderIds();
+                    else if (docId === 'ek_deleted_user_ids') localList = getDeletedUserIds();
+                    else if (docId === 'ek_deleted_rider_ids') localList = getDeletedRiderIds();
 
-                  if (!Array.isArray(localList)) localList = [];
-                  const mergedMap = new Set([...localList, ...cloudIds]);
-                  const mergedList = Array.from(mergedMap);
-                  saveData(docId, mergedList);
-                  if (docId === 'ek_deleted_order_ids') {
-                    pruneLocalDeletedOrders();
-                  } else if (docId === 'ek_deleted_product_ids') {
-                    pruneLocalDeletedProducts();
-                  } else if (docId === 'ek_deleted_user_ids') {
-                    pruneLocalDeletedUsers();
-                  } else if (docId === 'ek_deleted_rider_ids') {
-                    pruneLocalDeletedRiders();
+                    if (!Array.isArray(localList)) localList = [];
+                    const mergedMap = new Set([...localList, ...cloudIds]);
+                    const mergedList = Array.from(mergedMap);
+                    saveData(docId, mergedList);
+                    if (docId === 'ek_deleted_order_ids') {
+                      pruneLocalDeletedOrders();
+                    } else if (docId === 'ek_deleted_product_ids') {
+                      pruneLocalDeletedProducts();
+                    } else if (docId === 'ek_deleted_user_ids') {
+                      pruneLocalDeletedUsers();
+                    } else if (docId === 'ek_deleted_rider_ids') {
+                      pruneLocalDeletedRiders();
+                    }
                   }
-                  debugLog(`[Tombstone Bootstrap] Merged and saved ${mergedList.length} tombstone IDs for ${docId}`);
-                }
-              });
-
-              if (typeof renderHomeScreenProducts === 'function') {
-                _lastProductsHash = '';
-                _lastSpecialsHash = '';
-                renderHomeScreenProducts(true);
+                });
               }
-              if (typeof renderCategoryPills === 'function') renderCategoryPills();
-            }
-          }).catch(err => console.error("[Tombstone Bootstrap] Fetch failed:", err));
-        }
-      } catch (e) {
-        console.error("Tombstone bootstrap outer failed:", e);
-      }
+            }).catch(err => console.warn("[Tombstone Background Sync] Fetch failed:", err));
+          }
+        } catch (e) {}
 
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        let refParam = urlParams.get('ref');
-        if (refParam) {
-          refParam = refParam.trim().toUpperCase();
-          sessionStorage.setItem('ek_referred_by_code', refParam);
-          debugLog("[Referral System] URL referral parameter detected and saved:", refParam);
-        }
-      } catch (err) {
-        console.error("Failed to parse URL referral code:", err);
-      }
-
-      try {
-        debugLog('[Cleanup] Delivery partner auto-cleanup bypassed for safety.');
-      } catch (e) {
-        console.error('Dummy rider cleanup failed:', e);
-      }
-
-      try {
-        seedDatabase();
-      } catch (e) {
-        console.error("seedDatabase failed:", e);
-      }
-
-      try {
-        migrateBase64ImagesToStorage();
-      } catch (e) {
-        console.error("migrateBase64ImagesToStorage failed:", e);
-      }
-
-      try {
-        archiveOldOrders();
-      } catch (e) {
-        console.error("archiveOldOrders failed:", e);
-      }
+        try { seedDatabase(); } catch (e) {}
+        try { migrateBase64ImagesToStorage(); } catch (e) {}
+        try { archiveOldOrders(); } catch (e) {}
+      }, 2500);
 
       function startRealtimeSync() {
         if (typeof setupCloudRealtimeListeners2 === 'function') {
@@ -3309,34 +3174,39 @@ async function completeOrderPlacement(order, customerProfile, address, finalLat,
       // 7. Delivery Charge Calculator
       DeliveryChargeCalculator: {
         calculateDelivery(subtotal, cartItems, settings = {}) {
-          let deliveryCharge = parseInt(settings.deliveryCharge) || 0;
-          if (settings.useDynamicDistancePricing) {
-            deliveryCharge = parseInt(settings.deliveryBasePrice) || 20;
+          let deliveryCharge = parseInt(settings.deliveryCharge) || 40;
+          let distance = null;
+          let zoneName = 'Flat Rate';
+
+          if (typeof getDynamicDeliveryCharge === 'function') {
+            const u = (typeof getActiveUser === 'function') ? getActiveUser() : null;
+            const dyn = getDynamicDeliveryCharge(subtotal, u);
+            if (dyn && typeof dyn.charge === 'number') {
+              deliveryCharge = dyn.charge;
+              distance = dyn.distance;
+              zoneName = dyn.zoneName;
+            }
           }
-          const subtotalFreeDelivery = subtotal >= 500;
-          const allItemsFreeDeliveryEligible = Array.isArray(cartItems) && cartItems.length > 0 &&
-            cartItems.every(item => item && item.isFreeDeliveryEligible === true);
-          const isFreeDelivery = subtotalFreeDelivery || allItemsFreeDeliveryEligible;
-          if (isFreeDelivery) deliveryCharge = 0;
-          return { deliveryCharge, isFreeDelivery, freeDeliveryReason: allItemsFreeDeliveryEligible ? 'product' : (subtotalFreeDelivery ? 'subtotal' : null) };
+
+          return { deliveryCharge, distance, zoneName, isFreeDelivery: false, freeDeliveryReason: null };
         }
       },
 
       // 8. Pricing & Offer Engine
       PricingOfferEngine: {
         calculatePricing(subtotal, cartItems = [], settings = {}) {
-          const { deliveryCharge, isFreeDelivery, freeDeliveryReason } = LyoAiEngine.DeliveryChargeCalculator.calculateDelivery(subtotal, cartItems, settings);
+          const { deliveryCharge } = LyoAiEngine.DeliveryChargeCalculator.calculateDelivery(subtotal, cartItems, settings);
 
           let discount = 0;
           if (subtotal >= 1000) {
             discount = Math.round(subtotal * 0.05);
           }
 
-          const finalPayable = Math.max(0, subtotal + deliveryCharge - discount);
+          const finalPayable = Math.max(0, subtotal - discount) + deliveryCharge;
           const minOrderAmount = parseInt(settings.minOrderAmount) || 0;
           const meetsMinOrder = subtotal >= minOrderAmount;
 
-          return { subtotal, deliveryCharge, isFreeDelivery, freeDeliveryReason, discount, finalPayable, minOrderAmount, meetsMinOrder };
+          return { subtotal, deliveryCharge, isFreeDelivery: false, freeDeliveryReason: null, discount, finalPayable, minOrderAmount, meetsMinOrder };
         }
       },
 
