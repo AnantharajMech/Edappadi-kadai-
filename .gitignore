@@ -41,3 +41,12 @@ captures/
 # Secrets
 .env
 
+# Scripts, Temporary Files & Workspace Audits
+/tools/
+/tmp/
+/workspace/
+/test/
+/app/applet/
+*.py
+*.js.map
+

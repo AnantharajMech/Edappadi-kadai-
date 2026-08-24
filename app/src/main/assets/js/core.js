@@ -1,4 +1,165 @@
 
+const CURRENT_APP_VERSION = '8.0.0';
+window.CURRENT_APP_VERSION = CURRENT_APP_VERSION;
+
+// Semantic Version Comparison: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+function compareSemver(v1, v2) {
+  if (!v1 && !v2) return 0;
+  if (!v1) return -1;
+  if (!v2) return 1;
+
+  const clean1 = String(v1).trim().replace(/^v/i, '');
+  const clean2 = String(v2).trim().replace(/^v/i, '');
+
+  const parts1 = clean1.split('.').map(p => parseInt(p, 10) || 0);
+  const parts2 = clean2.split('.').map(p => parseInt(p, 10) || 0);
+
+  const maxLen = Math.max(parts1.length, parts2.length, 3);
+  for (let i = 0; i < maxLen; i++) {
+    const p1 = parts1[i] !== undefined ? parts1[i] : 0;
+    const p2 = parts2[i] !== undefined ? parts2[i] : 0;
+    if (p1 > p2) return 1;
+    if (p1 < p2) return -1;
+  }
+  return 0;
+}
+window.compareSemver = compareSemver;
+
+window.openPlayStoreUpdate = function() {
+  try {
+    const settings = (typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : null) || (typeof getData === 'function' ? getData('ek_settings', DEFAULT_SETTINGS) : DEFAULT_SETTINGS) || {};
+    const url = (settings && settings.playStoreUrl && settings.playStoreUrl.trim()) ? settings.playStoreUrl.trim() : 'https://play.google.com/store/apps/details?id=com.edappadikadai.app';
+    if (typeof Android !== 'undefined' && Android && typeof Android.openUrl === 'function') {
+      Android.openUrl(url);
+    } else {
+      window.open(url, '_system') || (window.location.href = url);
+    }
+  } catch (e) {
+    window.open('https://play.google.com/store/apps/details?id=com.edappadikadai.app', '_system');
+  }
+};
+
+window.dismissRecommendedBanner = function() {
+  const banner = document.getElementById('app-version-recommended-banner');
+  if (banner) {
+    banner.style.display = 'none';
+  }
+  const settings = (typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : null) || (typeof getData === 'function' ? getData('ek_settings', DEFAULT_SETTINGS) : DEFAULT_SETTINGS) || {};
+  const recVer = settings && settings.recommendedVersion ? settings.recommendedVersion : '';
+  try {
+    sessionStorage.setItem('dismissed_recommended_update_' + recVer, 'true');
+  } catch(e) {}
+};
+
+window.checkAppVersion = function(passedSettings) {
+  try {
+    const settings = passedSettings || (typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : null) || (typeof getData === 'function' ? getData('ek_settings', DEFAULT_SETTINGS) : DEFAULT_SETTINGS) || {};
+    const minVer = settings.minAppVersion || '8.0.0';
+    const recVer = settings.recommendedVersion || '8.0.0';
+    const isTa = typeof currentLang !== 'undefined' && currentLang === 'ta';
+
+    const isBelowMin = compareSemver(minVer, CURRENT_APP_VERSION) > 0;
+    const isBelowRec = compareSemver(recVer, CURRENT_APP_VERSION) > 0;
+
+    let forceModal = document.getElementById('app-version-force-update-modal');
+    if (!forceModal) {
+      forceModal = document.createElement('div');
+      forceModal.id = 'app-version-force-update-modal';
+      forceModal.style.cssText = 'display: none; position: fixed; inset: 0; z-index: 9999999; background: rgba(5, 7, 15, 0.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; text-align: center;';
+      forceModal.innerHTML = `
+        <div style="background: linear-gradient(165deg, #181c28, #0e111a); border: 1.5px solid rgba(245, 158, 11, 0.5); border-radius: 24px; padding: 32px 24px; max-width: 380px; width: 100%; box-shadow: 0 25px 60px rgba(0,0,0,0.9), 0 0 35px rgba(245, 158, 11, 0.25); box-sizing: border-box;">
+          <div style="width: 76px; height: 76px; margin: 0 auto 20px; border-radius: 22px; background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(239, 68, 68, 0.25)); display: flex; align-items: center; justify-content: center; font-size: 38px; border: 1.5px solid rgba(245, 158, 11, 0.4); box-shadow: 0 8px 25px rgba(245, 158, 11, 0.3);">
+            🔄
+          </div>
+          <h3 id="version-modal-title" style="font-size: 18px; font-weight: 800; color: #ffffff; margin: 0 0 10px 0; line-height: 1.4;">
+            புதிய பதிப்பு கிடைத்துள்ளது! தயவுசெய்து அப்டேட் செய்யவும் 🔄
+          </h3>
+          <p id="version-modal-desc" style="font-size: 13px; color: #94a3b8; margin: 0 0 18px 0; line-height: 1.5;">
+            A new version is available! Please update 🔄
+          </p>
+          <div id="version-modal-badge" style="display: inline-block; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px 14px; font-size: 11.5px; color: #cbd5e1; font-weight: 700; margin-bottom: 24px;">
+            Current: v${CURRENT_APP_VERSION} • Required: v${minVer}
+          </div>
+          <div>
+            <button id="btn-force-update-now" type="button" onclick="openPlayStoreUpdate()" style="width: 100%; height: 50px; border: none; border-radius: 14px; background: linear-gradient(135deg, #f59e0b, #ea580c); color: #ffffff; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4); display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform 0.15s ease;">
+              <span>🔄</span> <span id="btn-force-update-label">Update Now</span>
+            </button>
+          </div>
+        </div>
+      `;
+      // Prevent dismissing through backdrop clicks
+      forceModal.addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+      document.body.appendChild(forceModal);
+    }
+
+    let recBanner = document.getElementById('app-version-recommended-banner');
+    if (!recBanner) {
+      recBanner = document.createElement('div');
+      recBanner.id = 'app-version-recommended-banner';
+      recBanner.style.cssText = 'display: none; position: sticky; top: 0; z-index: 99990; background: linear-gradient(90deg, #1e293b, #0f172a); border-bottom: 1.5px solid rgba(59, 130, 246, 0.4); padding: 10px 14px; box-shadow: 0 4px 14px rgba(0,0,0,0.4); box-sizing: border-box;';
+      recBanner.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 600px; margin: 0 auto;">
+          <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+            <span style="font-size: 18px; flex-shrink: 0;">🚀</span>
+            <div style="min-width: 0; flex: 1;">
+              <p id="rec-banner-text" style="font-size: 12px; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                புதிய மேம்படுத்தல் உள்ளது! (Update Recommended)
+              </p>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+            <button type="button" onclick="openPlayStoreUpdate()" style="border: none; background: #3b82f6; color: #ffffff; font-size: 11px; font-weight: 800; padding: 6px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap;">
+              Update
+            </button>
+            <button type="button" onclick="dismissRecommendedBanner()" style="border: none; background: rgba(255,255,255,0.1); color: #94a3b8; font-size: 13px; font-weight: bold; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+              ✕
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.insertBefore(recBanner, document.body.firstChild);
+    }
+
+    if (isBelowMin) {
+      // Blocking mandatory modal
+      const titleEl = document.getElementById('version-modal-title');
+      const descEl = document.getElementById('version-modal-desc');
+      const badgeEl = document.getElementById('version-modal-badge');
+      const labelEl = document.getElementById('btn-force-update-label');
+
+      if (titleEl) titleEl.innerText = "புதிய பதிப்பு கிடைத்துள்ளது! தயவுசெய்து அப்டேட் செய்யவும் 🔄";
+      if (descEl) descEl.innerText = "A new version is available! Please update 🔄";
+      if (badgeEl) badgeEl.innerText = isTa ? `தற்போதைய பதிப்பு: v${CURRENT_APP_VERSION} • தேவைப்படும் பதிப்பு: v${minVer}` : `Current: v${CURRENT_APP_VERSION} • Required: v${minVer}`;
+      if (labelEl) labelEl.innerText = isTa ? "இப்போதே அப்டேட் செய்க" : "Update Now";
+
+      forceModal.style.display = 'flex';
+      if (recBanner) recBanner.style.display = 'none';
+    } else {
+      forceModal.style.display = 'none';
+
+      // Check non-blocking recommended version
+      let isDismissed = false;
+      try {
+        isDismissed = sessionStorage.getItem('dismissed_recommended_update_' + recVer) === 'true';
+      } catch (e) {}
+
+      if (isBelowRec && !isDismissed) {
+        const textEl = document.getElementById('rec-banner-text');
+        if (textEl) {
+          textEl.innerText = isTa ? `புதிய மேம்படுத்தல் உள்ளது (v${recVer})! சிறந்த அனுபவத்திற்கு அப்டேட் செய்யவும் 🚀` : `Update recommended (v${recVer})! Update now for the best experience 🚀`;
+        }
+        recBanner.style.display = 'block';
+      } else {
+        recBanner.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    console.warn('[Version Check] Error evaluating app version:', err);
+  }
+};
+
 // Safe window fallbacks for cross-module or async functions
 window.selectedTrackOrderId = window.selectedTrackOrderId || null;
 window.showTab = window.showTab || function(tabName) {
@@ -59,6 +220,27 @@ window.triggerGlobalScreenRefreshActual = function() {
   if (typeof window.executeUniversalPullRefresh === 'function') {
     window.executeUniversalPullRefresh();
   }
+};
+
+window.getOrderAssignedExecutive = function(order) {
+  if (!order) return null;
+  if (order.assignedTo && typeof order.assignedTo === 'object' && (order.assignedTo.id || order.assignedTo.uid)) {
+    const rId = order.assignedTo.id || order.assignedTo.uid;
+    return {
+      id: rId,
+      uid: rId,
+      name: order.assignedTo.name || 'Delivery Partner',
+      phone: order.assignedTo.phone || '',
+      role: order.assignedTo.role || 'rider',
+      assignedAt: order.assignedTo.assignedAt || order.updatedAt || order.createdAt || null,
+      status: order.assignedTo.status || 'assigned'
+    };
+  }
+  const uid = (typeof order.assignedTo === 'string' && order.assignedTo) || order.assignedDeliveryPartnerUid || order.riderUid || order.riderId || order.deliveryPartnerUid || order.assignedExecutiveId || order.deliveryExecutiveId || null;
+  if (!uid) return null;
+  const name = order.assignedDeliveryPartnerName || order.assignedRiderName || order.assignedExecutiveName || order.deliveryExecutiveName || 'Delivery Partner';
+  const phone = order.assignedExecutivePhone || order.deliveryExecutivePhone || '';
+  return { id: uid, uid: uid, name, phone, role: 'rider', assignedAt: order.updatedAt || order.createdAt || null, status: 'assigned' };
 };
 
 window.setButtonLoading = function(btn, isLoading, loadingText = '') {
@@ -157,6 +339,23 @@ window.setupCloudRealtimeListeners2 = function() {
             saveData('ek_cloud_synced', true);
             saveData('ek_settings', cloudData);
             if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_settings');
+
+            if (Array.isArray(cloudData.categories) && cloudData.categories.length > 0) {
+              const cloudCatList = [...cloudData.categories];
+              cloudCatList.sort((a, b) => {
+                const orderA = (a && a.order !== undefined && a.order !== null && !isNaN(Number(a.order))) ? Number(a.order) : 999;
+                const orderB = (b && b.order !== undefined && b.order !== null && !isNaN(Number(b.order))) ? Number(b.order) : 999;
+                if (orderA !== orderB) return orderA - orderB;
+                return String((a && a.id) || "").localeCompare(String((b && b.id) || ""));
+              });
+              saveData('ek_categories', cloudCatList);
+              if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_categories');
+              window._categoriesListCachedValue = null;
+              if (typeof _categoriesListCachedValue !== 'undefined') _categoriesListCachedValue = null;
+              window._lastCategoryPillsHash = '';
+              if (typeof _lastCategoryPillsHash !== 'undefined') _lastCategoryPillsHash = '';
+            }
+
             window._lastBannersHash = '';
             window._lastDataSnapshotHash = '';
             _lastDataSnapshotHash = null;
@@ -164,8 +363,10 @@ window.setupCloudRealtimeListeners2 = function() {
             try { if (typeof renderSlidingBanners === 'function') renderSlidingBanners(); } catch(e) {}
             try { if (typeof renderAdminBannerList === 'function') renderAdminBannerList(true); } catch(e) {}
             try { if (typeof renderCategoryPills === 'function') renderCategoryPills(); } catch(e) {}
+            try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true); } catch(e) {}
             try { if (typeof renderHomeScreen === 'function') renderHomeScreen(true); } catch(e) {}
             try { if (typeof updateHeaderUI === 'function') updateHeaderUI(); } catch(e) {}
+            try { if (typeof checkAppVersion === 'function') checkAppVersion(cloudData); } catch(e) {}
           }
         }
       }, err => console.warn("[Realtime Sync] Settings listener notice:", err));
@@ -188,10 +389,10 @@ window.setupCloudRealtimeListeners2 = function() {
           });
 
           list.sort((a, b) => {
-            const orderA = Number(a.order !== undefined && a.order !== null ? a.order : 999);
-            const orderB = Number(b.order !== undefined && b.order !== null ? b.order : 999);
+            const orderA = (a && a.order !== undefined && a.order !== null && !isNaN(Number(a.order))) ? Number(a.order) : 999;
+            const orderB = (b && b.order !== undefined && b.order !== null && !isNaN(Number(b.order))) ? Number(b.order) : 999;
             if (orderA !== orderB) return orderA - orderB;
-            return String(a.id || "").localeCompare(String(b.id || ""));
+            return String((a && a.id) || "").localeCompare(String((b && b.id) || ""));
           });
 
           window._hasFreshCloudData = true;
@@ -223,13 +424,31 @@ window.setupCloudRealtimeListeners2 = function() {
   // 3. PRODUCTS REALTIME LISTENER
   if (!_realtimeUnsubscribers.products) {
     try {
-      _realtimeUnsubscribers.products = db.collection('ek_products').limit(300).onSnapshot({ includeMetadataChanges: true }, snapshot => {
+      _realtimeUnsubscribers.products = db.collection('ek_products').limit(1000).onSnapshot(snapshot => {
         if (snapshot) {
+          if (snapshot.size >= 900) {
+            console.warn(`[Realtime Sync] Product catalog count (${snapshot.size}) is approaching or at the limit cap (1000). Consider archiving inactive items or expanding cursor-based pagination.`);
+          }
           const isFromCache = !!(snapshot.metadata && snapshot.metadata.fromCache);
           let list = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
 
-          const deletedProductIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
+          let deletedProductIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
+          if (deletedProductIds.length > 500) {
+            deletedProductIds = deletedProductIds.slice(-500);
+            saveData('ek_deleted_product_ids', deletedProductIds);
+            if (typeof db !== 'undefined' && db) {
+              const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+              if (adminSession && adminSession.loggedIn) {
+                db.collection('ek_tombstones').doc('ek_deleted_product_ids').set({
+                  ids: deletedProductIds,
+                  updatedAt: new Date().toISOString()
+                }).then(() => {
+                  if (typeof debugLog === 'function') debugLog("[Tombstone Prune] Pruned ek_deleted_product_ids to last 500 entries.");
+                }).catch(err => console.warn("[Tombstone Prune] Rewrite failed:", err));
+              }
+            }
+          }
           if (deletedProductIds.length > 0) {
             list.forEach(p => {
               if (p && p.id && deletedProductIds.includes(p.id)) {
@@ -264,11 +483,6 @@ window.setupCloudRealtimeListeners2 = function() {
 
           if (list && list.length > 0) {
             saveData('ek_products', list);
-          } else {
-            let local = typeof getData === 'function' ? getData('ek_products', []) : [];
-            if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!local || local.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
-              saveData('ek_products', DEMO_PRODUCTS);
-            }
           }
           if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
           window._lastDataSnapshotHash = '';
@@ -374,11 +588,10 @@ window.setupCloudRealtimeListeners2 = function() {
             ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(20);
           }
         } else if (targetRole === 'rider') {
-          const riderId = deliverySess ? (deliverySess.id || deliverySess.phone) : null;
-          if (riderId) {
-            ordersQuery = db.collection('ek_orders').where('assignedExecutiveId', '==', String(riderId)).limit(40);
-          } else {
-            ordersQuery = db.collection('ek_orders').where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'delivering', 'out_for_delivery']).limit(40);
+          try {
+            ordersQuery = db.collection('ek_orders').orderBy('createdAt', 'desc').limit(100);
+          } catch(qe) {
+            ordersQuery = db.collection('ek_orders').limit(100);
           }
         } else if (targetRole === 'admin') {
           try {
@@ -531,11 +744,45 @@ window.teardownLiveListeners = function() {
   }
 };
 
+window.onAndroidAppPause = function() {
+  debugLog("[Lifecycle] onAndroidAppPause received. Pausing background activity...");
+  try {
+    // 1. Pause all setInterval polling loops by setting a global flag
+    window._isAppBackgrounded = true;
+    
+    // 2. Disable Firestore network to stop all real-time listener traffic
+    if (typeof db !== 'undefined' && db && db.disableNetwork) {
+      db.disableNetwork().catch(e => console.warn("[Lifecycle] disableNetwork notice:", e));
+    }
+    
+    // 3. Pause CSS animations by adding a body class
+    if (document.body) {
+      document.body.classList.add('app-backgrounded');
+    }
+  } catch(e) {
+    console.warn("[Lifecycle] onAndroidAppPause error:", e);
+  }
+};
+
 window._lastAndroidResumeTime = 0;
 window.onAndroidAppResume = function() {
   const now = Date.now();
-  if (now - window._lastAndroidResumeTime < 800) return; // Debounce rapid triggers
+
+  // CRITICAL: Always re-enable network and resume animations, even if debounced
+  if (window._isAppBackgrounded) {
+    window._isAppBackgrounded = false;
+    if (typeof db !== 'undefined' && db && db.enableNetwork) {
+      db.enableNetwork().catch(e => console.warn("[Lifecycle] enableNetwork notice:", e));
+    }
+    if (document.body) {
+      document.body.classList.remove('app-backgrounded');
+    }
+  }
+
+  // Debounce non-critical operations (session validation, UI refresh, sync)
+  if (now - window._lastAndroidResumeTime < 800) return;
   window._lastAndroidResumeTime = now;
+
   debugLog("[Lifecycle] onAndroidAppResume received.");
 
   try {
@@ -795,22 +1042,66 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
     try {
       window.locallyModifiedOrders = new Proxy({}, {
         get: function(target, prop) {
+          const now = Date.now();
           try {
             const raw = localStorage.getItem('ek_locally_modified_orders');
             if (raw) {
               const parsed = JSON.parse(raw);
-              return parsed[prop] || target[prop] || null;
+              const entry = parsed[prop];
+              if (entry !== undefined && entry !== null) {
+                // If stored as { value, ts } object
+                if (typeof entry === 'object' && entry.ts !== undefined) {
+                  if (now - entry.ts > 60000) {
+                    delete parsed[prop];
+                    delete target[prop];
+                    localStorage.setItem('ek_locally_modified_orders', JSON.stringify(parsed));
+                    return null;
+                  }
+                  return entry.value;
+                }
+                // Legacy number timestamp (shield expiry timestamp format)
+                if (typeof entry === 'number') {
+                  if (now > entry) {
+                    delete parsed[prop];
+                    delete target[prop];
+                    localStorage.setItem('ek_locally_modified_orders', JSON.stringify(parsed));
+                    return null;
+                  }
+                  return entry;
+                }
+                return entry;
+              }
             }
           } catch (e) {}
-          return target[prop] || null;
+
+          const targetEntry = target[prop];
+          if (targetEntry !== undefined && targetEntry !== null) {
+            if (typeof targetEntry === 'object' && targetEntry.ts !== undefined) {
+              if (now - targetEntry.ts > 60000) {
+                delete target[prop];
+                return null;
+              }
+              return targetEntry.value;
+            }
+            if (typeof targetEntry === 'number') {
+              if (now > targetEntry) {
+                delete target[prop];
+                return null;
+              }
+              return targetEntry;
+            }
+            return targetEntry;
+          }
+          return null;
         },
         set: function(target, prop, value) {
-          target[prop] = value;
+          const entry = { value: value, ts: Date.now() };
+          target[prop] = entry;
           try {
             let modified = {};
             const raw = localStorage.getItem('ek_locally_modified_orders');
             if (raw) modified = JSON.parse(raw);
-            modified[prop] = value;
+            modified[prop] = entry;
             localStorage.setItem('ek_locally_modified_orders', JSON.stringify(modified));
           } catch (e) {}
           return true;
@@ -1003,6 +1294,13 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
         fbApp = firebase.initializeApp(firebaseConfig);
         debugLog('[Diagnostic Step 1] firebase.initializeApp SUCCEEDED! ProjectId:', firebaseConfig ? firebaseConfig.projectId : 'N/A');
         db = firebase.firestore();
+        try {
+          db.settings({
+            experimentalAutoDetectLongPolling: true
+          });
+        } catch (settingsErr) {
+          debugLog("Firestore settings configuration notice: " + (settingsErr && settingsErr.message));
+        }
 
         if (db && typeof db.enablePersistence === 'function') {
           db.enablePersistence({ synchronizeTabs: true })
@@ -1101,7 +1399,7 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
             .catch(pe => console.warn("[Auth] Persistence configuration failed:", pe));
 
           firebase.auth().onAuthStateChanged(async user => {
-            if (checkIsExplicitLogoutInProgress() || window.isManualLoginInProgress) {
+            if (checkIsExplicitLogoutInProgress() || window.isManualLoginInProgress || (typeof getData === 'function' && getData('ek_explicit_logged_out') === true)) {
               debugLog("[Auth State Changed] Explicit logout or manual login in progress. Suppressing auth state listener processing.");
               return;
             }
@@ -1123,6 +1421,12 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
 
                 updateCloudStatus('connected', 'Cloud Database Connected ✓');
                 setupCloudRealtimeListeners2();
+                if (typeof updateEmailVerificationBanner === 'function') {
+                  try { updateEmailVerificationBanner(); } catch(e) {}
+                }
+                if (typeof migratePasswordsToHash === 'function') {
+                  try { migratePasswordsToHash(); } catch(e) {}
+                }
 
                 if (hasAdminSession) {
                   debugLog("[Auth State Changed] Active Admin session detected. Performing authorization check...");
@@ -1509,13 +1813,19 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
       const cachedTime = _cacheTimestamps.get(key);
 
       if (_dataCache.has(key) && cachedTime && (now - cachedTime) < CACHE_TTL_MS) {
-        return _dataCache.get(key); // Cache hit
+        const cachedVal = _dataCache.get(key);
+        if (cachedVal !== null && cachedVal !== undefined) {
+          return cachedVal; // Cache hit
+        }
       }
 
       const fresh = getData(key, defaultVal);
-      _dataCache.set(key, fresh);
-      _cacheTimestamps.set(key, now);
-      return fresh;
+      const safeVal = (fresh !== null && fresh !== undefined) ? fresh : defaultVal;
+      if (safeVal !== null && safeVal !== undefined) {
+        _dataCache.set(key, safeVal);
+        _cacheTimestamps.set(key, now);
+      }
+      return safeVal != null ? safeVal : defaultVal;
     }
 
     function invalidateDataCache(key) {
@@ -1678,18 +1988,36 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
       try {
         _originalSetItem.call(localStorage, key, value);
       } catch (e) {
-        if (e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22)) {
-          console.warn("[Storage Safeguard] LocalStorage quota limit reached. Clearing temporary logs & non-essential cache...");
-          ['ek_pending_syncs', 'ek_notifications', 'ek_temp_logs', 'ek_search_history'].forEach(k => {
+        if (e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || (e.message && e.message.toLowerCase().includes('quota')))) {
+          console.warn("[Storage Safeguard] LocalStorage quota limit reached. Pruning non-essential cache and large arrays...");
+          
+          // 1. Evict temporary/non-essential cache keys first
+          ['ek_pending_syncs', 'ek_temp_logs', 'ek_search_history', 'ek_notifications'].forEach(k => {
             try { _originalRemoveItem.call(localStorage, k); } catch(_) {}
           });
+
+          // 2. Prune oversized list items (keep only latest 50 orders/events in localStorage)
+          ['ek_orders', 'ek_users', 'ek_deleted_order_ids'].forEach(largeKey => {
+            try {
+              const raw = localStorage.getItem(largeKey);
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 50) {
+                  _originalSetItem.call(localStorage, largeKey, JSON.stringify(parsed.slice(0, 50)));
+                }
+              }
+            } catch (_) {}
+          });
+
           try {
             _originalSetItem.call(localStorage, key, value);
           } catch(retryErr) {
-            console.error("[Storage Safeguard] Secondary setItem failed:", retryErr);
+            console.warn("[Storage Safeguard] Secondary setItem fallback: relying on in-memory and native bridge storage.", retryErr);
           }
         } else {
-          throw e;
+          try {
+            _originalSetItem.call(localStorage, key, value);
+          } catch (_) {}
         }
       }
     };
@@ -2046,6 +2374,10 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
     function getDeletedProductIds() {
       let list = getData('ek_deleted_product_ids', []);
       if (!list || !Array.isArray(list)) list = [];
+      if (list.length > 500) {
+        list = list.slice(-500);
+        saveData('ek_deleted_product_ids', list);
+      }
       return list;
     }
     function pruneLocalDeletedProducts() {
@@ -2059,13 +2391,31 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
       }
     }
     function markProductAsDeleted(productId) {
-      const list = getDeletedProductIds();
+      let list = getDeletedProductIds();
       if (!list.includes(productId)) {
         list.push(productId);
+        if (list.length > 500) {
+          list = list.slice(-500);
+        }
         saveData('ek_deleted_product_ids', list);
       }
       pruneLocalDeletedProducts();
     }
+    function unmarkProductAsDeleted(productId) {
+      if (!productId) return;
+      let list = getDeletedProductIds();
+      if (list.includes(productId)) {
+        list = list.filter(id => id !== productId);
+        saveData('ek_deleted_product_ids', list);
+      }
+      if (typeof db !== 'undefined' && db) {
+        db.collection('ek_tombstones').doc('ek_deleted_product_ids').set({
+          ids: firebase.firestore.FieldValue.arrayRemove(productId),
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+      }
+    }
+    window.unmarkProductAsDeleted = unmarkProductAsDeleted;
     function getDeletedUserIds() {
       let list = getData('ek_deleted_user_ids', []);
       if (!list || !Array.isArray(list)) list = [];
@@ -2090,9 +2440,33 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
       pruneLocalDeletedUsers();
     }
     function unmarkUserAsDeleted(userIdOrPhone) {
+      if (!userIdOrPhone) return;
+      const cleanDigits = String(userIdOrPhone).replace(/\D/g, '');
+      const phone10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+
       let list = getDeletedUserIds();
-      list = list.filter(id => id !== userIdOrPhone);
+      list = list.filter(id => {
+        if (!id) return false;
+        if (id === userIdOrPhone) return false;
+        if (phone10) {
+          const idDigits = String(id).replace(/\D/g, '');
+          if (idDigits && (idDigits === phone10 || idDigits.endsWith(phone10) || phone10.endsWith(idDigits))) {
+            return false;
+          }
+          if (id === `cust_${phone10}` || id === `+91${phone10}` || id === `91${phone10}`) {
+            return false;
+          }
+        }
+        return true;
+      });
       saveData('ek_deleted_user_ids', list);
+
+      if (typeof db !== 'undefined' && db && db.collection) {
+        db.collection('ek_tombstones').doc('ek_deleted_user_ids').set({
+          ids: list,
+          updatedAt: new Date().toISOString()
+        }).catch(() => null);
+      }
     }
 
     function getDeletedRiderIds() {
@@ -2214,16 +2588,29 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
         if (db) {
           setTimeout(() => {
             try {
+              const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+              const isAdmin = !!(adminSession && adminSession.loggedIn);
+              const customerSession = typeof getData === 'function' ? getData('ek_customer_session') : null;
+              const deliverySession = typeof getData === 'function' ? getData('ek_delivery_session') : null;
+
               if (['ek_deleted_product_ids', 'ek_deleted_order_ids', 'ek_deleted_user_ids', 'ek_deleted_rider_ids'].includes(key)) {
-                if (Array.isArray(data) && data.length > 0) {
+                if (isAdmin && Array.isArray(data) && data.length > 0) {
                   db.collection('ek_tombstones').doc(key).set({
                     ids: firebase.firestore.FieldValue.arrayUnion(...data),
                     updatedAt: new Date().toISOString()
                   }, { merge: true })
                   .then(() => debugLog(`[Tombstone Sync] Sync successful for ${key}`))
-                  .catch(err => console.error(`[Tombstone Sync] Sync fail for ${key}:`, err));
+                  .catch(err => debugLog(`[Tombstone Sync] Sync fail for ${key}:`, err));
                 }
               } else if (['ek_users', 'ek_orders', 'ek_products', 'ek_delivery_persons', 'ek_admin_accounts', 'ek_categories'].includes(key) && Array.isArray(data)) {
+                // Restricted collections: only Admin is allowed to write ek_categories, ek_products, ek_admin_accounts
+                if (['ek_categories', 'ek_products', 'ek_admin_accounts'].includes(key) && !isAdmin) {
+                  return;
+                }
+                if (key === 'ek_delivery_persons' && !isAdmin && !(deliverySession && deliverySession.loggedIn)) {
+                  return;
+                }
+
                 const now = Date.now();
                 const deletedOrderIds = getDeletedOrderIds();
                 const deletedProductIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
@@ -2245,30 +2632,36 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
                   if (key === 'ek_users' && deletedUserIds.includes(itemId)) return;
                   if (key === 'ek_delivery_persons' && deletedRiderIds.includes(itemId)) return;
 
+                  // Customer self-update permission check
+                  const docId = (key === 'ek_users' || key === 'ek_admin_accounts') ? (item.id || item.phone) : item.id;
+                  if (!docId) return;
+
+                  if (key === 'ek_users' && !isAdmin) {
+                    const isOwnProfile = customerSession && (customerSession.id === docId || customerSession.phone === docId || (customerSession.id && item.id && customerSession.id === item.id));
+                    if (!isOwnProfile) return;
+                  }
+
                   const lastUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
                   const isRecent = Math.abs(now - lastUpdated) < 15000;
 
                   if (!item.updatedAt || isRecent) {
-                    const docId = (key === 'ek_users' || key === 'ek_admin_accounts') ? (item.id || item.phone) : item.id;
-                    if (docId) {
-                      db.collection(key).doc(docId).set(cleanFirestoreData(item))
-                        .catch(err => console.error(`Firestore Cloud auto-upload fail for ${key} [Doc: ${docId}]:`, err));
-                    }
+                    db.collection(key).doc(docId).set(cleanFirestoreData(item))
+                      .catch(err => {
+                        debugLog(`Firestore Cloud auto-upload note for ${key} [Doc: ${docId}]:`, err);
+                      });
                   }
                 });
               } else if (key === 'ek_settings') {
-                const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
-                const isAdmin = !!(adminSession && adminSession.loggedIn);
                 if (isAdmin && data && data._isAdminModified === true) {
                   const settingsPayload = cleanFirestoreData(data);
                   db.collection('ek_settings').doc('global_config').set(settingsPayload)
-                    .catch(err => console.error("Firestore settings auto-upload fail (global_config):", err));
+                    .catch(err => debugLog("Firestore settings auto-upload fail (global_config):", err));
                   db.collection('ek_settings').doc('global').set(settingsPayload, { merge: true })
-                    .catch(err => console.error("Firestore settings auto-upload fail (global):", err));
+                    .catch(err => debugLog("Firestore settings auto-upload fail (global):", err));
                 }
               }
             } catch (err) {
-              console.error("Non-blocking background sync fail:", err);
+              debugLog("Non-blocking background sync fail:", err);
             }
           }, 50);
         }
@@ -2520,3 +2913,12 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
         </div>
       `;
     };
+
+    // Trigger initial app version check
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        try { if (typeof checkAppVersion === 'function') checkAppVersion(); } catch(e) {}
+      });
+    } else {
+      try { if (typeof checkAppVersion === 'function') checkAppVersion(); } catch(e) {}
+    }

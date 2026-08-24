@@ -1,8 +1,18 @@
 
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
     async function deleteExecutive(id) {
       const orders = getData('ek_orders', []) || [];
-      const activeAssignedOrder = orders.find(o => (o.assignedTo === id || o.assignedExecutiveId === id || o.deliveryExecutiveId === id || o.riderUid === id || o.assignedDeliveryPartnerUid === id) &&
-        !['delivered', 'cancelled', 'completed', 'archived'].includes(String(o.status).toLowerCase().trim()));
+      const activeAssignedOrder = orders.find(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        const isAssigned = (exec && exec.id === id) || (o.assignedTo === id || o.assignedExecutiveId === id || o.deliveryExecutiveId === id || o.riderUid === id || o.assignedDeliveryPartnerUid === id);
+        return isAssigned && !['delivered', 'cancelled', 'completed', 'archived'].includes(String(o.status).toLowerCase().trim());
+      });
       if (activeAssignedOrder) {
         showToast(
           currentLang === 'ta'
@@ -992,7 +1002,10 @@
       }
     }
 
-    setInterval(checkScheduledPushNotifications, 15000);
+    setInterval(() => {
+      if (document.hidden || window._isAppBackgrounded) return;
+      checkScheduledPushNotifications();
+    }, 15000);
 
 
     async function sendCustomerShoutToAll() {
@@ -1216,7 +1229,13 @@
           try {
             const deleteFn = getCloudFunction('deleteCustomerAccount');
             if (deleteFn) {
-              const res = await deleteFn({ targetCustomerUid: userId });
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Cloud Function timeout after 15s')), 15000)
+              );
+              const res = await Promise.race([
+                deleteFn({ targetCustomerUid: userId }),
+                timeoutPromise
+              ]);
               debugLog("[Customer Deletion Result]", res);
               if (res && res.data && res.data.success) {
                 cloudAuthDeleted = true;
@@ -1224,26 +1243,60 @@
               }
             }
           } catch (fnErr) {
-            console.warn("Cloud Auth deletion failed or skipped, proceeding with direct DB deletion fallback:", fnErr);
+            console.warn("Cloud Auth deletion failed or timed out, proceeding with direct DB deletion fallback:", fnErr);
           }
 
           try {
+            const cleanDigits = String(u.phone || '').replace(/\D/g, '');
+            const phone10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+
             if (typeof db !== 'undefined' && db && db.collection) {
-              await db.collection('ek_users').doc(userId).delete().catch(err => {
+              const deletePromises = [
+                db.collection('ek_users').doc(userId).delete().catch(() => null),
+                db.collection('users').doc(userId).delete().catch(() => null)
+              ];
+
+              if (phone10) {
+                deletePromises.push(
+                  db.collection('ek_users').doc(phone10).delete().catch(() => null),
+                  db.collection('ek_users').doc(`cust_${phone10}`).delete().catch(() => null),
+                  db.collection('ek_users').doc(`+91${phone10}`).delete().catch(() => null),
+                  db.collection('users').doc(phone10).delete().catch(() => null),
+                  db.collection('users').doc(`cust_${phone10}`).delete().catch(() => null)
+                );
+              }
+
+              await Promise.all(deletePromises).catch(err => {
                 console.error("Direct Firestore doc deletion failed:", err);
               });
             }
 
             markUserAsDeleted(userId);
-            markUserAsDeleted(u.phone);
+            if (u.phone) markUserAsDeleted(u.phone);
+            if (phone10) {
+              markUserAsDeleted(phone10);
+              markUserAsDeleted(`cust_${phone10}`);
+            }
 
-            const filtered = users.filter(user => user.id !== userId && user.phone !== u.phone);
+            const filtered = users.filter(user => {
+              if (!user) return false;
+              if (user.id === userId) return false;
+              if (u.phone && user.phone === u.phone) return false;
+              if (phone10) {
+                const uDigs = String(user.phone || '').replace(/\D/g, '');
+                if (uDigs && (uDigs === phone10 || uDigs.endsWith(phone10))) return false;
+              }
+              return true;
+            });
             saveData('ek_users', filtered);
 
             const customerSession = getData('ek_customer_session');
-            if (customerSession && (customerSession.id === userId || customerSession.phone === u.phone)) {
+            if (customerSession && (customerSession.id === userId || customerSession.phone === u.phone || (phone10 && String(customerSession.phone || '').replace(/\D/g, '').endsWith(phone10)))) {
               removeData('ek_customer_session');
               sessionStorage.removeItem('ek_customer_session_temp');
+              if (typeof auth !== 'undefined' && auth && typeof auth.signOut === 'function') {
+                auth.signOut().catch(() => null);
+              }
             }
 
             invalidateDataCache('ek_users');
@@ -1650,15 +1703,16 @@
         const comment = o.feedbackComment || (currentLang === 'ta' ? 'கருத்துக்கள் எதுவும் எழுதப்படவில்லை' : 'No written feedback comment provided.');
         const dateStr = o.updatedAt ? new Date(o.updatedAt).toLocaleDateString() : (o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A');
         const starsStr = '★'.repeat(o.rating) + '☆'.repeat(5 - o.rating);
-        const riderText = o.assignedExecutiveName || (currentLang === 'ta' ? 'கொடுக்கப்படவில்லை' : 'Unassigned Rider');
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        const riderText = (exec && exec.name) || o.assignedExecutiveName || (currentLang === 'ta' ? 'கொடுக்கப்படவில்லை' : 'Unassigned Rider');
 
         const card = `
           <div class="card" style="border-color: rgba(245,158,11,0.18); background: rgba(245,158,11,0.015); margin-bottom:12px; padding: 14px; border-radius:14px; display: flex; flex-direction: column; gap: 8px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
               <div>
-                <span style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Order Match: #${o.id}</span>
-                <h4 style="color:#fff; font-size:13.5px; margin: 2px 0 0 0;">👤 ${escapeHtml(o.customerName || 'Customer')} <span style="font-size: 11px; color: var(--text-muted); font-weight:normal;">(${dateStr})</span></h4>
-                <p style="font-size:11px; color:var(--accent-orange); margin: 2px 0 0 0;">📞 +91 ${o.customerPhone || ''}</p>
+                <span style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Order Match: #${escapeHtml(o.id || '')}</span>
+                <h4 style="color:#fff; font-size:13.5px; margin: 2px 0 0 0;">👤 ${escapeHtml(o.customerName || 'Customer')} <span style="font-size: 11px; color: var(--text-muted); font-weight:normal;">(${escapeHtml(dateStr)})</span></h4>
+                <p style="font-size:11px; color:var(--accent-orange); margin: 2px 0 0 0;">📞 +91 ${escapeHtml(o.customerPhone || '')}</p>
               </div>
               <span style="font-size:14px; color:var(--accent-orange); font-weight:700;">${starsStr}</span>
             </div>
@@ -1668,8 +1722,8 @@
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:10.5px; color:var(--text-muted); border-top:1px dashed rgba(255,255,255,0.04); padding-top:6px; margin-top:2px;">
-              <span>Rider Assigned: <strong style="color:#fff;">${riderText}</strong></span>
-              <button class="btn btn-secondary" style="width:auto; height:24px; font-size:10px; padding:3px 8px; border-color: rgba(255,255,255,0.08); border-radius:5px;" onclick="switchAdminTab('tab-orders'); document.getElementById('admin-orders-search').value='${o.id}'; renderAdminOrders();">
+              <span>Rider Assigned: <strong style="color:#fff;">${escapeHtml(riderText)}</strong></span>
+              <button class="btn btn-secondary" style="width:auto; height:24px; font-size:10px; padding:3px 8px; border-color: rgba(255,255,255,0.08); border-radius:5px;" onclick="switchAdminTab('tab-orders'); document.getElementById('admin-orders-search').value='${escapeHtml(o.id || '')}'; renderAdminOrders();">
                 🔍 View Order
               </button>
             </div>

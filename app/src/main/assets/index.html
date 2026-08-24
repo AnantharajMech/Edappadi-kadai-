@@ -373,15 +373,14 @@
 
     <!-- SCREEN 2: LOGIN PAGE -->
     <div id="screen-login" class="screen no-nav" style="justify-content: flex-start; padding-top: 16px; padding-bottom: 32px; min-height: 100%; position: relative; max-width: 480px; margin: 0 auto;">
-      <!-- Elegant Interactive Back/Skip Header Row -->
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-top: 8px; width: 100%; box-sizing: border-box; flex-shrink: 0; z-index: 1000;">
+      <!-- Elegant Interactive Back Header Row -->
+      <div style="display: flex; align-items: center; justify-content: flex-start; margin-bottom: 24px; padding-top: 8px; width: 100%; box-sizing: border-box; flex-shrink: 0; z-index: 1000;">
         <button onclick="showTab('tab-home')" style="background: rgba(30, 41, 59, 0.45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #ffffff; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45); transition: all 0.25s;" onmouseover="this.style.background='rgba(30,41,59,0.7)'" onmouseout="this.style.background='rgba(30,41,59,0.45)'" title="Back to Home / முகப்பு பக்கம்">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
         </button>
-        <span onclick="showTab('tab-home')" style="font-size: 11.5px; color: var(--text-muted); font-weight: 700; cursor: pointer; letter-spacing: 0.3px; text-transform: uppercase; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);">Skip / முகப்பு</span>
       </div>
 
       <div style="position: absolute; top: 16px; right: 16px; display: none;">
@@ -639,6 +638,26 @@
         </h4>
         <p id="home-leave-banner-text" style="color: #ffffff; font-size: 12px; line-height: 1.5; margin: 0; font-weight: 500;"></p>
         <span style="display: inline-block; background: rgba(245,158,11,0.22); color: #f59e0b; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 6px; margin-top: 10px; text-transform: uppercase; border: 1px solid rgba(245,158,11,0.15);">ஆர்டர் தற்காலிகமாக நிறுத்தப்பட்டுள்ளது / Ordering Paused</span>
+      </div>
+
+      <!-- Email Verification Reminder Banner -->
+      <div id="home-email-unverified-banner" style="display: none; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.08) 100%); border: 1.5px solid rgba(239, 68, 68, 0.35); border-radius: 14px; padding: 10px 14px; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+            <div style="font-size: 20px; flex-shrink: 0;">✉️</div>
+            <div>
+              <div style="color: #fca5a5; font-size: 11.5px; font-weight: 700; line-height: 1.3;">
+                மின்னஞ்சல் சரிபார்க்கப்படவில்லை / Verify Email
+              </div>
+              <div style="color: rgba(255,255,255,0.85); font-size: 10.5px; line-height: 1.3; margin-top: 2px;">
+                கடவுச்சொல் மீட்புக்கு மின்னஞ்சலை சரிபார்க்கவும் / Please verify your email for password recovery.
+              </div>
+            </div>
+          </div>
+          <button type="button" onclick="resendVerificationEmail()" class="btn-ripple" style="background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; color: #fff; font-size: 10px; font-weight: 700; padding: 5px 9px; border-radius: 8px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
+            மறுபடி அனுப்பு / Resend
+          </button>
+        </div>
       </div>
 
       <!-- Premium 3D Glassmorphic Auto-Sliding Carousel Wrapper -->
@@ -1294,204 +1313,153 @@
 
     <!-- NATIVE PRIVACY POLICY MODAL -->
     <div id="privacy-policy-modal" class="modal-backdrop" onclick="closePrivacyPolicyModal(event)" style="align-items: center; padding: 20px; display: none; z-index: 10010;">
-      <div style="background: #06070d; color: #ffffff; border-radius: 28px; width: 100%; max-width: 440px; max-height: 85vh; padding: 24px; position: relative; box-shadow: 0 25px 50px rgba(0,0,0,0.9), 0 0 40px rgba(245,158,11,0.1); border: 1.5px solid rgba(255,255,255,0.08); display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+      <div style="background: #0b0e17; color: #ffffff; border-radius: 28px; width: 100%; max-width: 480px; max-height: 85vh; padding: 24px; position: relative; box-shadow: 0 25px 50px rgba(0,0,0,0.9), 0 0 40px rgba(245,158,11,0.15); border: 1.5px solid rgba(255,255,255,0.08); display: flex; flex-direction: column;" onclick="event.stopPropagation()">
 
         <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 style="font-size: 18px; font-weight: 700; color: #f59e0b; margin: 0; font-family: 'Poppins', sans-serif;">Privacy Policy</h3>
-          <button onclick="closePrivacyPolicyDetail()" style="background: #222222; color: #ffffff; width: 32px; height: 32px; border-radius: 50%; border: none; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">×</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">🛡️</span>
+            <h3 style="font-size: 17px; font-weight: 800; color: #f59e0b; margin: 0; font-family: 'Poppins', sans-serif;">Privacy Policy / தனியுரிமை</h3>
+          </div>
+          <button onclick="closePrivacyPolicyDetail()" style="background: rgba(255,255,255,0.08); color: #ffffff; width: 32px; height: 32px; border-radius: 50%; border: none; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">×</button>
         </div>
 
-        <!-- Language Tabs inside Modal (Hidden based on user request to use English exclusively) -->
-        <div style="display: none !important; gap: 8px; justify-content: center; margin-bottom: 20px; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
-          <button id="privacy-tab-en" onclick="setPrivacyLang('en')" style="flex: 1; background: #e63946; color: #fff; border: none; padding: 8px 16px; border-radius: 16px; font-weight: 600; font-size: 13px; cursor: pointer; transition: 0.2s; font-family: 'Poppins', sans-serif;">English</button>
-          <button id="privacy-tab-ta" onclick="setPrivacyLang('ta')" style="flex: 1; background: transparent; color: #9ca3af; border: none; padding: 8px 16px; border-radius: 16px; font-weight: 600; font-size: 13px; cursor: pointer; transition: 0.2s; font-family: 'Poppins', sans-serif;">தமிழ்</button>
+        <!-- Language Tabs inside Modal -->
+        <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; background: rgba(255,255,255,0.04); padding: 4px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08);">
+          <button id="privacy-tab-en" onclick="setPrivacyLang('en')" style="flex: 1; background: #f59e0b; color: #000; border: none; padding: 7px 14px; border-radius: 16px; font-weight: 700; font-size: 12.5px; cursor: pointer; transition: 0.2s; font-family: 'Poppins', sans-serif;">English</button>
+          <button id="privacy-tab-ta" onclick="setPrivacyLang('ta')" style="flex: 1; background: transparent; color: #9ca3af; border: none; padding: 7px 14px; border-radius: 16px; font-weight: 700; font-size: 12.5px; cursor: pointer; transition: 0.2s; font-family: 'Poppins', sans-serif;">தமிழ்</button>
         </div>
 
         <!-- Scrollable Content Area -->
-        <div id="privacy-scroll-container" style="flex: 1; overflow-y: auto; padding-right: 4px; margin-bottom: 16px; max-height: 55vh;">
+        <div id="privacy-scroll-container" style="flex: 1; overflow-y: auto; padding-right: 4px; margin-bottom: 16px; max-height: 52vh;">
 
           <!-- ENGLISH CONTENT -->
           <div id="privacy-content-en">
-            <span style="display: inline-block; background: #e63946; color: #fff; font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-bottom: 8px; font-weight: 600; letter-spacing: 0.5px; font-family: 'Poppins', sans-serif;">Legal</span>
-            <h2 style="font-size: 20px; font-weight: 700; color: #ffffff; margin-bottom: 4px; font-family: 'Poppins', sans-serif;">Privacy Policy</h2>
-            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 20px; font-family: 'Poppins', sans-serif;">Last updated: June 2025 | Effective for Edappadi Kadai App</p>
+            <span style="display: inline-block; background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); font-size: 11px; padding: 3px 10px; border-radius: 8px; margin-bottom: 8px; font-weight: 700;">Edappadi Kadai • com.edappadikadai.app</span>
+            <h2 style="font-size: 18px; font-weight: 800; color: #ffffff; margin-bottom: 4px;">Edappadi Kadai Privacy Policy</h2>
+            <p style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 16px;">Effective: August 2026 | Meat &amp; Vegetable Delivery in Tamil Nadu, India</p>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">🏢 About Us</h4>
-              <p style="font-size: 13px; color: #dfdfdf; line-height: 1.6; margin: 0; font-family: 'Poppins', sans-serif;">Edappadi Kadai is operated by <strong>Coscoom Creative Tech Solutions</strong>, based in Idappadi, Salem, Tamil Nadu, India. We provide a hyperlocal fresh meat and vegetable delivery service through our mobile application.</p>
-            </div>
-
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">📋 What Data We Collect</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.6; font-family: 'Poppins', sans-serif;">
-                <li style="margin-bottom: 4px;"><strong>Name</strong> — To identify your account</li>
-                <li style="margin-bottom: 4px;"><strong>Phone Number</strong> — For order confirmation and delivery coordination</li>
-                <li style="margin-bottom: 4px;"><strong>Delivery Address / Location</strong> — To deliver your order to the correct place</li>
-                <li style="margin-bottom: 4px;"><strong>Order History</strong> — To show your past orders and improve service</li>
-              </ul>
-              <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 10px; margin-top: 10px; font-size: 12px; color: #f59e0b; line-height: 1.4; font-family: 'Poppins', sans-serif;">
-                ⚠️ We do NOT collect payment card details, Aadhaar, or any sensitive financial information.
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #f59e0b; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">1. 📋 Data We Collect</h4>
+              <p style="font-size: 12.5px; color: #cbd5e1; line-height: 1.55; margin: 0;">Name, phone number, email (optional), delivery address, GPS location coordinates (lat/lng), active cart items, complete order history, and UPI transaction reference ID / approval ref no.</p>
+              <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 8px; margin-top: 8px; font-size: 11.5px; color: #34d399; line-height: 1.4;">
+                🔒 <strong>Zero Bank Details:</strong> We NEVER collect or store Bank Accounts, Debit/Credit Card numbers, CVV, or UPI PINs.
               </div>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">🎯 Why We Collect It</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.6; font-family: 'Poppins', sans-serif;">
-                <li style="margin-bottom: 4px;">To process and deliver your orders</li>
-                <li style="margin-bottom: 4px;">To contact you regarding your order status</li>
-                <li style="margin-bottom: 4px;">To improve app performance and user experience</li>
-                <li style="margin-bottom: 4px;">To resolve any delivery issues</li>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #3b82f6; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">2. ⚙️ How Data is Used</h4>
+              <ul style="padding-left: 18px; margin: 0; font-size: 12px; color: #cbd5e1; line-height: 1.55;">
+                <li>Account authentication (Firebase Phone Auth &amp; Google Sign-In)</li>
+                <li>Order preparation and doorstep delivery routing</li>
+                <li>Real-time push notifications via Firebase Cloud Messaging (FCM)</li>
+                <li>Customer support &amp; loyalty rewards point calculation</li>
               </ul>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">🤝 Who We Share It With</h4>
-              <p style="font-size: 13px; color: #dfdfdf; line-height: 1.6; margin-bottom: 6px; font-family: 'Poppins', sans-serif;">Your data is shared <strong>only</strong> with:</p>
-              <ul style="padding-left: 20px; margin: 0 0 10px 0; font-size: 13px; color: #dfdfdf; line-height: 1.6; font-family: 'Poppins', sans-serif;">
-                <li style="margin-bottom: 4px;">Our delivery staff — for completing your order</li>
-                <li style="margin-bottom: 4px;">Firebase (Google) — our secure cloud backend for data storage</li>
-              </ul>
-              <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: 10px; padding: 10px; font-size: 12px; color: #22c55e; line-height: 1.4; font-family: 'Poppins', sans-serif;">
-                ✅ We do NOT sell, rent, or share your data with any third-party advertisers or marketing companies.
-              </div>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #10b981; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">3. ☁️ Google Firebase Infrastructure</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin: 0;">We use Google Firebase Authentication, Cloud Firestore (database), Cloud Storage, Cloud Messaging (FCM), Cloud Functions, Crashlytics, and App Check (Play Integrity).</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">🗄️ Data Storage & Retention</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.6; font-family: 'Poppins', sans-serif;">
-                <li style="margin-bottom: 4px;">Data is stored securely on <strong>Google Firebase servers</strong></li>
-                <li style="margin-bottom: 4px;">Your data is retained as long as your account is active</li>
-                <li style="margin-bottom: 4px;">If you delete your account, all your data will be permanently removed within 30 days</li>
-              </ul>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #f59e0b; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">4. 💳 UPI Payments (Intent Flow)</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin: 0;">Payment occurs inside your installed UPI app (GPay/PhonePe/Paytm/BHIM via <code>upi://</code> deep link). Our app only receives the transaction reference number and status.</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">⚖️ Legal Compliance</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.6; font-family: 'Poppins', sans-serif;">
-                <li style="margin-bottom: 4px;">We comply with the <strong>Information Technology Act, 2000</strong> (India)</li>
-                <li style="margin-bottom: 4px;">We comply with the <strong>Digital Personal Data Protection Act, 2023</strong> (India)</li>
-                <li style="margin-bottom: 4px;">For users outside India: we follow applicable data protection regulations including <strong>GDPR</strong> principles</li>
-              </ul>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #8b5cf6; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">5. 🔒 Security &amp; Encryption</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin: 0;">100% HTTPS network traffic (cleartext blocked), AES-256 GCM encrypted local storage via Android Keystore, and SHA-256 hashed credentials.</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">🔒 Your Rights</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.6; font-family: 'Poppins', sans-serif;">
-                <li style="margin-bottom: 4px;">Request access to your personal data</li>
-                <li style="margin-bottom: 4px;">Request correction of incorrect data</li>
-                <li style="margin-bottom: 4px;">Request deletion of your account and data</li>
-                <li style="margin-bottom: 4px;">Withdraw consent at any time by contacting us</li>
-              </ul>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #ef4444; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">6. 🚫 Third-Party Data Sharing</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin: 0;">Data is NOT shared with third parties or advertisers. Zero third-party ad networks or data broker trackers.</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">🔄 Changes to This Policy</h4>
-              <p style="font-size: 13px; color: #dfdfdf; line-height: 1.6; margin: 0; font-family: 'Poppins', sans-serif;">We may update this policy occasionally. Any significant changes will be notified through the app. Continued use of the app after changes means you accept the updated policy.</p>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #ec4899; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">7. 🗑️ Data Retention &amp; Deletion</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin: 0;">Retained while account is active. Users can delete accounts anytime via the in-app Delete Account option or by contacting admin (via <code>deleteCustomerAccount</code> Cloud Function).</p>
             </div>
 
-            <div style="background: #101115; border-radius: 14px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px; font-family: 'Poppins', sans-serif;">📬 Contact Us</h4>
-              <p style="font-size: 13px; color: #dfdfdf; margin-bottom: 4px; font-family: 'Poppins', sans-serif;">For any privacy-related questions or data deletion requests:</p>
-              <p style="font-size: 13px; color: #dfdfdf; margin-bottom: 4px; font-family: 'Poppins', sans-serif;">Email: <a href="mailto:anantharajeinstein@gmail.com" style="color: #ec4899; text-decoration: underline; font-weight: 600;">anantharajeinstein@gmail.com</a></p>
-              <p style="font-size: 13px; color: #dfdfdf; margin-bottom: 4px; font-family: 'Poppins', sans-serif;">Store/Company: Lyo Food Delivery</p>
-              <p style="font-size: 13px; color: #dfdfdf; margin: 0; font-family: 'Poppins', sans-serif;">Location: Kavandampatti, Edappadi, Salem, Tamil Nadu — 637101</p>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #64748b; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">8. 👶 Children's Privacy</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin: 0;">This application is not intended for or directed to children under 18 years of age.</p>
+            </div>
+
+            <div style="background: #101624; border-radius: 14px; padding: 14px; border: 1px solid rgba(255,255,255,0.08);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">📬 Contact Us</h4>
+              <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Email: <a href="mailto:edappadikadai@gmail.com" style="color: #f59e0b; text-decoration: underline; font-weight: 700;">edappadikadai@gmail.com</a></p>
+              <p style="font-size: 12px; color: #94a3b8; margin: 0;">Edappadi Kadai (Lyo Food Delivery), Kavandampatti, Edappadi, Salem, Tamil Nadu — 637101</p>
             </div>
           </div>
 
           <!-- TAMIL CONTENT -->
           <div id="privacy-content-ta" style="display: none;">
-            <span style="display: inline-block; background: #e63946; color: #fff; font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-bottom: 8px; font-weight: 600; letter-spacing: 0.5px;" class="tamil-text">சட்டப்பூர்வ தகவல்</span>
-            <h2 style="font-size: 20px; font-weight: 700; color: #ffffff; margin-bottom: 4px;" class="tamil-text">தனியுரிமைக் கொள்கை</h2>
-            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 20px;" class="tamil-text">கடைசியாக புதுப்பிக்கப்பட்டது: ஜூன் 2025 | எடப்பாடி கடை App</p>
+            <span style="display: inline-block; background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); font-size: 11px; padding: 3px 10px; border-radius: 8px; margin-bottom: 8px; font-weight: 700;">எடப்பாடி கடை • com.edappadikadai.app</span>
+            <h2 style="font-size: 18px; font-weight: 800; color: #ffffff; margin-bottom: 4px;">தனியுரிமைக் கொள்கை</h2>
+            <p style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 16px;">நடைமுறை: ஆகஸ்ட் 2026 | எடப்பாடி, சேலம், தமிழ்நாடு</p>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">🏢 எங்களைப் பற்றி</h4>
-              <p style="font-size: 13px; color: #dfdfdf; line-height: 1.7; margin: 0;" class="tamil-text">எடப்பாடி கடை (Lyo Food Delivery), காவண்டம்பட்டி, எடப்பாடி, சேலம், தமிழ்நாடு, இந்தியாவை மையமாகக் கொண்ட Lyo Food Delivery நிறுவனத்தால் இயக்கப்படுகிறது. புதிய மீன், இறைச்சி மற்றும் காய்கறிகளை உங்கள் வீட்டிற்கே டெலிவரி செய்கிறோம்.</p>
-            </div>
-
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">📋 என்ன தகவல் சேகரிக்கிறோம்</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.7;" class="tamil-text">
-                <li style="margin-bottom: 4px;"><strong>பெயர்</strong> — உங்கள் account அடையாளத்திற்காக</li>
-                <li style="margin-bottom: 4px;"><strong>தொலைபேசி எண்</strong> — ஆர்டர் உறுதிப்படுத்தல் மற்றும் டெலிவரிக்காக</li>
-                <li style="margin-bottom: 4px;"><strong>டெலிவரி முகவரி / இடம்</strong> — சரியான இடத்தில் டெலிவரி செய்வதற்காக</li>
-                <li style="margin-bottom: 4px;"><strong>ஆர்டர் வரலாறு</strong> — கடந்த ஆர்டர்களை காட்டவும், சேவையை மேம்படுத்தவும்</li>
-              </ul>
-              <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 10px; margin-top: 10px; font-size: 12px; color: #f59e0b; line-height: 1.5;" class="tamil-text">
-                ⚠️ நாங்கள் bank card விவரங்கள், ஆதார் எண் அல்லது நிதி தகவல்கள் எதுவும் சேகரிக்கவில்லை.
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #f59e0b; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">1. 📋 நாங்கள் சேகரிக்கும் தகவல்கள்</h4>
+              <p style="font-size: 12.5px; color: #cbd5e1; line-height: 1.6; margin: 0;">பெயர், தொலைபேசி எண், மின்னஞ்சல், டெலிவரி முகவரி, GPS இருப்பிடக் குறியீடுகள், கார்ட் பொருட்கள், முந்தைய ஆர்டர்கள், மற்றும் UPI Transaction ID / ஒப்புதல் எண்.</p>
+              <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 8px; margin-top: 8px; font-size: 11.5px; color: #34d399; line-height: 1.4;">
+                🔒 <strong>வங்கித் தகவல்கள் இல்லை:</strong> உங்கள் வங்கி கணக்கு எண், கார்டு எண்கள், CVV அல்லது UPI PIN தகவல்களை நாங்கள் சேகரிப்பதில்லை.
               </div>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">🎯 ஏன் சேகரிக்கிறோம்</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.7;" class="tamil-text">
-                <li style="margin-bottom: 4px;">உங்கள் ஆர்டரை process செய்து டெலிவரி செய்வதற்காக</li>
-                <li style="margin-bottom: 4px;">ஆர்டர் நிலை குறித்து உங்களுக்கு தெரிவிக்க</li>
-                <li style="margin-bottom: 4px;">App-ஐ மேம்படுத்துவதற்காக</li>
-                <li style="margin-bottom: 4px;">டெலிவரி பிரச்சினைகளை தீர்ப்பதற்காக</li>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #3b82f6; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">2. ⚙️ தகவல்களை எவ்வாறு பயன்படுத்துகிறோம்?</h4>
+              <ul style="padding-left: 18px; margin: 0; font-size: 12px; color: #cbd5e1; line-height: 1.6;">
+                <li>OTP மற்றும் Google Sign-In மூலம் பாதுகாப்பான உள்நுழைவு</li>
+                <li>ஆர்டர் தயாரிப்பு மற்றும் இருப்பிடத்திற்கு டெலிவரி செய்தல்</li>
+                <li>Firebase FCM மூலம் உடனடி ஆர்டர் புஷ் அறிவிப்புகள்</li>
+                <li>வாடிக்கையாளர் உதவி மற்றும் ரிவார்ட் பாயிண்ட் மேலாண்மை</li>
               </ul>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">🤝 யாரிடம் share செய்கிறோம்</h4>
-              <p style="font-size: 13px; color: #dfdfdf; line-height: 1.7; margin-bottom: 6px;" class="tamil-text">உங்கள் தகவல் <strong>இவர்களிடம் மட்டுமே</strong> பகிரப்படும்:</p>
-              <ul style="padding-left: 20px; margin: 0 0 10px 0; font-size: 13px; color: #dfdfdf; line-height: 1.7;" class="tamil-text">
-                <li style="margin-bottom: 4px;">எங்கள் டெலிவரி ஊழியர்கள் — ஆர்டர் நிறைவேற்றுவதற்காக</li>
-                <li style="margin-bottom: 4px;">Firebase (Google) — நாங்கள் பயன்படுத்தும் பாதுகாப்பான cloud சேவை</li>
-              </ul>
-              <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: 10px; padding: 10px; font-size: 12px; color: #22c55e; line-height: 1.5;" class="tamil-text">
-                ✅ உங்கள் தகவலை எந்த விளம்பர நிறுவனத்திற்கும் விற்கவில்லை, கொடுக்கவில்லை.
-              </div>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #10b981; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">3. ☁️ Google Firebase கிளவுட் சேவைகள்</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.6; margin: 0;">Firebase Auth, Firestore தரவுத்தளம், Cloud Storage, Cloud Messaging, Cloud Functions, Crashlytics மற்றும் Play Integrity சேவைகளைப் பயன்படுத்துகிறோம்.</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">🗄️ தகவல் சேமிப்பு</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.7;" class="tamil-text">
-                <li style="margin-bottom: 4px;">தகவல்கள் <strong>Google Firebase</strong> சர்வரில் பாதுகாப்பாக சேமிக்கப்படும்</li>
-                <li style="margin-bottom: 4px;">உங்கள் account இருக்கும் வரை தகவல் வைத்திருப்போம்</li>
-                <li style="margin-bottom: 4px;">Account delete செய்தால் 30 நாளுக்குள் தகவல் முழுவதும் அழிக்கப்படும்</li>
-              </ul>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #f59e0b; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">4. 💳 UPI கட்டண முறை (UPI Intent)</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.6; margin: 0;">பணம் செலுத்துவது உங்கள் GPay, PhonePe, Paytm செயலியில் <code>upi://</code> இணைப்பு மூலம் மட்டுமே பாதுகாப்பாக நடக்கும். எங்கள் செயலி Transaction ID-ஐ மட்டுமே பெறுகிறது.</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">⚖️ சட்ட இணக்கம்</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.7;" class="tamil-text">
-                <li style="margin-bottom: 4px;"><strong>Information Technology Act, 2000</strong> (இந்தியா) படி செயல்படுகிறோம்</li>
-                <li style="margin-bottom: 4px;"><strong>Digital Personal Data Protection Act, 2023</strong> (இந்தியா) படி செயல்படுகிறோம்</li>
-                <li style="margin-bottom: 4px;">வெளிநாட்டு பயனர்களுக்கு: <strong>GDPR</strong> கோட்பாடுகளையும் பின்பற்றுகிறோம்</li>
-              </ul>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #8b5cf6; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">5. 🔒 தகவல் குறியாக்கம் &amp; பாதுகாப்பு</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.6; margin: 0;">100% HTTPS நெட்வொர்க் பாதுகாப்பு, ஆண்ட்ராய்டு Keystore AES-256 GCM குறியாக்கம், மற்றும் SHA-256 ஹாஷிங் பயன்படுத்தப்படுகிறது.</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">🔒 உங்கள் உரிமைகள்</h4>
-              <ul style="padding-left: 20px; margin: 0; font-size: 13px; color: #dfdfdf; line-height: 1.7;" class="tamil-text">
-                <li style="margin-bottom: 4px;">உங்கள் தகவலை பார்க்க கோரலாம்</li>
-                <li style="margin-bottom: 4px;">தவறான தகவலை திருத்த கோரலாம்</li>
-                <li style="margin-bottom: 4px;">Account மற்றும் தகவல்களை அழிக்க கோரலாம்</li>
-                <li style="margin-bottom: 4px;">எந்த நேரத்திலும் consent திரும்பப் பெறலாம்</li>
-              </ul>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #ef4444; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">6. 🚫 விளம்பர நிறுவனங்களுடன் பகிர்தல் இல்லை</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.6; margin: 0;">உங்கள் தகவல்கள் எந்த விளம்பர நிறுவனத்திற்கும் விற்கப்படுவதில்லை. அத்தியாவசிய Google Firebase தவிர வேறு எதற்கும் பகிரப்படாது.</p>
             </div>
 
-            <div style="background: #141414; border-radius: 14px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #e63946; border-top: 1px solid rgba(255,255,255,0.03);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">🔄 கொள்கை மாற்றங்கள்</h4>
-              <p style="font-size: 13px; color: #dfdfdf; line-height: 1.7; margin: 0;" class="tamil-text">இந்த கொள்கை மாறும்போது app மூலம் தெரிவிப்போம். மாற்றத்திற்குப் பிறகும் app பயன்படுத்தினால், புதிய கொள்கையை ஏற்றுக்கொண்டதாக கருதப்படும்.</p>
+            <div style="background: #141926; border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 3.5px solid #ec4899; border-top: 1px solid rgba(255,255,255,0.04);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">7. 🗑️ கணக்கு மற்றும் தகவல் நீக்கம்</h4>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.6; margin: 0;">செயலியில் உள்ள Delete Account விருப்பம் மூலம் அல்லது அட்மினைத் தொடர்பு கொண்டு உங்கள் கணக்கையும் அனைத்து தகவல்களையும் உடனடியாக நிரந்தரமாக நீக்கலாம்.</p>
             </div>
 
-            <div style="background: #101115; border-radius: 14px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;" class="tamil-text">📬 தொடர்பு கொள்ளுங்கள்</h4>
-              <p style="font-size: 13px; color: #dfdfdf; margin-bottom: 4px;" class="tamil-text">தனியுரிமை கேள்விகள் அல்லது தகவல் அழிப்பு கோரிக்கைக்கு:</p>
-              <p style="font-size: 13px; color: #dfdfdf; margin-bottom: 4px;" class="tamil-text">மின்னஞ்சல்: <a href="mailto:anantharajeinstein@gmail.com" style="color: #ec4899; text-decoration: underline; font-weight: 600;">anantharajeinstein@gmail.com</a></p>
-              <p style="font-size: 13px; color: #dfdfdf; margin-bottom: 4px;" class="tamil-text">நிறுவனம்: Coscoom Creative Tech Solutions</p>
-              <p style="font-size: 13px; color: #dfdfdf; margin: 0;" class="tamil-text">இடம்: எடப்பாடி, சேலம், தமிழ்நாடு — 637101</p>
+            <div style="background: #101624; border-radius: 14px; padding: 14px; border: 1px solid rgba(255,255,255,0.08);">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">📬 தொடர்பு கொள்ள</h4>
+              <p style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">மின்னஞ்சல்: <a href="mailto:edappadikadai@gmail.com" style="color: #f59e0b; text-decoration: underline; font-weight: 700;">edappadikadai@gmail.com</a></p>
+              <p style="font-size: 12px; color: #94a3b8; margin: 0;">எடப்பாடி கடை (Lyo Food Delivery), காவண்டம்பட்டி, எடப்பாடி, சேலம், தமிழ்நாடு — 637101</p>
             </div>
           </div>
 
         </div>
 
-        <button onclick="closePrivacyPolicyDetail()" style="background: linear-gradient(135deg, #a855f7 0%, #3b82f6 100%); color: #ffffff; font-family: 'Poppins', sans-serif; font-size: 14px; font-weight: 600; padding: 13px; border-radius: 14px; border: none; cursor: pointer; text-align: center; transition: opacity 0.2s; box-shadow: 0 4px 12px rgba(168,85,247,0.3); flex-shrink: 0;">
-          Close / மூடுக
-        </button>
+        <div style="display: flex; gap: 8px; flex-shrink: 0;">
+          <a href="privacy_policy.html" target="_blank" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-family: 'Poppins', sans-serif; font-size: 12.5px; font-weight: 600; padding: 12px; border-radius: 14px; text-decoration: none; cursor: pointer; text-align: center;">
+            <span>🌐</span> Open Full Page
+          </a>
+          <button onclick="closePrivacyPolicyDetail()" style="flex: 1; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #000000; font-family: 'Poppins', sans-serif; font-size: 13px; font-weight: 800; padding: 12px; border-radius: 14px; border: none; cursor: pointer; text-align: center; box-shadow: 0 4px 12px rgba(245,158,11,0.3);">
+            Close / மூடுக
+          </button>
+        </div>
 
       </div>
     </div>
@@ -1830,6 +1798,9 @@
           <div style="background: rgba(16,185,129,0.04); border: 1px solid rgba(16,185,129,0.15); padding: 14px; border-radius: 14px; margin-bottom: 4px;">
             <p style="font-size: 11px; color: #10b981; font-weight: 700; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">Verification / சரிபார்ப்பு</p>
             <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;" id="fp-otp-help-text">Enter the 6-digit OTP sent to your email.</p>
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
+              <button type="button" id="fp-resend-otp-btn" onclick="resendForgotPasswordOtp()" style="background: none; border: none; color: var(--accent-orange); font-size: 11px; font-weight: 600; cursor: pointer; padding: 2px 4px;">Resend OTP</button>
+            </div>
             
             <!-- 6-digit OTP container -->
             <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 12px;">
@@ -1867,6 +1838,13 @@
           <button class="btn btn-primary" onclick="verifyOtpAndResetPassword()" id="fp-btn-reset-confirm" style="padding: 14px; width:100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700;">
             <span>🔐 Reset Password</span>
           </button>
+
+          <!-- Resend OTP Action -->
+          <div style="text-align: center; margin-top: 6px;">
+            <button type="button" id="fp-btn-resend-otp" onclick="resendForgotPasswordOtp()" style="background: none; border: none; color: #10b981; font-size: 12px; font-weight: 600; cursor: pointer; padding: 6px 12px; border-radius: 8px; transition: all 0.2s ease;">
+              <span>🔄 Resend OTP / மீண்டும் OTP அனுப்புக</span>
+            </button>
+          </div>
         </div>
 
         <!-- STAGE 4: RESET LINK SENT INFO (Kept for compatibility) -->
@@ -2114,10 +2092,10 @@
       <div style="background: #111111; color: #ffffff; border: 2px solid var(--accent-orange); border-radius: 28px; width: 100%; max-width: 400px; padding: 16px; text-align: center; position: relative; box-shadow: 0 15px 40px rgba(0,0,0,0.85); display: flex; flex-direction: column; gap: 8px;" onclick="event.stopPropagation()">
 
         <!-- Big Animated Success Icon -->
-        <div id="success-icon-container" style="width: 56px; height: 56px; background: rgba(16, 185, 129, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; border: 2.2px solid #10b981; filter: drop-shadow(0 4px 10px rgba(16,185,129,0.35)); position: relative;">
-          <svg viewBox="0 0 52 52" style="width: 30px; height: 30px; stroke-linecap: round; stroke-linejoin: round; display: block;">
-            <circle cx="26" cy="26" r="23" fill="none" stroke="#10b981" stroke-width="4" />
-            <path fill="none" stroke="#10b981" stroke-width="5" d="M14 27 l8 8 l16 -16" />
+        <div id="success-icon-container" class="order-success-icon-wrap" style="width: 56px; height: 56px; background: rgba(16, 185, 129, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; border: 2.2px solid #10b981; filter: drop-shadow(0 4px 10px rgba(16,185,129,0.35)); position: relative;">
+          <svg class="success-checkmark-svg" viewBox="0 0 52 52" style="width: 30px; height: 30px; stroke-linecap: round; stroke-linejoin: round; display: block;">
+            <circle class="success-circle" cx="26" cy="26" r="23" fill="none" stroke="#10b981" stroke-width="4" />
+            <path class="success-check" fill="none" stroke="#10b981" stroke-width="5" d="M14 27 l8 8 l16 -16" />
           </svg>
         </div>
 
@@ -2940,14 +2918,22 @@
         </div>
       </details>
 
-      <!-- ABOUT US / DEVELOPER INFO BUTTON -->
-      <div style="margin-top: 12px; margin-bottom: 24px; width: 100%; box-sizing: border-box;">
+      <!-- ABOUT US & PRIVACY POLICY BUTTONS -->
+      <div style="margin-top: 12px; margin-bottom: 24px; width: 100%; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box;">
         <button type="button" onclick="showDeveloperAbout()" style="height: 52px; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); color: #ffffff; font-family: 'Poppins', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-sizing: border-box; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);" onmouseover="this.style.background='rgba(255, 255, 255, 0.06)'; this.style.borderColor='rgba(255, 255, 255, 0.15)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.02)'; this.style.borderColor='rgba(255, 255, 255, 0.08)';" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='none'">
           <div style="display: flex; align-items: center; gap: 12px;">
             <span style="font-size: 18px; color: var(--accent-orange); width: 24px; text-align: center;">ℹ️</span>
-            <span>About Us</span>
+            <span>About Us (எங்களை பற்றி)</span>
           </div>
           <span style="color: #6b7280; font-size: 14px;">➔</span>
+        </button>
+
+        <button type="button" onclick="showPrivacyPolicy()" style="height: 52px; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-radius: 14px; border: 1px solid rgba(245, 158, 11, 0.2); background: rgba(245, 158, 11, 0.03); color: #ffffff; font-family: 'Poppins', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-sizing: border-box; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);" onmouseover="this.style.background='rgba(245, 158, 11, 0.08)'; this.style.borderColor='rgba(245, 158, 11, 0.4)';" onmouseout="this.style.background='rgba(245, 158, 11, 0.03)'; this.style.borderColor='rgba(245, 158, 11, 0.2)';" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='none'">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 18px; color: #f59e0b; width: 24px; text-align: center;">🛡️</span>
+            <span>Privacy Policy (தனியுரிமைக் கொள்கை)</span>
+          </div>
+          <span style="color: #f59e0b; font-size: 14px;">➔</span>
         </button>
       </div>
 
@@ -3152,7 +3138,11 @@
               <span style="font-size: 11px; color: var(--text-muted);">Edappadi Kadai Management</span>
             </div>
           </div>
-          
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn btn-danger" id="admin-header-logout-btn" onclick="adminLogout(event)" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #ffffff; border: none; padding: 6px 14px; border-radius: 10px; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35); cursor: pointer; min-height: 34px; height: 34px; white-space: nowrap;" title="Admin Logout / வெளியேறு">
+              <span>🚪</span> <span>வெளியேறு / Logout</span>
+            </button>
+          </div>
         </div>
 
         <div class="admin-tabs">
@@ -3652,7 +3642,7 @@
         </div>
 
         <!-- Custom Date Input Pickers -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 10px; margin-bottom: 12px; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);">
           <div>
             <label style="font-size: 11.5px; font-weight: 700; color: #ffffff; display: block; margin-bottom: 5px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">📅 From Date (ஆரம்ப தேதி):</label>
             <input type="date" id="analytics-start-date" class="form-control" style="font-size: 12.5px; height: 40px; padding: 0 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.22); color: #ffffff; color-scheme: dark; border-radius: 9px; width: 100%; font-weight: 500; outline: none; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);" onchange="onCustomAnalyticsDateChange()">
@@ -3975,6 +3965,9 @@
                       <input type="number" id="new-zone-max" class="form-control" placeholder="Km limit" style="flex: 1.2; font-size: 11px; height: 32px; background: var(--bg-input, rgba(15,23,42,0.8)); color: var(--text-primary, #fff); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding: 4px 6px;" step="0.1">
                       <input type="number" id="new-zone-charge" class="form-control" placeholder="Price (₹)" style="flex: 1.2; font-size: 11px; height: 32px; background: var(--bg-input, rgba(15,23,42,0.8)); color: var(--text-primary, #fff); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding: 4px 6px;">
                     </div>
+                    <div style="display: flex; gap: 4px;">
+                      <input type="text" id="new-zone-pincodes" class="form-control" placeholder="Pincodes (e.g. 637101, 637105)" style="flex: 1; font-size: 11px; height: 32px; background: var(--bg-input, rgba(15,23,42,0.8)); color: var(--text-primary, #fff); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding: 4px 6px;">
+                    </div>
                     <button type="button" onclick="handleAddDeliveryZone(event)" class="btn btn-primary" style="height: 28px; font-size: 11px; font-weight: 800; padding: 0; line-height:28px; margin-top: 2px;">
                       மண்டலத்தைச் சேர் / Add Zone ✨
                     </button>
@@ -4013,6 +4006,51 @@
           </div>
 
           <p style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 12px;">Auto saved upon value modification • Configures global client checkouts.</p>
+        </div>
+
+        <!-- APP VERSION CONTROL CARD -->
+        <div class="card" style="margin-top: 16px; border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.02);" id="admin-version-control-card">
+          <h4 style="font-size: 14px; text-transform: uppercase; color: #f59e0b; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span style="display: flex; align-items: center; gap: 8px;">
+              <span>📱</span> <span>செயலி பதிப்பு மேலாண்மை / App Version Control</span>
+            </span>
+            <span style="font-size: 11px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); padding: 2px 8px; border-radius: 8px; color: #f59e0b; font-weight: 800; text-transform: none;">
+              Installed: v8.0.0
+            </span>
+          </h4>
+          <p style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.45;">
+            பயனர்களின் செயலி பதிப்பைக் கட்டுப்படுத்தலாம். குறைந்தபட்ச பதிப்பை விட குறைவான பதிப்பு வைத்திருக்கும் பயனர்கள் அப்டேட் செய்யாமல் செயலியைப் பயன்படுத்த முடியாது.
+          </p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label style="font-size: 11px; font-weight: 700; color: #f59e0b; display: block; margin-bottom: 4px;">
+                🔒 குறைந்தபட்ச கட்டாய பதிப்பு (Min Version)
+              </label>
+              <input type="text" id="setting-min-app-version" class="form-control" value="7.0.0" placeholder="7.0.0" style="height: 38px; font-size: 13px; font-weight: 700; background: #000; border: 1.2px solid rgba(245, 158, 11, 0.4); color: #fff;" onchange="saveAdminSettings()">
+              <p style="font-size: 9.5px; color: var(--text-muted); margin-top: 4px;">இதைவிடக் குறைந்த பதிப்பு பயனர்களுக்கு Blocking Modal காட்டும்.</p>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label style="font-size: 11px; font-weight: 700; color: #60a5fa; display: block; margin-bottom: 4px;">
+                💡 பரிந்துரைக்கப்படும் பதிப்பு (Recommended)
+              </label>
+              <input type="text" id="setting-recommended-app-version" class="form-control" value="7.0.0" placeholder="7.0.0" style="height: 38px; font-size: 13px; font-weight: 700; background: #000; border: 1.2px solid rgba(59, 130, 246, 0.4); color: #fff;" onchange="saveAdminSettings()">
+              <p style="font-size: 9.5px; color: var(--text-muted); margin-top: 4px;">பயனர்களுக்கு தற்காலிக Update Banner காட்டும் (Dismissible).</p>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-size: 11px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">
+              🔗 Play Store Listing URL
+            </label>
+            <input type="text" id="setting-playstore-url" class="form-control" value="https://play.google.com/store/apps/details?id=com.edappadikadai.app" placeholder="https://play.google.com/store/apps/details?id=..." style="height: 38px; font-size: 12px; background: #000; border: 1.2px solid rgba(255,255,255,0.15); color: #fff;" onchange="saveAdminSettings()">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 11px; font-weight: 700; color: #34d399; display: block; margin-bottom: 4px;">Privacy Policy URL (Play Store)</label>
+            <input type="text" id="setting-privacy-policy-url" class="form-control" value="" placeholder="https://your-site.com/privacy-policy" style="height: 38px; font-size: 13px; background: #000; border: 1.2px solid rgba(52, 211, 153, 0.4); color: #fff;" onchange="saveAdminSettings()">
+          </div>
         </div>
 
         <!-- CATEGORY MANAGEMENT CARD -->
@@ -4644,7 +4682,8 @@
 
   </div>
 
-  <script src="js/core.js"></script>
+    <script src="js/nlu-dictionary.js"></script>
+    <script src="js/core.js"></script>
     <script src="js/database.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/user.js"></script>
@@ -4659,6 +4698,7 @@
 <script>
 async function initializeApplicationStartup() {
   debugLog("[STARTUP] Running full application startup sequence...");
+  console.log("[NLU Verification] window.EK_BASE_SYNONYMS defined:", typeof window.EK_BASE_SYNONYMS !== 'undefined', "| window.UNIT_REGISTRY defined:", typeof window.UNIT_REGISTRY !== 'undefined');
   try {
     if (typeof syncSessionKeysFromAndroidStorage === 'function') syncSessionKeysFromAndroidStorage();
   } catch (e) {}
@@ -4776,12 +4816,45 @@ function debouncedSearchReviews() {
 function setAnalyticsDatePreset(preset) {
   window.currentAnalyticsPreset = preset;
 
-  // Clear custom date inputs if selecting preset
-  if (preset !== 'custom') {
-    const sInput = document.getElementById('analytics-start-date');
-    const eInput = document.getElementById('analytics-end-date');
-    if (sInput) sInput.value = '';
-    if (eInput) eInput.value = '';
+  const sInput = document.getElementById('analytics-start-date');
+  const eInput = document.getElementById('analytics-end-date');
+
+  if (sInput && eInput) {
+    if (preset === 'all') {
+      sInput.value = '';
+      eInput.value = '';
+    } else {
+      const now = new Date();
+      const formatYmd = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+
+      if (preset === 'today') {
+        const todayStr = formatYmd(now);
+        sInput.value = todayStr;
+        eInput.value = todayStr;
+      } else if (preset === 'yesterday') {
+        const yest = new Date(now);
+        yest.setDate(yest.getDate() - 1);
+        const yestStr = formatYmd(yest);
+        sInput.value = yestStr;
+        eInput.value = yestStr;
+      } else if (preset === 'this_week') {
+        const day = now.getDay();
+        const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+        const mon = new Date(now.getFullYear(), now.getMonth(), diffToMon);
+        sInput.value = formatYmd(mon);
+        eInput.value = formatYmd(now);
+      } else if (preset === 'this_month') {
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        sInput.value = formatYmd(firstDay);
+        eInput.value = formatYmd(lastDay);
+      }
+    }
   }
 
   const buttons = document.querySelectorAll('.analytics-preset-btn');
@@ -5116,6 +5189,10 @@ function saveAdminSettings() {
   const twilioSidEl = document.getElementById("setting-twilio-sid");
   const twilioTokenEl = document.getElementById("setting-twilio-token");
   const twilioFromEl = document.getElementById("setting-twilio-from");
+  const minVerEl = document.getElementById("setting-min-app-version");
+  const recVerEl = document.getElementById("setting-recommended-app-version");
+  const playStoreUrlEl = document.getElementById("setting-playstore-url");
+  const privacyPolicyUrlEl = document.getElementById("setting-privacy-policy-url") || document.getElementById("setting-privacypolicy-url");
 
   if (document.getElementById("upi-acc-primary-upi-id")) {
     saveAdminUpiSettings(false);
@@ -5140,6 +5217,10 @@ function saveAdminSettings() {
     rainCharge: rainChargeEl ? parseInt(rainChargeEl.value) || 20 : 20,
     minOrderWeight: minWeightEl ? parseInt(minWeightEl.value) || 50 : 50,
     minOrderAmount: minAmountEl ? parseInt(minAmountEl.value) || 0 : 0,
+    minAppVersion: minVerEl ? minVerEl.value.trim() : (currentSettings.minAppVersion || "8.0.0"),
+    recommendedVersion: recVerEl ? recVerEl.value.trim() : (currentSettings.recommendedVersion || "8.0.0"),
+    playStoreUrl: playStoreUrlEl ? playStoreUrlEl.value.trim() : (currentSettings.playStoreUrl || "https://play.google.com/store/apps/details?id=com.edappadikadai.app"),
+    privacyPolicyUrl: (document.getElementById('setting-privacy-policy-url')?.value?.trim() || privacyPolicyUrlEl?.value?.trim() || currentSettings.privacyPolicyUrl || ''),
     smsProvider: smsProviderEl ? smsProviderEl.value : "fast2sms",
     fast2smsKey: fast2smsKeyEl ? fast2smsKeyEl.value : "",
     twilioSid: twilioSidEl ? twilioSidEl.value : "",

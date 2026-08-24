@@ -103,204 +103,7 @@
 
     // MUST stay false - showing demo/placeholder products to real customers risks them ordering something that doesn't exist. Only true for local dev testing.
     const ENABLE_DEMO_SEED_DATA = false;
-    const DEMO_PRODUCTS = [
-      {
-        id: "mutton_head_curry",
-        category: "meat",
-        englishName: "Fresh Goat Head Curry / Cut",
-        tamilName: "ஆட்டுத் தலைக்கறி",
-        pricePerKg: 350,
-        sellingUnit: "kg",
-        stockKg: 20,
-        imageUrl: "https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=400",
-        isSpecial: true,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "potato_fresh",
-        category: "veg",
-        englishName: "Fresh Organic Potato",
-        tamilName: "பிரெஷ் உருளைக்கிழங்கு",
-        pricePerKg: 40,
-        sellingUnit: "kg",
-        stockKg: 80,
-        imageUrl: "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "mutton_tender",
-        category: "meat",
-        englishName: "Tender Goat Mutton",
-        tamilName: "சுடச்சுட ஆட்டுக்கறி",
-        pricePerKg: 780,
-        sellingUnit: "kg",
-        stockKg: 15,
-        imageUrl: "https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=400",
-        isSpecial: true,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "chicken_country",
-        category: "meat",
-        englishName: "Fresh Country Chicken",
-        tamilName: "சுவையான நாட்டுக்கோழி",
-        pricePerKg: 420,
-        sellingUnit: "kg",
-        stockKg: 20,
-        imageUrl: "https://images.unsplash.com/photo-1587593810167-a84920ea0781?w=400",
-        isSpecial: true,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "chicken_broiler",
-        category: "meat",
-        englishName: "Broiler Chicken Biryani Cut",
-        tamilName: "பிராய்லர் சிக்கன்",
-        pricePerKg: 240,
-        sellingUnit: "kg",
-        stockKg: 45,
-        imageUrl: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "eggs_white",
-        category: "dairy",
-        englishName: "Fresh White Eggs",
-        tamilName: "பண்ணை முட்டை",
-        pricePerKg: 6,
-        sellingUnit: "piece",
-        stockKg: 120,
-        imageUrl: "https://images.unsplash.com/photo-1506976785307-8732e854ad03?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "fish_vanjaram",
-        category: "fish",
-        englishName: "Premium Vanjaram Fish Slice",
-        tamilName: "வஞ்சரம் மீன் துண்டுகள்",
-        pricePerKg: 950,
-        sellingUnit: "kg",
-        stockKg: 10,
-        imageUrl: "https://images.unsplash.com/photo-1534604973900-c43ab4c2e0ab?w=400",
-        isSpecial: true,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "tomato_country",
-        category: "veg",
-        englishName: "Fresh Country Tomato",
-        tamilName: "நாட்டுத் தக்காளி",
-        pricePerKg: 35,
-        sellingUnit: "kg",
-        stockKg: 50,
-        imageUrl: "https://images.unsplash.com/photo-1595855759920-86582396756a?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "onion_big",
-        category: "veg",
-        englishName: "Sujatha Big Onion",
-        tamilName: "பெரிய வெங்காயம்",
-        pricePerKg: 40,
-        sellingUnit: "kg",
-        stockKg: 60,
-        imageUrl: "https://images.unsplash.com/photo-1508747703725-719ae257c84a?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "coriander_leaves",
-        category: "veg",
-        englishName: "Coriander Leaves (Bunch)",
-        tamilName: "கொத்தமல்லி தழை",
-        pricePerKg: 10,
-        sellingUnit: "bunch",
-        stockKg: 30,
-        imageUrl: "https://images.unsplash.com/photo-1540307086572-5099cd37c1a8?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "dairy_cow_ghee",
-        category: "dairy",
-        englishName: "Pure Cow Ghee",
-        tamilName: "சுத்தமான பசு நெய்",
-        pricePerKg: 650,
-        sellingUnit: "kg",
-        stockKg: 20,
-        imageUrl: "https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "dairy_paneer",
-        category: "dairy",
-        englishName: "Fresh Paneer",
-        tamilName: "பிரெஷ் பன்னீர்",
-        pricePerKg: 350,
-        sellingUnit: "kg",
-        stockKg: 15,
-        imageUrl: "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "dairy_fresh_milk",
-        category: "dairy",
-        englishName: "Fresh Cow Milk (Packet)",
-        tamilName: "பசுவின் பால் பாக்கெட்",
-        pricePerKg: 30,
-        sellingUnit: "packet",
-        stockKg: 80,
-        imageUrl: "https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "grocery_coconut_oil",
-        category: "groceries",
-        englishName: "Cold Pressed Coconut Oil",
-        tamilName: "செக்கு தேங்காய் எண்ணெய்",
-        pricePerKg: 260,
-        sellingUnit: "kg",
-        stockKg: 20,
-        imageUrl: "https://images.unsplash.com/photo-1540307086572-5099cd37c1a8?w=400",
-        isSpecial: false,
-        isOutOfStock: false,
-        isHidden: false,
-        createdAt: new Date().toISOString()
-      }
-    ];
+    const DEMO_PRODUCTS = [];
 
     const DEMO_CUSTOMER = {
       id: 'cust_seed',
@@ -331,6 +134,10 @@
       upiQrUrl: "",
       rainMode: false,
       rainCharge: 20,
+      minAppVersion: "7.0.0",
+      recommendedVersion: "7.0.0",
+      playStoreUrl: "https://play.google.com/store/apps/details?id=com.edappadikadai.app",
+      privacyPolicyUrl: "privacy_policy.html",
       slidingBanners: [
         { id: 'b_1', image: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800', titleTa: "நாட்டு ஆட்டுக்கறி பிரஷ்ஷாக!", titleEn: "Premium Fresh Mutton Cuts", subTa: "இடப்பாடி நகரத்தில் உங்களின் இல்லத்திற்கே நேரடியாக!", subEn: "Direct organic local meat delivered to your home." },
         { id: 'b_2', image: 'https://images.unsplash.com/photo-1587593810167-a84920ea0781?w=800', titleTa: "தரமான நாட்டுக்கோழி!", titleEn: "Farm Fresh Chicken Varieties", subTa: "சுத்தமான முறையில் கட் செய்து வழங்கப்படும்!", subEn: "Cleanly cut & prepared perfectly for your tasty health." },
@@ -389,10 +196,10 @@
     };
 
     const DEFAULT_CATEGORIES = [
-      { id: 'fruits', nameEn: 'Fruits', nameTa: 'பழங்கள்', en: 'Fruits', ta: 'பழங்கள்', icon: '🍎', accentColor: '#2E7D32', order: 0 },
+      { id: 'meat', nameEn: 'Meat', nameTa: 'கறிவகை', en: 'Meat', ta: 'கறிவகை', icon: '🥩', accentColor: '#C62828', order: 0 },
       { id: 'veg', nameEn: 'Veg', nameTa: 'காய்கறி', en: 'Veg', ta: 'காய்கறி', icon: '🥦', accentColor: '#4CAF50', order: 1 },
       { id: 'fish', nameEn: 'Fish', nameTa: 'மீன்வகை', en: 'Fish', ta: 'மீன்வகை', icon: '🐟', accentColor: '#0288D1', order: 2 },
-      { id: 'meat', nameEn: 'Meat', nameTa: 'கறிவகை', en: 'Meat', ta: 'கறிவகை', icon: '🥩', accentColor: '#C62828', order: 3 },
+      { id: 'fruits', nameEn: 'Fruits', nameTa: 'பழங்கள்', en: 'Fruits', ta: 'பழங்கள்', icon: '🍎', accentColor: '#2E7D32', order: 3 },
       { id: 'dairy', nameEn: 'Dairy & Eggs', nameTa: 'பால் & முட்டை', en: 'Dairy & Eggs', ta: 'பால் & முட்டை', icon: '🥛', accentColor: '#FFB300', order: 4 },
       { id: 'bakery', nameEn: 'Bakery', nameTa: 'பேக்கரி', en: 'Bakery', ta: 'பேக்கரி', icon: '🍞', accentColor: '#8D6E63', order: 5 },
       { id: 'groceries', nameEn: 'Grocery', nameTa: 'மளிகை', en: 'Grocery', ta: 'மளிகை', icon: '🥫', accentColor: '#008080', order: 6 }
@@ -574,7 +381,8 @@
 
       if (updated) {
         saveData('ek_settings', settings);
-        if (typeof db !== 'undefined' && db) {
+        const isAdmin = (typeof getAdminSession === 'function' && !!getAdminSession()) || !!getData('ek_admin_session');
+        if (isAdmin && typeof db !== 'undefined' && db) {
           db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true })
             .then(() => debugLog("[UPI Self-Heal] Successfully synced updated UPI settings to Firestore (global_config)"))
             .catch(err => console.error("[UPI Self-Heal] Sync error:", err));
@@ -604,29 +412,8 @@
       const isDbInitialized = getData('ek_db_initialized') === true;
       const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
       debugLog(`[DEBUG seedDatabase] existingProds count: ${Array.isArray(existingProds) ? existingProds.length : 'non-array'}, existingCats count: ${Array.isArray(existingCats) ? existingCats.length : 'non-array'}, isDbInitialized: ${isDbInitialized}, isCloudSynced: ${isCloudSynced}`);
-      if (typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA) {
-        if (!Array.isArray(existingProds) || existingProds === null || existingProds.length === 0) {
-          if (typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS) && DEMO_PRODUCTS.length > 0) {
-            const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
-            const seededProducts = DEMO_PRODUCTS
-              .filter(p => !deletedProdIds.includes(p.id))
-              .map(p => ({
-                ...p,
-                updatedAt: p.createdAt || new Date().toISOString()
-              }));
-            saveData('ek_products', seededProducts);
-            seededProducts.forEach(p => {
-              logProductWriteAudit('seed', p.id, 'seedDatabase');
-            });
-          }
-        }
-      } else if (Array.isArray(existingProds) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
-        const demoIds = new Set(DEMO_PRODUCTS.map(p => p.id));
-        const cleaned = existingProds.filter(p => p && p.id && !demoIds.has(p.id));
-        if (cleaned.length !== existingProds.length) {
-          saveData('ek_products', cleaned);
-          if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
-        }
+      if (!Array.isArray(existingProds)) {
+        saveData('ek_products', []);
       }
 
       if (!Array.isArray(existingCats) || existingCats === null || existingCats.length === 0) {
@@ -1017,6 +804,10 @@
     let toastTimeout = null;
 
     function showToast(message, type = 'success') {
+      if (type === 'error' && typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate([12, 35, 18]); } catch(e) {}
+      }
+
       if (type === 'error') {
         message = mapErrorMessage(message);
       }
@@ -2140,7 +1931,7 @@
 
           setTimeout(() => {
             target.classList.remove('screen-transitioning');
-          }, 25);
+          }, 280);
         } else {
           console.error(`[showScreen] Target screen "${screenId}" not found in DOM!`);
         }

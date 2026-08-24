@@ -1298,6 +1298,57 @@
       } catch (err) {
         console.error('[FCM] Token registration failed:', err);
       }
+
+      // Listen for FCM token refresh
+      if (typeof firebase !== 'undefined' && firebase.messaging && typeof firebase.messaging === 'function') {
+        try {
+          const messaging = firebase.messaging();
+          if (messaging && typeof messaging.onTokenRefresh === 'function') {
+            messaging.onTokenRefresh(async () => {
+              console.log('[FCM] Token refreshed, re-registering...');
+              try {
+                const newToken = await messaging.getToken();
+                if (newToken) {
+                  const currentUser = getActiveUser();
+                  if (currentUser) {
+                    currentUser.fcmToken = newToken;
+                    currentUser.realFcmToken = newToken;
+                    saveData('ek_active_user', currentUser);
+
+                    const users = getData('ek_users', []);
+                    const idx = users.findIndex(u => u && (u.id === currentUser.id || u.phone === currentUser.phone));
+                    if (idx !== -1) {
+                      users[idx].fcmToken = newToken;
+                      users[idx].realFcmToken = newToken;
+                      saveData('ek_users', users);
+                    }
+
+                    if (db) {
+                      await db.collection('ek_users').doc(currentUser.id).set({
+                        fcmToken: newToken,
+                        realFcmToken: newToken,
+                        fcmTokenUpdatedAt: new Date().toISOString()
+                      }, { merge: true }).catch(e => console.warn('[FCM Refresh] Firestore sync error:', e));
+
+                      await db.collection('ek_customers').doc(currentUser.id).set({
+                        fcmToken: newToken,
+                        realFcmToken: newToken,
+                        fcmTokenUpdatedAt: new Date().toISOString()
+                      }, { merge: true }).catch(e => console.warn('[FCM Refresh] ek_customers sync error:', e));
+                    }
+
+                    console.log('[FCM] Token refreshed and saved successfully.');
+                  }
+                }
+              } catch (refreshErr) {
+                console.error('[FCM] Token refresh failed:', refreshErr);
+              }
+            });
+          }
+        } catch (msgErr) {
+          console.warn('[FCM] messaging() not available:', msgErr);
+        }
+      }
     }
 
     async function getCustomerFcmToken(target) {
@@ -1450,6 +1501,7 @@
     });
 
     setInterval(() => {
+      if (document.hidden || window._isAppBackgrounded) return;
       try {
         processPendingSignOut();
       } catch (e) {
@@ -1517,7 +1569,7 @@
       if (_adminLogoutPending) return;
       _adminLogoutPending = true;
 
-      const btn = (evt && evt.currentTarget) ? evt.currentTarget : (document.querySelector('button[onclick*="adminLogout"]') || document.querySelector('button[onclick*="handleAdminLogoutClick"]'));
+      const btn = (evt && evt.currentTarget) ? evt.currentTarget : (document.querySelector('#admin-header-logout-btn') || document.querySelector('button[onclick*="adminLogout"]') || document.querySelector('button[onclick*="handleAdminLogoutClick"]'));
       if (btn) btn.disabled = true;
 
       const resetBtn = () => {
@@ -1526,8 +1578,8 @@
       };
 
       const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
-      const title = isTa ? "வெளியேறு / Logout" : "Logout";
-      const msg = isTa ? "நிர்வாகி பேனலில் இருந்து வெளியேற விரும்புகிறீர்களா?" : "Are you sure you want to logout?";
+      const title = isTa ? "வெளியேறு / Logout" : "Admin Logout";
+      const msg = isTa ? "நிர்வாகி பேனலில் இருந்து வெளியேற விரும்புகிறீர்களா?" : "Are you sure you want to logout from admin panel?";
       const okText = isTa ? "வெளியேறு" : "Logout";
       const cancelText = isTa ? "ரத்து" : "Cancel";
 
@@ -1545,6 +1597,10 @@
 
           if (typeof showGlobalLogoutLoading === 'function') {
             showGlobalLogoutLoading();
+          }
+
+          if (typeof saveData === 'function') {
+            saveData('ek_explicit_logged_out', true);
           }
 
           try {
@@ -1586,11 +1642,15 @@
           if (loginForm) loginForm.reset();
           const regForm = document.getElementById('register-form');
           if (regForm) regForm.reset();
+          const passInput = document.getElementById('login-password');
+          if (passInput) passInput.value = '';
 
-          if (typeof currentLoginMode !== 'undefined') currentLoginMode = 'customer';
-          if (typeof enterCustomerLogin === 'function') enterCustomerLogin();
+          if (typeof currentLoginMode !== 'undefined') currentLoginMode = 'admin';
+          if (typeof enterAdminLogin === 'function') {
+            try { enterAdminLogin(); } catch (e) {}
+          }
 
-          showToast(isTa ? "வெற்றிகரமாக வெளியேறப்பட்டது." : "Logged out successfully.", "info");
+          showToast(isTa ? "அட்மின் கணக்கிலிருந்து வெளியேறப்பட்டது 🚪" : "Admin logged out successfully 🚪", "info");
 
           if (typeof showScreen === 'function') {
             showScreen('screen-login');
@@ -1620,7 +1680,7 @@
             performLogoutAction();
           }
         }
-      }, 1000);
+      }, 1200);
 
       try {
         if (typeof showCustomConfirm === 'function') {
@@ -1646,6 +1706,9 @@
       }
     };
 
+    window.lockAdmin = window.adminLogout;
+    window.lockAdminPanel = window.adminLogout;
+    window.handleAdminLock = window.adminLogout;
     window.handleAdminLogoutClick = window.adminLogout;
     async function performAdminSignOut() {
       return window.adminLogout();
@@ -1746,6 +1809,10 @@
           }
         }
 
+        if (typeof saveData === 'function') {
+          saveData('ek_explicit_logged_out', true);
+        }
+
         try {
           setupCloudRealtimeListeners2();
         } catch (se) {}
@@ -1767,10 +1834,13 @@
         if (loginForm) loginForm.reset();
         const regForm = document.getElementById('register-form');
         if (regForm) regForm.reset();
+        const passInput = document.getElementById('login-password');
+        if (passInput) passInput.value = '';
 
-        showToast("Logged out successfully.", "info");
+        const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+        showToast(isTa ? "வெற்றிகரமாக வெளியேறப்பட்டது 🚪" : "Logged out successfully 🚪", "info");
 
-        enterCustomerLogin();
+        if (typeof enterCustomerLogin === 'function') enterCustomerLogin();
         showScreen('screen-login');
       } catch (err) {
         console.error("[Logout Error]", err);
@@ -2010,6 +2080,10 @@
           setupCloudRealtimeListeners2();
         } catch (se) {}
 
+        if (typeof saveData === 'function') {
+          saveData('ek_explicit_logged_out', true);
+        }
+
         purgeAllMasterSessionsAndTokens();
 
         if (typeof safelyClearUserCacheOnLogout === 'function') {
@@ -2037,9 +2111,17 @@
 
         screenHistory = [];
 
-        showToast("Delivery Partner logged out successfully.", "info");
+        const passInput = document.getElementById('login-password');
+        if (passInput) passInput.value = '';
 
-        enterCustomerLogin();
+        const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+        showToast(isTa ? "டெலிவரி கணக்கிலிருந்து வெளியேறப்பட்டது 🚪" : "Delivery Partner logged out successfully 🚪", "info");
+
+        if (typeof enterDeliveryLogin === 'function') {
+          enterDeliveryLogin();
+        } else if (typeof enterCustomerLogin === 'function') {
+          enterCustomerLogin();
+        }
         showScreen('screen-login');
       } catch (err) {
         console.error("[Delivery Logout Error]", err);
@@ -2171,7 +2253,7 @@
       }
     }
 
-    function submitRiderPasswordChange() {
+    async function submitRiderPasswordChange() {
       const session = getData('ek_delivery_session', null);
       if (!session) return;
 
@@ -2194,14 +2276,18 @@
       const list = getData('ek_delivery_persons', []);
       const idx = list.findIndex(e => e.id === session.id);
       if (idx !== -1) {
-        list[idx].password = p1;
+        let hashedP1 = p1;
+        if (typeof hashPassword === 'function') {
+          hashedP1 = 'hash:' + await hashPassword(p1);
+        }
+        list[idx].password = hashedP1;
         saveData('ek_delivery_persons', list);
 
-        session.password = p1;
+        session.password = hashedP1;
         saveData('ek_delivery_session', session);
 
         if (typeof db !== 'undefined' && db) {
-          db.collection('ek_delivery_persons').doc(session.id).update({ password: p1 })
+          db.collection('ek_delivery_persons').doc(session.id).update({ password: hashedP1 })
             .then(() => {
               showToast("Password updated live on cloud and device! ✓", "success");
             })
@@ -2221,10 +2307,10 @@
 
     if (typeof DEFAULT_CATEGORIES === 'undefined') {
       window.DEFAULT_CATEGORIES = [
-        { id: 'fruits', nameEn: 'Fruits', nameTa: 'பழங்கள்', en: 'Fruits', ta: 'பழங்கள்', icon: '🍎', accentColor: '#2E7D32', order: 0 },
+        { id: 'meat', nameEn: 'Meat', nameTa: 'கறிவகை', en: 'Meat', ta: 'கறிவகை', icon: '🥩', accentColor: '#C62828', order: 0 },
         { id: 'veg', nameEn: 'Veg', nameTa: 'காய்கறி', en: 'Veg', ta: 'காய்கறி', icon: '🥦', accentColor: '#4CAF50', order: 1 },
         { id: 'fish', nameEn: 'Fish', nameTa: 'மீன்வகை', en: 'Fish', ta: 'மீன்வகை', icon: '🐟', accentColor: '#0288D1', order: 2 },
-        { id: 'meat', nameEn: 'Meat', nameTa: 'கறிவகை', en: 'Meat', ta: 'கறிவகை', icon: '🥩', accentColor: '#C62828', order: 3 },
+        { id: 'fruits', nameEn: 'Fruits', nameTa: 'பழங்கள்', en: 'Fruits', ta: 'பழங்கள்', icon: '🍎', accentColor: '#2E7D32', order: 3 },
         { id: 'dairy', nameEn: 'Dairy & Eggs', nameTa: 'பால் & முட்டை', en: 'Dairy & Eggs', ta: 'பால் & முட்டை', icon: '🥛', accentColor: '#FFB300', order: 4 },
         { id: 'bakery', nameEn: 'Bakery', nameTa: 'பேக்கரி', en: 'Bakery', ta: 'பேக்கரி', icon: '🍞', accentColor: '#8D6E63', order: 5 },
         { id: 'groceries', nameEn: 'Grocery', nameTa: 'மளிகை', en: 'Grocery', ta: 'மளிகை', icon: '🥫', accentColor: '#008080', order: 6 }
@@ -2259,7 +2345,7 @@
       let catList = getData('ek_categories');
       if (!Array.isArray(catList) || catList.length === 0) {
         if (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
-          catList = DEFAULT_CATEGORIES.map((c, idx) => ({ ...c, isAvailable: true, order: (c.order !== undefined ? c.order : idx) }));
+          catList = DEFAULT_CATEGORIES.map((c, idx) => ({ ...c, isAvailable: true, order: (c.order !== undefined && c.order !== null ? Number(c.order) : idx) }));
           try { saveData('ek_categories', catList); } catch (e) {}
         } else {
           catList = [];
@@ -2291,10 +2377,10 @@
       });
 
       catList.sort((a, b) => {
-        const orderA = Number(a.order !== undefined && a.order !== null ? a.order : 999);
-        const orderB = Number(b.order !== undefined && b.order !== null ? b.order : 999);
+        const orderA = (a && a.order !== undefined && a.order !== null && !isNaN(Number(a.order))) ? Number(a.order) : 999;
+        const orderB = (b && b.order !== undefined && b.order !== null && !isNaN(Number(b.order))) ? Number(b.order) : 999;
         if (orderA !== orderB) return orderA - orderB;
-        return String(a.id || "").localeCompare(String(b.id || ""));
+        return String((a && a.id) || "").localeCompare(String((b && b.id) || ""));
       });
 
       if (needsStorageSave) {
@@ -2400,9 +2486,9 @@
 
         const isCloudSynced = window._hasFreshCloudData || getData('ek_cloud_synced') === true;
         let allProducts = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
-        if (!isCloudSynced && typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!allProducts || allProducts.length === 0) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
-          const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
-          allProducts = DEMO_PRODUCTS.filter(p => p && p.id && !deletedProdIds.includes(p.id));
+        const deletedProdIds = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
+        if (Array.isArray(allProducts) && deletedProdIds.length > 0) {
+          allProducts = allProducts.filter(p => p && p.id && !deletedProdIds.includes(p.id));
         }
 
         const visibleProducts = (allProducts || []).filter(p => p && !p.isHidden);
@@ -2469,8 +2555,8 @@
           const accent = getCategoryConfig(catIdStr).color;
 
           const styleAttr = isActive
-            ? `style="background: ${accent} !important; border-color: ${accent} !important; color: #ffffff !important;"`
-            : `style="background: var(--bg-card) !important; border: 1px solid var(--border-color) !important; color: var(--text-primary) !important;"`;
+            ? `style="background: ${accent}; border-color: ${accent}; color: #ffffff;"`
+            : `style="background: var(--bg-card); border-color: var(--border-color); color: var(--text-primary);"`;
 
           return `
             <button class="pill ${isActive}" ${styleAttr} onclick="filterHomeProducts('${catIdStr}', this)">

@@ -693,6 +693,342 @@ exports.repairDeliveryPartner = functions
     }
   });
 
+/**
+ * ATOMIC STOCK DEDUCTION CALLABLE CLOUD FUNCTION
+ * Region: asia-south1
+ * Input: { orderItems: [...] } or array of items directly.
+ * Verifies auth, runs a Firestore transaction over ek_products for each item,
+ * verifies sufficient stock, deducts stockKg, increments timesOrdered counter,
+ * and returns per-item success/failure report.
+ */
+exports.deductStock = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+    // 1. Verify authentication
+    if (!context.auth || !context.auth.uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'Authentication required to deduct stock.');
+    }
+
+    const orderItems = Array.isArray(data) ? data : (data && (data.orderItems || data.items)) ? (data.orderItems || data.items) : [];
+    if (!Array.isArray(orderItems) || orderItems.length === 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'orderItems must be a non-empty array.');
+    }
+
+    const firestore = admin.firestore();
+    const itemResults = [];
+
+    try {
+      await firestore.runTransaction(async (transaction) => {
+        itemResults.length = 0; // Clear on transaction retry
+        let hasConflict = false;
+
+        // Step A: Read all product documents first (all reads before writes in Firestore transaction)
+        const productReads = [];
+        for (const item of orderItems) {
+          if (!item || !item.productId) continue;
+          const prodRef = firestore.collection('ek_products').doc(String(item.productId));
+          productReads.push({
+            item,
+            prodRef,
+            snapPromise: transaction.get(prodRef)
+          });
+        }
+
+        if (productReads.length === 0) {
+          throw new functions.https.HttpsError('invalid-argument', 'No valid product items provided with productId.');
+        }
+
+        const productSnaps = [];
+        for (const pr of productReads) {
+          const snap = await pr.snapPromise;
+          productSnaps.push({
+            item: pr.item,
+            prodRef: pr.prodRef,
+            snap
+          });
+        }
+
+        // Step B: Calculate requested quantities, verify stock, and prepare updates
+        const updatesToApply = [];
+
+        for (const { item, prodRef, snap } of productSnaps) {
+          const prodId = item.productId;
+          const prodName = item.name || item.englishName || item.tamilName || prodId;
+
+          if (!snap.exists) {
+            hasConflict = true;
+            itemResults.push({
+              productId: prodId,
+              name: prodName,
+              success: false,
+              availableStock: 0,
+              requestedQty: 0,
+              error: 'Product not found'
+            });
+            continue;
+          }
+
+          const prodData = snap.data() || {};
+          const currentStock = parseFloat(prodData.stockKg !== undefined ? prodData.stockKg : 0);
+          const unit = String(prodData.unit || item.unit || 'kg').toLowerCase();
+          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+
+          // Handle weightGrams vs quantity
+          let requestedQty;
+          if (item.weightGrams !== undefined && !isNaN(parseFloat(item.weightGrams))) {
+            const rawWeight = parseFloat(item.weightGrams);
+            requestedQty = isWeight ? (rawWeight / 1000) : rawWeight;
+          } else if (item.quantity !== undefined && !isNaN(parseFloat(item.quantity))) {
+            const rawQty = parseFloat(item.quantity);
+            requestedQty = isWeight ? (rawQty >= 10 ? rawQty / 1000 : rawQty) : rawQty;
+          } else {
+            requestedQty = 1;
+          }
+
+          if (currentStock < requestedQty) {
+            hasConflict = true;
+            itemResults.push({
+              productId: prodId,
+              name: prodData.englishName || prodData.tamilName || prodName,
+              success: false,
+              availableStock: currentStock,
+              requestedQty: requestedQty,
+              unit: unit,
+              error: 'Insufficient stock'
+            });
+          } else {
+            const newStock = parseFloat(Math.max(0, currentStock - requestedQty).toFixed(3));
+            updatesToApply.push({
+              prodRef,
+              newStock,
+              isOutOfStock: newStock <= 0,
+              previousStock: currentStock,
+              productId: prodId,
+              name: prodData.englishName || prodData.tamilName || prodName,
+              requestedQty,
+              unit
+            });
+
+            itemResults.push({
+              productId: prodId,
+              name: prodData.englishName || prodData.tamilName || prodName,
+              success: true,
+              availableStock: currentStock,
+              newStock: newStock,
+              requestedQty: requestedQty,
+              unit: unit
+            });
+          }
+        }
+
+        // Step C: If any item failed / insufficient stock, abort the entire transaction
+        if (hasConflict) {
+          const conflictError = new Error('INSUFFICIENT_STOCK');
+          conflictError.customCode = 'INSUFFICIENT_STOCK';
+          throw conflictError;
+        }
+
+        // Step D: Apply all atomic writes
+        for (const update of updatesToApply) {
+          transaction.update(update.prodRef, {
+            stockKg: update.newStock,
+            isOutOfStock: update.isOutOfStock,
+            timesOrdered: admin.firestore.FieldValue.increment(1),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      });
+
+      return {
+        success: true,
+        items: itemResults
+      };
+    } catch (err) {
+      if (err.customCode === 'INSUFFICIENT_STOCK' || err.message === 'INSUFFICIENT_STOCK') {
+        const outOfStockItems = itemResults.filter(i => !i.success);
+        return {
+          success: false,
+          error: 'INSUFFICIENT_STOCK',
+          message: 'One or more items do not have sufficient stock available.',
+          items: itemResults,
+          outOfStockItems: outOfStockItems
+        };
+      }
+      if (err instanceof functions.https.HttpsError) {
+        throw err;
+      }
+      console.error("[deductStock Callable Error]", err);
+      throw new functions.https.HttpsError('internal', err.message || 'Error executing stock deduction transaction.');
+    }
+  });
+
+/**
+ * REDEEM COUPON (HTTPS Callable - region asia-south1)
+ * Validates and atomically redeems promo coupons against Firestore ek_coupons in a transaction.
+ * (1) verifies context.auth
+ * (2) reads ek_coupons/{couponCode} in a transaction
+ * (3) validates isActive, expiryDate, minOrderAmount, and maxUsageCount
+ * (4) checks usedBy array for caller's uid (reject if singleUse=true and already used)
+ * (5) appends caller uid to usedBy and increments usedCount
+ * (6) returns discount amount and updated coupon state
+ */
+exports.redeemCoupon = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+    // (1) Verify context.auth
+    if (!context.auth || !context.auth.uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to redeem coupons.');
+    }
+
+    const callerUid = context.auth.uid;
+    const { couponCode, orderId, cartSubtotal } = data || {};
+
+    if (!couponCode || typeof couponCode !== 'string') {
+      throw new functions.https.HttpsError('invalid-argument', 'Valid couponCode is required.');
+    }
+
+    const normalizedCode = String(couponCode).trim().toUpperCase();
+    const subtotal = Math.max(0, parseFloat(cartSubtotal) || 0);
+
+    if (subtotal <= 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'Cart subtotal must be greater than zero.');
+    }
+
+    const firestore = admin.firestore();
+    const couponRef = firestore.collection('ek_coupons').doc(normalizedCode);
+
+    // Default template map in case coupon doc needs auto-seeding in Firestore
+    const DEFAULT_COUPONS_MAP = {
+      'WELCOME10': { code: 'WELCOME10', type: 'percentage', rate: 10, minAmount: 199, descEn: 'Get 10% OFF on all items!', descTa: '10% தள்ளுபடி!', isActive: true, singleUse: true, maxUsageCount: 10000 },
+      'FREEFRESH': { code: 'FREEFRESH', type: 'freeship', rate: 40, minAmount: 299, descEn: 'Free Delivery', descTa: 'இலவச டெலிவரி', isActive: true, singleUse: true, maxUsageCount: 10000 },
+      'SAVEMORE': { code: 'SAVEMORE', type: 'fixed', rate: 50, minAmount: 499, descEn: 'Flat ₹50 cash discount!', descTa: '₹50 நேரடி தள்ளுபடி!', isActive: true, singleUse: true, maxUsageCount: 10000 }
+    };
+
+    try {
+      const result = await firestore.runTransaction(async (transaction) => {
+        // (2) Read ek_coupons/{couponCode} in a transaction
+        let couponSnap = await transaction.get(couponRef);
+        let couponData;
+        let activeTargetRef = couponRef;
+
+        if (!couponSnap.exists) {
+          if (DEFAULT_COUPONS_MAP[normalizedCode]) {
+            couponData = {
+              ...DEFAULT_COUPONS_MAP[normalizedCode],
+              usedBy: [],
+              usedCount: 0,
+              createdAt: new Date().toISOString()
+            };
+            transaction.set(couponRef, couponData);
+          } else {
+            // Check if coupon is stored by a legacy ID (e.g. c1, c2, CP...)
+            const legacyQuery = await firestore.collection('ek_coupons').where('code', '==', normalizedCode).limit(1).get();
+            if (!legacyQuery.empty) {
+              const legacyDoc = legacyQuery.docs[0];
+              activeTargetRef = legacyDoc.ref;
+              couponSnap = await transaction.get(activeTargetRef);
+              couponData = couponSnap.data() || {};
+            } else {
+              throw new functions.https.HttpsError('not-found', `Coupon code '${normalizedCode}' not found.`);
+            }
+          }
+        } else {
+          couponData = couponSnap.data() || {};
+        }
+
+        // (3) Validate isActive, expiryDate, minOrderAmount, and maxUsageCount
+        if (couponData.isActive === false) {
+          throw new functions.https.HttpsError('failed-precondition', 'This coupon is currently inactive.');
+        }
+
+        if (couponData.expiryDate || couponData.expiresAt) {
+          const expTime = new Date(couponData.expiryDate || couponData.expiresAt).getTime();
+          if (!isNaN(expTime) && expTime < Date.now()) {
+            throw new functions.https.HttpsError('failed-precondition', 'This coupon has expired.');
+          }
+        }
+
+        const minOrderAmount = parseFloat(couponData.minOrderAmount || couponData.minAmount || 0);
+        if (subtotal < minOrderAmount) {
+          throw new functions.https.HttpsError(
+            'failed-precondition',
+            `Coupon '${normalizedCode}' requires a minimum order subtotal of ₹${minOrderAmount}. Current subtotal is ₹${subtotal}.`
+          );
+        }
+
+        const currentUsedCount = parseInt(couponData.usedCount || 0, 10);
+        const maxUsageCount = (couponData.maxUsageCount !== undefined && couponData.maxUsageCount !== null) ? parseInt(couponData.maxUsageCount, 10) : null;
+        if (maxUsageCount !== null && currentUsedCount >= maxUsageCount) {
+          throw new functions.https.HttpsError('failed-precondition', 'Coupon usage limit has been reached.');
+        }
+
+        // (4) Check usedBy array for caller's uid (reject if already used by this user if singleUse=true)
+        const usedBy = Array.isArray(couponData.usedBy) ? couponData.usedBy : [];
+        const isSingleUse = couponData.singleUse !== false; // defaults to true
+        if (isSingleUse && usedBy.includes(callerUid)) {
+          throw new functions.https.HttpsError('failed-precondition', `You have already redeemed coupon '${normalizedCode}'.`);
+        }
+
+        // Calculate discount amount
+        let discountAmount = 0;
+        const rate = parseFloat(couponData.rate || 0);
+        const type = String(couponData.type || 'fixed').toLowerCase();
+
+        if (type === 'percentage') {
+          discountAmount = Math.round((subtotal * rate) / 100);
+          if (couponData.maxDiscount) {
+            discountAmount = Math.min(discountAmount, parseFloat(couponData.maxDiscount));
+          }
+        } else if (type === 'freeship') {
+          discountAmount = rate > 0 ? rate : 40;
+        } else {
+          // fixed
+          discountAmount = rate;
+        }
+
+        // Ensure discount does not exceed subtotal or drop below 0
+        discountAmount = Math.max(0, Math.min(subtotal, Math.round(discountAmount)));
+
+        // (5) Append caller uid to usedBy and increment usedCount
+        const newUsedCount = currentUsedCount + 1;
+        transaction.update(activeTargetRef, {
+          usedBy: admin.firestore.FieldValue.arrayUnion(callerUid),
+          usedCount: admin.firestore.FieldValue.increment(1),
+          lastUsedAt: new Date().toISOString(),
+          lastUsedBy: callerUid,
+          lastOrderId: orderId || null,
+          updatedAt: new Date().toISOString()
+        });
+
+        // (6) Return discount amount and updated coupon state
+        return {
+          success: true,
+          couponCode: normalizedCode,
+          discountAmount: discountAmount,
+          coupon: {
+            code: normalizedCode,
+            type: couponData.type || 'fixed',
+            rate: rate,
+            minOrderAmount: minOrderAmount,
+            discountAmount: discountAmount,
+            usedCount: newUsedCount,
+            singleUse: isSingleUse,
+            descEn: couponData.descEn || '',
+            descTa: couponData.descTa || ''
+          }
+        };
+      });
+
+      return result;
+    } catch (err) {
+      if (err instanceof functions.https.HttpsError) {
+        throw err;
+      }
+      console.error(`[redeemCoupon Callable Error for ${normalizedCode}]`, err);
+      throw new functions.https.HttpsError('internal', err.message || 'Error processing coupon redemption.');
+    }
+  });
+
 exports.deductStockOnOrderCreated = functions
   .region('asia-south1')
   .firestore
@@ -885,6 +1221,7 @@ exports.restoreStockOnOrderCancelled = functions
   .onUpdate(async (change, context) => {
     const beforeData = change.before.data() || {};
     const afterData = change.after.data() || {};
+    const orderId = context.params.orderId;
 
     const beforeStatus = String(beforeData.status || '').toUpperCase();
     const afterStatus = String(afterData.status || '').toUpperCase();
@@ -892,55 +1229,188 @@ exports.restoreStockOnOrderCancelled = functions
     // Check if status changed to CANCELLED
     if (afterStatus === 'CANCELLED' && beforeStatus !== 'CANCELLED') {
       if (afterData.stockRestored === true) {
-        console.log(`[Stock Restore Trigger] Order ${context.params.orderId} stock was already restored. Skipping.`);
+        console.log(`[Stock Restore Trigger] Order ${orderId} stock was already restored. Skipping.`);
         return null;
       }
 
-      console.log(`[Stock Restore Trigger] Order ${context.params.orderId} status changed to CANCELLED. Restoring stocks...`);
+      console.log(`[Stock Restore Trigger] Order ${orderId} status changed to CANCELLED. Restoring stocks...`);
       
       const items = afterData.items || [];
       if (!Array.isArray(items) || items.length === 0) {
-        console.log(`[Stock Restore Trigger] No items found in order ${context.params.orderId}.`);
+        console.log(`[Stock Restore Trigger] No items found in order ${orderId}.`);
         return null;
       }
 
       const firestore = admin.firestore();
-      const batch = firestore.batch();
-      
-      for (const item of items) {
-        if (!item.productId) continue;
-        const prodRef = firestore.collection('ek_products').doc(item.productId);
-        const prodSnap = await prodRef.get();
-        if (prodSnap.exists) {
-          const prodData = prodSnap.data() || {};
-          const serverStock = parseFloat(prodData.stockKg || 0);
-          const unit = prodData.unit || 'kg';
-          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-          const returnedQty = isWeight ? (parseFloat(item.weightGrams || 0) / 1000) : parseFloat(item.weightGrams || 0);
-          const newStock = parseFloat((serverStock + returnedQty).toFixed(3));
+      const orderRef = firestore.collection('ek_orders').doc(orderId);
 
-          batch.update(prodRef, {
-            stockKg: newStock,
-            isOutOfStock: false,
+      try {
+        await firestore.runTransaction(async (transaction) => {
+          // Step A: Re-check order doc inside transaction for idempotency
+          const freshOrderSnap = await transaction.get(orderRef);
+          if (!freshOrderSnap.exists) {
+            console.warn(`[Stock Restore Trigger] Order ${orderId} does not exist in transaction.`);
+            return;
+          }
+
+          const freshOrderData = freshOrderSnap.data() || {};
+          if (freshOrderData.stockRestored === true) {
+            console.log(`[Stock Restore Trigger] Order ${orderId} stock was already restored in concurrent run. Aborting.`);
+            return;
+          }
+
+          const orderItems = freshOrderData.items || items;
+
+          // Step B: Read all product docs inside transaction (all reads before writes)
+          const productReads = [];
+          for (const item of orderItems) {
+            if (!item || !item.productId) continue;
+            const prodRef = firestore.collection('ek_products').doc(item.productId);
+            productReads.push({
+              item,
+              prodRef,
+              snapPromise: transaction.get(prodRef)
+            });
+          }
+
+          const productSnaps = [];
+          for (const pr of productReads) {
+            const prodSnap = await pr.snapPromise;
+            productSnaps.push({
+              item: pr.item,
+              prodRef: pr.prodRef,
+              prodSnap
+            });
+          }
+
+          // Step C: Calculate new stock levels
+          const productUpdates = [];
+          for (const { item, prodRef, prodSnap } of productSnaps) {
+            if (!prodSnap.exists) {
+              console.warn(`[Stock Restore Trigger] Product ${item.productId} not found in Firestore.`);
+              continue;
+            }
+
+            const prodData = prodSnap.data() || {};
+            const serverStock = parseFloat(prodData.stockKg || 0);
+            const unit = String(prodData.unit || item.unit || 'kg').toLowerCase();
+            const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+            const rawWeight = parseFloat(item.weightGrams || item.quantity || 0);
+            const returnedQty = isWeight ? (rawWeight / 1000) : rawWeight;
+            const newStock = parseFloat((serverStock + returnedQty).toFixed(3));
+
+            productUpdates.push({
+              prodRef,
+              newStock,
+              previousStock: serverStock
+            });
+          }
+
+          // Step D: Write all product stock updates
+          for (const up of productUpdates) {
+            transaction.update(up.prodRef, {
+              stockKg: up.newStock,
+              isOutOfStock: false,
+              updatedAt: new Date().toISOString()
+            });
+            console.log(`[Stock Restore Trigger] Stock restored for product ${up.prodRef.id}: ${up.previousStock} -> ${up.newStock}`);
+          }
+
+          // Step E: Update order document
+          transaction.update(orderRef, {
+            stockRestored: true,
+            stockRestoredAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           });
-          console.log(`[Stock Restore Trigger] Prepared stock update for product ${item.productId}: stock ${serverStock} -> ${newStock}`);
-        } else {
-          console.warn(`[Stock Restore Trigger] Product ${item.productId} not found.`);
+        });
+
+        console.log(`[Stock Restore Trigger] Successfully restored stocks for order ${orderId}.`);
+      } catch (err) {
+        console.error(`[Stock Restore Trigger] Error during stock restore transaction for order ${orderId}:`, err);
+      }
+    }
+    return null;
+  });
+
+/**
+ * RESTORE ABANDONED STOCK — Scheduled cleanup
+ * Runs every 5 minutes. Finds orders where stock was deducted
+ * but UPI payment was never completed (PENDING_VERIFICATION for >15 min).
+ * Restores stock and marks the order.
+ */
+exports.restoreAbandonedStock = functions
+  .region('asia-south1')
+  .pubsub.schedule('every 5 minutes')
+  .timeZone('Asia/Kolkata')
+  .onRun(async (context) => {
+    const now = Date.now();
+    const fifteenMinAgo = new Date(now - 15 * 60 * 1000);
+
+    try {
+      const db = admin.firestore();
+      const abandonedOrdersSnap = await db.collection('ek_orders')
+        .where('stockDeducted', '==', true)
+        .where('stockRestored', '!=', true)
+        .limit(50)
+        .get();
+
+      const batch = db.batch();
+      let restoredCount = 0;
+
+      for (const orderDoc of abandonedOrdersSnap.docs) {
+        const orderData = orderDoc.data();
+        const createdAt = orderData.createdAt ? new Date(orderData.createdAt) : null;
+        const isPending = orderData.paymentStatus === 'PENDING_VERIFICATION' ||
+                          orderData.upiStatus === 'PENDING_VERIFICATION' ||
+                          (!orderData.paymentStatus && !orderData.upiStatus);
+
+        if (createdAt && createdAt < fifteenMinAgo && isPending) {
+          // Restore stock for each item
+          if (orderData.items && orderData.items.length > 0) {
+            for (const item of orderData.items) {
+              if (!item || !item.productId) continue;
+              const prodRef = db.collection('ek_products').doc(item.productId);
+              const prodSnap = await prodRef.get();
+              if (prodSnap.exists) {
+                const prodData = prodSnap.data() || {};
+                const serverStock = parseFloat(prodData.stockKg !== undefined ? prodData.stockKg : (prodData.stock || 0));
+                const unit = String(prodData.unit || item.unit || 'kg').toLowerCase();
+                const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+                const rawWeight = parseFloat(item.weightGrams || item.quantity || 0);
+                const returnedQty = isWeight ? (rawWeight / 1000) : rawWeight;
+                const newStock = parseFloat((serverStock + returnedQty).toFixed(3));
+
+                await prodRef.update({
+                  stockKg: newStock,
+                  stock: newStock,
+                  isOutOfStock: false,
+                  updatedAt: new Date().toISOString()
+                });
+              }
+            }
+          }
+
+          batch.update(orderDoc.ref, {
+            stockRestored: true,
+            stockRestoredAt: new Date().toISOString(),
+            status: 'cancelled',
+            cancelledAt: new Date().toISOString(),
+            cancelReason: 'UPI payment abandoned (auto-cleanup)'
+          });
+          restoredCount++;
         }
       }
 
-      const orderRef = firestore.collection('ek_orders').doc(context.params.orderId);
-      batch.update(orderRef, {
-        stockRestored: true,
-        stockRestoredAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+      if (restoredCount > 0) {
+        await batch.commit();
+        console.log(`[Abandoned Stock Cleanup] Restored stock for ${restoredCount} abandoned orders.`);
+      }
 
-      await batch.commit();
-      console.log(`[Stock Restore Trigger] Successfully restored stocks for order ${context.params.orderId}.`);
+      return { success: true, restoredCount: restoredCount };
+    } catch (err) {
+      console.error('[Abandoned Stock Cleanup] Error:', err);
+      return { success: false, error: err.message };
     }
-    return null;
   });
 
 exports.sendEmailOtp = functions
@@ -951,12 +1421,36 @@ exports.sendEmailOtp = functions
       throw new functions.https.HttpsError('invalid-argument', 'Email is required.');
     }
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
     const now = Date.now();
+    const docRef = admin.firestore().collection('ek_email_otps').doc(email);
+    const existingDoc = await docRef.get();
+
+    if (existingDoc.exists) {
+      const existingData = existingDoc.data();
+      if (existingData && existingData.createdAt && (now - existingData.createdAt < 60 * 1000)) {
+        const remainingSec = Math.ceil((60 * 1000 - (now - existingData.createdAt)) / 1000);
+        throw new functions.https.HttpsError('resource-exhausted', `Please wait ${remainingSec}s before requesting a new OTP.`);
+      }
+    }
+
+    const crypto = require('crypto');
+
+    // Email enumeration prevention: check if email is registered
+    const userSnap = await admin.firestore().collection('ek_users').where('email', '==', email).limit(1).get();
+    if (userSnap.empty) {
+      const userSnap2 = await admin.firestore().collection('users').where('email', '==', email).limit(1).get();
+      if (userSnap2.empty) {
+        // Email not registered — return success WITHOUT sending OTP
+        return { success: true };
+      }
+    }
+
+    const otp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     const expiresAt = now + 10 * 60 * 1000;
 
-    await admin.firestore().collection('ek_email_otps').doc(email).set({
-      otp: otp,
+    await docRef.set({
+      otpHash: otpHash,
       createdAt: now,
       expiresAt: expiresAt,
       attempts: 0
@@ -1056,7 +1550,11 @@ exports.verifyEmailOtpAndResetPassword = functions
       throw new functions.https.HttpsError('resource-exhausted', 'Too many attempts');
     }
 
-    if (String(otp).trim() !== String(otpData.otp).trim()) {
+    const crypto = require('crypto');
+    const inputHash = crypto.createHash('sha256').update(String(otp).trim()).digest('hex');
+    const isValid = otpData.otpHash ? (inputHash === otpData.otpHash) : (String(otp).trim() === String(otpData.otp).trim());
+
+    if (!isValid) {
       await docRef.update({ attempts: admin.firestore.FieldValue.increment(1) });
       throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP');
     }
@@ -1070,6 +1568,116 @@ exports.verifyEmailOtpAndResetPassword = functions
       console.error("Error resetting password:", err);
       throw new functions.https.HttpsError('internal', err.message);
     }
+  });
+
+/**
+ * CHECK PHONE UNIQUENESS — Server-side validation
+ * Called by the frontend before customer registration to prevent duplicate phone numbers.
+ * Normalizes all formats (+91, 91, 0, 10-digit) to a single canonical 10-digit format.
+ */
+exports.checkPhoneUnique = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+    const rawPhone = String(data.phone || '').trim();
+    if (!rawPhone) {
+      throw new functions.https.HttpsError('invalid-argument', 'Phone number is required.');
+    }
+
+    let canonicalPhone = rawPhone.replace(/\D/g, '');
+    if (canonicalPhone.startsWith('91') && canonicalPhone.length === 12) {
+      canonicalPhone = canonicalPhone.slice(2);
+    } else if (canonicalPhone.startsWith('0') && canonicalPhone.length === 11) {
+      canonicalPhone = canonicalPhone.slice(1);
+    }
+    if (canonicalPhone.length !== 10) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid phone number format.');
+    }
+
+    const phoneVariants = [
+      canonicalPhone,
+      '+91' + canonicalPhone,
+      '+91 ' + canonicalPhone,
+      '91' + canonicalPhone,
+      '91 ' + canonicalPhone,
+      '0' + canonicalPhone,
+    ];
+
+    try {
+      const queries = [
+        admin.firestore().collection('ek_users').where('phone', 'in', phoneVariants).limit(1).get(),
+        admin.firestore().collection('ek_users').doc(canonicalPhone).get(),
+        admin.firestore().collection('users').where('phone', 'in', phoneVariants).limit(1).get(),
+      ];
+
+      const results = await Promise.all(queries.map(p => p.catch(() => null)));
+
+      for (const snap of results) {
+        if (snap && ((snap.docs && snap.docs.length > 0) || snap.exists)) {
+          return { isUnique: false, canonicalPhone: canonicalPhone };
+        }
+      }
+
+      return { isUnique: true, canonicalPhone: canonicalPhone };
+    } catch (err) {
+      console.error('Phone uniqueness check error:', err);
+      return { isUnique: true, canonicalPhone: canonicalPhone };
+    }
+  });
+
+/**
+ * CLEANUP INVALID FCM TOKENS
+ * Admin-callable function that tests all FCM tokens and removes invalid ones.
+ * Call this periodically (e.g., once a week) to keep notification delivery fast.
+ */
+exports.cleanupInvalidFcmTokens = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+    // Verify caller is admin
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Admin authentication required.');
+    }
+    const adminDoc = await admin.firestore().collection('ek_admin_accounts').doc(context.auth.uid).get();
+    if (!adminDoc.exists || (adminDoc.data().role !== 'admin' && adminDoc.data().role !== 'superadmin')) {
+      throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
+    }
+
+    const db = admin.firestore();
+    const usersSnap = await db.collection('ek_users').get();
+    let cleanedCount = 0;
+    let checkedCount = 0;
+    const invalidTokenErrors = [
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token',
+    ];
+
+    for (const userDoc of usersSnap.docs) {
+      const userData = userDoc.data();
+      const token = userData.fcmToken || userData.realFcmToken;
+      if (!token) continue;
+
+      checkedCount++;
+      try {
+        // Send a silent data message to test the token
+        await admin.messaging().send({
+          token: token,
+          data: { type: 'token_check', timestamp: Date.now().toString() },
+          android: { priority: 'low' }
+        });
+      } catch (err) {
+        if (invalidTokenErrors.some(e => err.message && err.message.includes(e))) {
+          // Token is invalid — remove it
+          await db.collection('ek_users').doc(userDoc.id).update({
+            fcmToken: admin.firestore.FieldValue.delete(),
+            realFcmToken: admin.firestore.FieldValue.delete(),
+            fcmTokenCleanedAt: new Date().toISOString()
+          }).catch(e => console.warn('[FCM Cleanup] Failed to remove token for user:', userDoc.id, e));
+          cleanedCount++;
+        }
+      }
+    }
+
+    console.log(`[FCM Cleanup] Checked ${checkedCount} tokens, removed ${cleanedCount} invalid tokens.`);
+    return { success: true, checked: checkedCount, cleaned: cleanedCount };
   });
 
 

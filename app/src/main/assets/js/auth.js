@@ -331,60 +331,69 @@
     }
 
     async function verifyPassword(plain, stored) {
-      if (!stored) return false;
+      if (!stored || !plain) return false;
       const hash = stored.startsWith('hash:') ? stored.slice(5) : stored;
-      if (!stored.startsWith('hash:') && stored.length !== 64) {
-        if (plain === stored) return true;
-      }
-      return (await hashPassword(plain)) === hash;
+      const computedHash = await hashPassword(plain);
+      return computedHash === hash;
     }
 
     async function migratePasswordsToHash() {
       try {
-        const migrated = getData('ek_passwords_migrated', false);
-        if (migrated) return;
-
+        let adminList = typeof adminAccounts !== 'undefined' ? adminAccounts : getData('ek_admin_accounts', []);
         let adminChanged = false;
-        for (let acc of adminAccounts) {
-          if (acc.password && !acc.password.startsWith('hash:')) {
+        for (let acc of adminList) {
+          if (acc && acc.password && typeof acc.password === 'string' && !acc.password.startsWith('hash:') && acc.password.length !== 64) {
             acc.password = 'hash:' + await hashPassword(acc.password);
             adminChanged = true;
           }
         }
-        if (adminChanged) saveData('ek_admin_accounts', adminAccounts);
+        if (adminChanged) {
+          saveData('ek_admin_accounts', adminList);
+          debugLog('[Security] Migrated unhashed admin account passwords.');
+        }
 
         let delivList = getData('ek_delivery_persons', []);
-        let changed = false;
+        let delivChanged = false;
         for (let dp of delivList) {
-          if (dp.password && !dp.password.startsWith('hash:')) {
+          if (dp && dp.password && typeof dp.password === 'string' && !dp.password.startsWith('hash:') && dp.password.length !== 64) {
             dp.password = 'hash:' + await hashPassword(dp.password);
-            changed = true;
+            delivChanged = true;
+            if (typeof db !== 'undefined' && db && dp.id) {
+              db.collection('ek_delivery_persons').doc(dp.id).update({
+                password: dp.password,
+                updatedAt: new Date().toISOString()
+              }).catch(e => console.warn('[Migration] Firestore rider password sync failed:', dp.id, e));
+            }
           }
         }
-        if (changed) saveData('ek_delivery_persons', delivList);
+        if (delivChanged) {
+          saveData('ek_delivery_persons', delivList);
+          debugLog('[Security] Migrated unhashed delivery rider passwords.');
+        }
 
         let users = getData('ek_users', []);
         let usersChanged = false;
         for (let u of users) {
-          if (u.password && !u.password.startsWith('hash:')) {
+          if (u && u.password && typeof u.password === 'string' && !u.password.startsWith('hash:') && u.password.length !== 64) {
             u.password = 'hash:' + await hashPassword(u.password);
             usersChanged = true;
             if (typeof db !== 'undefined' && db && u.id) {
               db.collection('ek_users').doc(u.id).update({
                 password: u.password,
                 updatedAt: new Date().toISOString()
-              }).catch(e => console.warn('[Migration] Firestore password sync failed:', u.id, e));
+              }).catch(e => console.warn('[Migration] Firestore user password sync failed:', u.id, e));
             }
           }
         }
-        if (usersChanged) saveData('ek_users', users);
-
-        saveData('ek_passwords_migrated', true);
-        debugLog('[Security] All passwords migrated to SHA-256 hash successfully.');
+        if (usersChanged) {
+          saveData('ek_users', users);
+          debugLog('[Security] Migrated unhashed user passwords.');
+        }
       } catch (err) {
-        console.error('[Security] Passwords migration failed safely:', err);
+        console.error('[Security] Passwords migration scan failed:', err);
       }
     }
+    window.migratePasswordsToHash = migratePasswordsToHash;
 
     function archiveOldOrders() {
       const orders = getData('ek_orders', []);
@@ -499,52 +508,75 @@
       productsLoadError = null;
       categoriesLoadError = null;
 
-      // If we already have products from cache or realtime listener, skip redundant get() call
+      // If we already have products from cache, display them immediately without blocking UI
       if (cachedProds && cachedProds.length > 0) {
-        debugLog('[DEBUG fetchProductsOnce] Cached or realtime products already present, skipping redundant query.');
+        debugLog('[DEBUG fetchProductsOnce] Cached products present, will sync fresh cloud data in background.');
         window._isProductsFetched = true;
         isProductsLoading = false;
         isCategoriesLoading = false;
         checkAndUpdateFreshCloudData();
-        return;
       }
       try {
-        const [productsSnap, categoriesSnap] = await Promise.all([
-          db.collection('ek_products').get(),
-          db.collection('ek_categories').get()
+        const [productsSnap, categoriesSnap, settingsSnap] = await Promise.all([
+          db.collection('ek_products').get().catch(e => { console.warn("ek_products get failed:", e); return null; }),
+          db.collection('ek_categories').get().catch(e => { console.warn("ek_categories get failed:", e); return null; }),
+          db.collection('ek_settings').doc('global_config').get().catch(() => null)
         ]);
 
         const deletedProdIds = getDeletedProductIds();
         let cloudProducts = [];
-        productsSnap.forEach(doc => {
-          const prod = normalizeFirestoreData(doc.data());
-          if (prod && prod.id && !deletedProdIds.includes(prod.id)) {
-            cloudProducts.push(prod);
-          }
-        });
+        if (productsSnap) {
+          productsSnap.forEach(doc => {
+            const prod = normalizeFirestoreData(doc.data());
+            if (prod && prod.id && !deletedProdIds.includes(prod.id)) {
+              cloudProducts.push(prod);
+            }
+          });
+        }
 
         let cloudCategories = [];
-        categoriesSnap.forEach(doc => {
-          const cat = normalizeFirestoreData(doc.data());
-          if (cat && cat.id) {
-            cloudCategories.push(cat);
+        if (categoriesSnap) {
+          categoriesSnap.forEach(doc => {
+            const cat = normalizeFirestoreData(doc.data());
+            if (cat && cat.id) {
+              cloudCategories.push(cat);
+            }
+          });
+        }
+
+        // Fallback to categories from settings if ek_categories collection was empty
+        if ((!cloudCategories || cloudCategories.length === 0) && settingsSnap && settingsSnap.exists) {
+          const sData = settingsSnap.data();
+          if (sData && Array.isArray(sData.categories) && sData.categories.length > 0) {
+            cloudCategories = sData.categories;
           }
-        });
+        }
 
-        window._hasFreshCloudData = true;
-        saveData('ek_cloud_synced', true);
+        if (cloudProducts.length > 0) {
+          window._hasFreshCloudData = true;
+          saveData('ek_cloud_synced', true);
+          saveData('ek_products', cloudProducts);
+          invalidateDataCache('ek_products');
+        }
 
-        saveData('ek_products', cloudProducts);
-        invalidateDataCache('ek_products');
-
-        cloudCategories.sort((a, b) => {
-          const orderA = Number(a.order !== undefined && a.order !== null ? a.order : 999);
-          const orderB = Number(b.order !== undefined && b.order !== null ? b.order : 999);
-          if (orderA !== orderB) return orderA - orderB;
-          return String(a.id || "").localeCompare(String(b.id || ""));
-        });
-        saveData('ek_categories', cloudCategories);
-        invalidateDataCache('ek_categories');
+        if (cloudCategories.length > 0) {
+          cloudCategories.sort((a, b) => {
+            const orderA = (a && a.order !== undefined && a.order !== null && !isNaN(Number(a.order))) ? Number(a.order) : 999;
+            const orderB = (b && b.order !== undefined && b.order !== null && !isNaN(Number(b.order))) ? Number(b.order) : 999;
+            if (orderA !== orderB) return orderA - orderB;
+            return String((a && a.id) || "").localeCompare(String((b && b.id) || ""));
+          });
+          saveData('ek_categories', cloudCategories);
+          invalidateDataCache('ek_categories');
+          window._categoriesListCachedValue = null;
+          if (typeof _categoriesListCachedValue !== 'undefined') _categoriesListCachedValue = null;
+          window._lastCategoryPillsHash = '';
+          if (typeof _lastCategoryPillsHash !== 'undefined') _lastCategoryPillsHash = '';
+          window._lastDataSnapshotHash = '';
+          if (typeof _lastDataSnapshotHash !== 'undefined') _lastDataSnapshotHash = '';
+          window._lastProductsHash = '';
+          if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
+        }
 
         debugLog(`[Cloud Sync] Fetched once successfully: ${cloudProducts.length} products, ${cloudCategories.length} categories.`);
       } catch (err) {
@@ -558,11 +590,11 @@
         isCategoriesLoading = false;
         window._isProductsFetched = true;
         checkAndUpdateFreshCloudData();
-        if (typeof renderHomeScreenProducts === 'function') {
-          renderHomeScreenProducts();
-        }
         if (typeof renderCategoryPills === 'function') {
           renderCategoryPills();
+        }
+        if (typeof renderHomeScreenProducts === 'function') {
+          renderHomeScreenProducts(true);
         }
       }
     }
@@ -1377,54 +1409,204 @@
     }
 
     async function sendForgotPasswordOtp() {
-  const emailVal = document.getElementById('fp-email-input').value.trim().toLowerCase();
-  const isTa = currentLang === 'ta';
-  if (!emailVal) {
-    showToast(
-      isTa ? "தயவுசெய்து உங்கள் மின்னஞ்சல் முகவரியை உள்ளிடுங்கள்." : "Please enter your registered email address.",
-      "error"
-    );
-    return;
-  }
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(emailVal)) {
-    showToast(
-      isTa ? "செல்லுபடியாகும் மின்னஞ்சல் முகவரியை உள்ளிடவும்." : "Please enter a valid email address.",
-      "error"
-    );
-    return;
-  }
-  
-  const stage1 = document.getElementById('fp-stage-1'); if (stage1) stage1.style.display = 'none';
-  const stageLoading = document.getElementById('fp-stage-loading'); if (stageLoading) stageLoading.style.display = 'block';
-  
-  try {
-    if (typeof firebase !== 'undefined' && firebase.auth) {
-      await firebase.auth().sendPasswordResetEmail(emailVal);
-      if (stageLoading) stageLoading.style.display = 'none';
-      
-      const stageLink = document.getElementById('fp-stage-link');
-      if (stageLink) {
-        stageLink.style.display = 'block';
-      } else {
-        hideForgotPasswordModal();
+      const emailVal = (document.getElementById('fp-email-input')?.value || '').trim().toLowerCase();
+      const isTa = currentLang === 'ta';
+
+      if (!emailVal) {
+        showToast(
+          isTa ? "தயவுசெய்து உங்கள் பதிவு செய்யப்பட்ட மின்னஞ்சல் முகவரியை உள்ளிடவும்." : "Please enter your registered email address.",
+          "error"
+        );
+        return;
       }
-      
-      showToast(
-        isTa ? "கடவுச்சொல் மீட்டமைப்பு மின்னஞ்சல் அனுப்பப்பட்டது! உங்கள் மின்னஞ்சலை சரிபார்க்கவும். ✉️"
-             : "Password reset email sent! Please check your inbox or spam folder. ✉️",
-        "success"
-      );
-    } else {
-      throw new Error("Firebase Auth service unavailable.");
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailVal)) {
+        showToast(
+          isTa ? "செல்லுபடியாகும் மின்னஞ்சல் முகவரியை உள்ளிடவும்." : "Please enter a valid email address.",
+          "error"
+        );
+        return;
+      }
+
+      const stage1 = document.getElementById('fp-stage-1');
+      const stageLoading = document.getElementById('fp-stage-loading');
+      const stageOtp = document.getElementById('fp-stage-otp');
+      const stageLink = document.getElementById('fp-stage-link');
+
+      if (stage1) stage1.style.display = 'none';
+      if (stageOtp) stageOtp.style.display = 'none';
+      if (stageLink) stageLink.style.display = 'none';
+      if (stageLoading) stageLoading.style.display = 'block';
+
+      const loadingTitle = document.getElementById('fp-loading-title');
+      const loadingMsg = document.getElementById('fp-loading-msg');
+      if (loadingTitle) loadingTitle.innerText = isTa ? "OTP அனுப்பப்படுகிறது..." : "Sending OTP...";
+      if (loadingMsg) loadingMsg.innerText = isTa ? "கணக்கை சரிபார்த்து OTP அனுப்பப்படுகிறது..." : "Verifying account & sending 6-digit OTP...";
+
+      try {
+        // 1. Check if email is registered
+        let isRegistered = false;
+
+        // Check local users cache
+        const localUsers = typeof getData === 'function' ? getData('ek_users', []) : [];
+        if (Array.isArray(localUsers) && localUsers.some(u => u && (u.email || '').toLowerCase() === emailVal)) {
+          isRegistered = true;
+        }
+
+        // Check Firestore ek_users / users collections
+        if (!isRegistered && typeof db !== 'undefined' && db) {
+          try {
+            const [qEkUsers, qUsers] = await Promise.all([
+              db.collection('ek_users').where('email', '==', emailVal).limit(1).get().catch(() => null),
+              db.collection('users').where('email', '==', emailVal).limit(1).get().catch(() => null)
+            ]);
+
+            if ((qEkUsers && !qEkUsers.empty) || (qUsers && !qUsers.empty)) {
+              isRegistered = true;
+            }
+          } catch (dbErr) {
+            console.warn("[Forgot Password] Firestore query check error:", dbErr);
+          }
+        }
+
+        // Fallback check Firebase Auth methods if not found in Firestore
+        if (!isRegistered && typeof firebase !== 'undefined' && firebase.auth) {
+          try {
+            const methods = await firebase.auth().fetchSignInMethodsForEmail(emailVal);
+            if (methods && methods.length > 0) {
+              isRegistered = true;
+            }
+          } catch (authErr) {
+            console.warn("[Forgot Password] fetchSignInMethodsForEmail check error:", authErr);
+          }
+        }
+
+        if (!isRegistered) {
+          if (stageLoading) stageLoading.style.display = 'none';
+          if (stage1) stage1.style.display = 'block';
+          showToast(
+            isTa ? "இந்த மின்னஞ்சல் பதிவு செய்யப்படவில்லை! தயவுசெய்து சரியான மின்னஞ்சலை உள்ளிடவும் அல்லது புதிய கணக்கை உருவாக்கவும்." 
+                 : "This email address is not registered! Please enter your registered email or sign up.",
+            "error"
+          );
+          return;
+        }
+
+        // 2. Email is registered -> call sendEmailOtp Cloud Function
+        const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
+        if (!sendOtpFn) {
+          throw new Error("Cloud Function service (sendEmailOtp) is unavailable.");
+        }
+
+        const res = await sendOtpFn({ email: emailVal });
+        if (res && res.data && res.data.success) {
+          if (stageLoading) stageLoading.style.display = 'none';
+          if (stageOtp) stageOtp.style.display = 'flex';
+          
+          if (typeof clearOtpValues === 'function') clearOtpValues();
+          const helpText = document.getElementById('fp-otp-help-text');
+          if (helpText) {
+            helpText.innerText = isTa 
+              ? `${emailVal} என்ற மின்னஞ்சலுக்கு அனுப்பப்பட்ட 6-இலக்க OTP குறியீட்டை உள்ளிடவும்.` 
+              : `Enter the 6-digit OTP sent to ${emailVal}.`;
+          }
+
+          showToast(
+            isTa ? "OTP குறியீடு உங்கள் மின்னஞ்சலுக்கு வெற்றிகரமாக அனுப்பப்பட்டது! ✉️" 
+                 : "6-digit OTP has been sent to your email address! ✉️",
+            "success"
+          );
+        } else {
+          const errMsg = (res && res.data && (res.data.message || res.data.error)) || "Failed to send OTP.";
+          throw new Error(errMsg);
+        }
+      } catch (err) {
+        console.error("sendForgotPasswordOtp error:", err);
+        if (stageLoading) stageLoading.style.display = 'none';
+        if (stage1) stage1.style.display = 'block';
+        showToast(
+          isTa ? "பிழை: " + (err.message || "OTP அனுப்ப முடியவில்லை") : "Error: " + (err.message || "Failed to send OTP"),
+          "error"
+        );
+      }
     }
-  } catch (err) {
-    console.error("Password reset error:", err);
-    if (stageLoading) stageLoading.style.display = 'none';
-    if (stage1) stage1.style.display = 'block';
-    showToast(isTa ? "பிழை: " + err.message : "Failed to send reset email: " + err.message, "error");
-  }
-}
+
+    async function resendForgotPasswordOtp() {
+      const emailVal = (document.getElementById('fp-email-input')?.value || '').trim().toLowerCase();
+      const isTa = currentLang === 'ta';
+      const resendBtn = document.getElementById('fp-resend-otp-btn') || document.getElementById('fp-btn-resend-otp');
+
+      if (!emailVal) {
+        showToast(
+          isTa ? "மின்னஞ்சல் முகவரி கிடைக்கவில்லை." : "Email address not found.",
+          "error"
+        );
+        return;
+      }
+
+      if (window._fpResendCooldownActive) {
+        showToast(
+          isTa ? "தயவுசெய்து சிறிது நேரம் காத்திருக்கவும்..." : "Please wait before requesting another OTP.",
+          "warning"
+        );
+        return;
+      }
+
+      let originalBtnText = "";
+      if (resendBtn) {
+        originalBtnText = resendBtn.innerHTML;
+        resendBtn.disabled = true;
+        resendBtn.style.opacity = "0.6";
+        resendBtn.innerHTML = `<span>⏳ ${isTa ? 'அனுப்பப்படுகிறது...' : 'Resending OTP...'}</span>`;
+      }
+
+      try {
+        const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
+        if (!sendOtpFn) throw new Error("Cloud Function service is unavailable.");
+
+        const res = await sendOtpFn({ email: emailVal });
+        if (res && res.data && res.data.success) {
+          if (typeof clearOtpValues === 'function') clearOtpValues();
+          showToast(
+            isTa ? "புதிய OTP குறியீடு மின்னஞ்சலுக்கு அனுப்பப்பட்டது! ✉️" : "New OTP sent to your email! ✉️",
+            "success"
+          );
+
+          // Start 60-second cooldown
+          window._fpResendCooldownActive = true;
+          let remaining = 60;
+          const intervalId = setInterval(() => {
+            remaining--;
+            if (resendBtn) {
+              resendBtn.innerHTML = `<span>⏳ ${isTa ? `மீண்டும் அனுப்ப (${remaining} வினாடிகள்)` : `Resend OTP in ${remaining}s`}</span>`;
+            }
+            if (remaining <= 0) {
+              clearInterval(intervalId);
+              window._fpResendCooldownActive = false;
+              if (resendBtn) {
+                resendBtn.disabled = false;
+                resendBtn.style.opacity = "1";
+                resendBtn.innerHTML = originalBtnText || `<span>🔄 ${isTa ? 'மீண்டும் OTP அனுப்புக' : 'Resend OTP'}</span>`;
+              }
+            }
+          }, 1000);
+        } else {
+          throw new Error(res?.data?.message || "Resend failed");
+        }
+      } catch (err) {
+        console.error("resendForgotPasswordOtp error:", err);
+        showToast(
+          isTa ? "OTP மீண்டும் அனுப்ப முடியவில்லை: " + err.message : "Failed to resend OTP: " + err.message,
+          "error"
+        );
+        if (resendBtn) {
+          resendBtn.disabled = false;
+          resendBtn.style.opacity = "1";
+          resendBtn.innerHTML = originalBtnText || `<span>🔄 ${isTa ? 'மீண்டும் OTP அனுப்புக' : 'Resend OTP'}</span>`;
+        }
+      }
+    }
 
 async function verifyOtpAndResetPassword() {
       const emailVal = document.getElementById('fp-email-input').value.trim().toLowerCase();
@@ -1569,74 +1751,99 @@ async function verifyOtpAndResetPassword() {
           const phoneStr = adminEmail.replace('admin_', '').split('@')[0];
 
           try {
-            const storedAdmins = getData('ek_admin_accounts', []) || [];
-            const allAdmins = [...storedAdmins, ...DEFAULT_FALLBACK_ADMINS];
-            const matchedAcc = allAdmins.find(a => 
-              (a.email && a.email.toLowerCase() === adminEmail.toLowerCase()) || 
-              a.phone === phoneStr || 
-              a.id === identifier
-            );
-
-            if (matchedAcc && matchedAcc.password) {
-              const isPassValid = await verifyPassword(pass, matchedAcc.password);
-              if (!isPassValid) {
-                loginCompleted = true;
-                cleanupTimers();
-                showToast(
-                  currentLang === 'ta'
-                    ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
-                    : "Incorrect admin password! Please check credentials ❌",
-                  "error"
-                );
-                restoreButton();
-                return;
-              }
-            }
-
-            if (typeof firebase !== 'undefined' && firebase.auth) {
-              const currentAuthUser = firebase.auth().currentUser;
-              if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== adminEmail.trim().toLowerCase()) {
-                await firebase.auth().signOut().catch(e => console.warn(e));
-              }
-            }
-
-            let cred = null;
-            let credentialVerified = false;
-            if (typeof firebase !== 'undefined' && firebase.auth) {
-              try {
-                await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
-                cred = await firebase.auth().signInWithEmailAndPassword(adminEmail, pass);
-                credentialVerified = true;
-              } catch (signInErr) {
-                try {
-                  cred = await firebase.auth().createUserWithEmailAndPassword(adminEmail, pass);
-                  credentialVerified = true;
-                } catch (createErr) {
-                  console.warn("[Admin Login] Firebase createUserWithEmailAndPassword fallback:", createErr);
-                }
-              }
-            }
-
-            const localPasswordVerified = !!(matchedAcc && matchedAcc.password);
-            if (typeof firebase !== 'undefined' && firebase.auth && !credentialVerified && !localPasswordVerified) {
+            if (typeof firebase === 'undefined' || !firebase.auth) {
               loginCompleted = true;
               cleanupTimers();
               showToast(
                 currentLang === 'ta'
-                  ? "கடவுச்சொல் தவறானது! அட்மின் கடவுச்சொல்லை சரிபார்க்கவும் ❌"
-                  : "Incorrect admin password! Please check credentials ❌",
+                  ? "Firebase அங்கீகாரம் ஏற்றப்படவில்லை! தயவுசெய்து இணைய இணைப்பைச் சரிபார்க்கவும் ❌"
+                  : "Firebase Auth not available. Please check internet connection ❌",
                 "error"
               );
               restoreButton();
               return;
             }
 
-            const uid = (cred && cred.user) ? cred.user.uid : ((firebase.auth() && firebase.auth().currentUser && firebase.auth().currentUser.uid) || (matchedAcc ? matchedAcc.id : ('admin_' + phoneStr)));
+            const currentAuthUser = firebase.auth().currentUser;
+            if (currentAuthUser && currentAuthUser.email && currentAuthUser.email.trim().toLowerCase() !== adminEmail.trim().toLowerCase()) {
+              await firebase.auth().signOut().catch(e => console.warn(e));
+            }
 
-            let adminData = matchedAcc || {
+            let cred = null;
+            try {
+              await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+              cred = await firebase.auth().signInWithEmailAndPassword(adminEmail, pass);
+            } catch (signInErr) {
+              console.warn("[Admin Login] Firebase signInWithEmailAndPassword failed:", signInErr);
+              loginCompleted = true;
+              cleanupTimers();
+              showToast(
+                currentLang === 'ta'
+                  ? "கடவுச்சொல் அல்லது அட்மின் கணக்கு தவறானது! அட்மின் சான்றுகளை சரிபார்க்கவும் ❌"
+                  : "Incorrect admin credentials or password! Please check credentials ❌",
+                "error"
+              );
+              restoreButton();
+              return;
+            }
+
+            if (!cred || !cred.user || !cred.user.uid) {
+              loginCompleted = true;
+              cleanupTimers();
+              showToast(
+                currentLang === 'ta'
+                  ? "அட்மின் அங்கீகரிப்பு தோல்வியடைந்தது ❌"
+                  : "Admin authentication failed ❌",
+                "error"
+              );
+              restoreButton();
+              return;
+            }
+
+            const uid = cred.user.uid;
+
+            // Verify Admin Privileges in Firestore ek_admin_accounts
+            let adminDocSnap = null;
+            if (typeof db !== 'undefined' && db) {
+              try {
+                adminDocSnap = await db.collection('ek_admin_accounts').doc(uid).get();
+                if (!adminDocSnap.exists) {
+                  // Fallback query by email if doc was keyed by old ID
+                  const emailQ = await db.collection('ek_admin_accounts').where('email', '==', adminEmail).limit(1).get().catch(() => null);
+                  if (emailQ && !emailQ.empty) {
+                    adminDocSnap = emailQ.docs[0];
+                  }
+                }
+              } catch (fsErr) {
+                console.warn("[Admin Login] Firestore check error:", fsErr);
+              }
+            }
+
+            const adminFirestoreData = (adminDocSnap && adminDocSnap.exists) ? adminDocSnap.data() : null;
+            const storedAdmins = getData('ek_admin_accounts', []) || [];
+            const localAdminMatch = storedAdmins.find(a => a.id === uid || (a.email && a.email.toLowerCase() === adminEmail.toLowerCase()));
+
+            const role = (adminFirestoreData && adminFirestoreData.role) || (localAdminMatch && localAdminMatch.role) || null;
+            const isActive = adminFirestoreData ? (adminFirestoreData.active !== false) : (localAdminMatch ? localAdminMatch.active !== false : false);
+
+            if (!isActive || (role !== 'admin' && role !== 'superadmin')) {
+              await firebase.auth().signOut().catch(() => {});
+              loginCompleted = true;
+              cleanupTimers();
+              showToast(
+                currentLang === 'ta'
+                  ? "அணுகல் மறுக்கப்பட்டது! இந்த கணக்கிற்கு அட்மின் அனுமதி இல்லை ❌"
+                  : "Access denied! This account does not have administrator privileges ❌",
+                "error"
+              );
+              restoreButton();
+              return;
+            }
+
+            let adminData = adminFirestoreData || localAdminMatch || {
               id: uid,
-              name: matchedAcc ? matchedAcc.name : 'Admin',
-              role: 'admin',
+              name: (adminFirestoreData && adminFirestoreData.name) || (localAdminMatch && localAdminMatch.name) || 'Admin',
+              role: role,
               phone: phoneStr,
               email: adminEmail,
               active: true
@@ -1644,6 +1851,8 @@ async function verifyOtpAndResetPassword() {
 
             adminData.id = uid;
             adminData.uid = uid;
+            adminData.role = role;
+            adminData.active = true;
 
             // Set verified admin UID flag immediately
             window._verifiedAdminUids = window._verifiedAdminUids || new Set();
@@ -1656,7 +1865,7 @@ async function verifyOtpAndResetPassword() {
 
             // Non-blocking background Firestore sync
             if (typeof db !== 'undefined' && db) {
-              db.collection('ek_admin_accounts').doc(uid).set(adminData).catch(e => console.warn("[Admin Firestore Sync Warning]:", e));
+              db.collection('ek_admin_accounts').doc(uid).set(adminData, { merge: true }).catch(e => console.warn("[Admin Firestore Sync Warning]:", e));
             }
 
             loginCompleted = true;
@@ -1664,8 +1873,9 @@ async function verifyOtpAndResetPassword() {
 
             removeData('ek_customer_session');
             removeData('ek_delivery_session');
+            removeData('ek_explicit_logged_out');
             sessionStorage.removeItem('ek_customer_session_temp');
-            saveData('ek_admin_session', { loggedIn: true, role: adminData.role || 'admin', name: adminData.name || 'Admin', phone: adminData.phone || phoneStr || identifier });
+            saveData('ek_admin_session', { loggedIn: true, role: adminData.role || 'admin', name: adminData.name || 'Admin', phone: adminData.phone || phoneStr || identifier, uid: uid });
 
             if (remember) {
               saveData('ek_admin_remember_me', true);
@@ -1759,12 +1969,8 @@ async function verifyOtpAndResetPassword() {
               try {
                 cred = await firebase.auth().signInWithEmailAndPassword(authEmail, pass);
               } catch (signInErr) {
-                try {
-                  cred = await firebase.auth().createUserWithEmailAndPassword(authEmail, pass);
-                } catch (createErr) {
-                  console.warn("[Rider Auth Fallback Error]:", createErr);
-                  throw signInErr;
-                }
+                console.warn("[Rider Auth] signInWithEmailAndPassword failed:", signInErr);
+                throw signInErr;
               }
 
               const uid = cred.user.uid;
@@ -1810,6 +2016,7 @@ async function verifyOtpAndResetPassword() {
 
               removeData('ek_customer_session');
               removeData('ek_admin_session');
+              removeData('ek_explicit_logged_out');
               sessionStorage.removeItem('ek_customer_session_temp');
               saveData('ek_delivery_session', { loggedIn: true, id: uid, name: matchedDeliv.name, phone: matchedDeliv.phone });
 
@@ -1835,10 +2042,14 @@ async function verifyOtpAndResetPassword() {
             loginCompleted = true;
             cleanupTimers();
             console.error("[Rider Login] Firebase Auth failed:", authErr);
-            let errMsg = currentLang === 'ta' ? "தவறான கடவுச்சொல்." : "Incorrect password.";
+            let errMsg = currentLang === 'ta'
+              ? "கடவுச்சொல் தவறானது! டெலிவரி கடவுச்சொல்லை சரிபார்க்கவும் ❌"
+              : "Incorrect password! Please check delivery credentials ❌";
 
             if (authErr && (authErr.code === 'auth/user-not-found' || (authErr.message && authErr.message.includes('user-not-found')))) {
-              errMsg = currentLang === 'ta' ? "டெலிவரி கணக்கு அமைப்பு அரைகுறை. நிர்வாகியைத் தொடர்பு கொள்ளவும்." : "Delivery account setup is incomplete. Contact admin.";
+              errMsg = currentLang === 'ta'
+                ? "டெலிவரி கணக்கு அமைப்பு அரைகுறை. நிர்வாகியைத் தொடர்பு கொள்ளவும் ❌"
+                : "Delivery account setup is incomplete. Contact admin ❌";
             }
             showToast(errMsg, "error");
             restoreButton();
@@ -1894,12 +2105,55 @@ async function verifyOtpAndResetPassword() {
           // Check Firestore for phone lookup if missing in local cache
           if (!matched && typeof db !== 'undefined' && db) {
             try {
-              const phoneVariants = [phone10, `+91${phone10}`, `91${phone10}`, identifier];
-              for (const variant of phoneVariants) {
-                const phoneDocSnap = await db.collection('ek_users').where('phone', '==', variant).limit(1).get().catch(() => null);
-                if (phoneDocSnap && !phoneDocSnap.empty) {
-                  matched = phoneDocSnap.docs[0].data();
-                  break;
+              const phoneVariants = Array.from(new Set([
+                phone10,
+                cleanDigits,
+                rawDigits,
+                `+91${phone10}`,
+                `+91 ${phone10}`,
+                `91${phone10}`,
+                `91 ${phone10}`,
+                `0${phone10}`,
+                `+91-${phone10}`,
+                `${phone10.slice(0, 5)} ${phone10.slice(5)}`,
+                `+91 ${phone10.slice(0, 5)} ${phone10.slice(5)}`,
+                `+91 ${phone10.slice(0, 5)}-${phone10.slice(5)}`,
+                `+91-${phone10.slice(0, 5)}-${phone10.slice(5)}`,
+                `cust_${phone10}`,
+                `user_${phone10}`,
+                identifier
+              ])).filter(Boolean);
+
+              const queryChunk1 = phoneVariants.slice(0, 10);
+              const queryChunk2 = phoneVariants.slice(10, 20);
+              const qResults = await Promise.all([
+                db.collection('ek_users').where('phone', 'in', queryChunk1).limit(1).get().catch(() => null),
+                queryChunk2.length > 0 ? db.collection('ek_users').where('phone', 'in', queryChunk2).limit(1).get().catch(() => null) : null,
+                db.collection('ek_users').where('phoneNumber', 'in', queryChunk1).limit(1).get().catch(() => null),
+                db.collection('users').where('phone', 'in', queryChunk1).limit(1).get().catch(() => null),
+                db.collection('ek_users').doc(phone10).get().catch(() => null),
+                db.collection('ek_users').doc(`cust_${phone10}`).get().catch(() => null)
+              ]);
+
+              for (const snap of qResults) {
+                if (snap) {
+                  if (snap.docs && snap.docs.length > 0) {
+                    matched = snap.docs[0].data();
+                    break;
+                  } else if (snap.exists && snap.data) {
+                    matched = snap.data();
+                    break;
+                  }
+                }
+              }
+
+              if (!matched) {
+                for (const variant of phoneVariants) {
+                  const phoneDocSnap = await db.collection('ek_users').where('phone', '==', variant).limit(1).get().catch(() => null);
+                  if (phoneDocSnap && !phoneDocSnap.empty) {
+                    matched = phoneDocSnap.docs[0].data();
+                    break;
+                  }
                 }
               }
             } catch (pErr) {
@@ -2013,6 +2267,7 @@ async function verifyOtpAndResetPassword() {
 
             removeData('ek_admin_session');
             removeData('ek_delivery_session');
+            removeData('ek_explicit_logged_out');
             sessionStorage.removeItem('ek_customer_session_temp');
 
             const uniqueSessionToken = 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
@@ -2366,41 +2621,121 @@ async function verifyOtpAndResetPassword() {
         }
 
         const cleanDigits = phone.replace(/\D/g, '');
+        const phone10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
         const phoneVariants = Array.from(new Set([
           phone,
           cleanDigits,
-          cleanDigits.slice(-10),
-          `+91${cleanDigits.slice(-10)}`,
-          `91${cleanDigits.slice(-10)}`
+          phone10,
+          `+91${phone10}`,
+          `+91 ${phone10}`,
+          `91${phone10}`,
+          `91 ${phone10}`,
+          `0${phone10}`,
+          `+91-${phone10}`,
+          `${phone10.slice(0, 5)} ${phone10.slice(5)}`,
+          `+91 ${phone10.slice(0, 5)} ${phone10.slice(5)}`,
+          `+91 ${phone10.slice(0, 5)}-${phone10.slice(5)}`,
+          `+91-${phone10.slice(0, 5)}-${phone10.slice(5)}`,
+          `cust_${phone10}`,
+          `user_${phone10}`
         ])).filter(Boolean);
 
         let isDuplicatePhone = false;
+        let isDuplicateEmail = false;
+        let duplicateReason = "";
 
-        // Check local cache (ek_users)
+        // 1. Check local cache across all user stores
         try {
-          const localUsers = (typeof getData === 'function') ? getData('ek_users', []) : [];
-          const existingLocal = localUsers.find(u => {
-            if (!u || !u.phone) return false;
-            const uDigits = String(u.phone).replace(/\D/g, '');
-            return phoneVariants.some(v => v === u.phone) || (uDigits && cleanDigits.length >= 10 && uDigits.endsWith(cleanDigits.slice(-10)));
+          const allLocalUsers = [
+            ...((typeof getData === 'function' ? getData('ek_users', []) : []) || []),
+            ...((typeof getData === 'function' ? getData('ek_delivery_persons', []) : []) || []),
+            ...((typeof getData === 'function' ? getData('ek_admin_accounts', []) : []) || []),
+            ...((typeof DEFAULT_FALLBACK_ADMINS !== 'undefined' && Array.isArray(DEFAULT_FALLBACK_ADMINS)) ? DEFAULT_FALLBACK_ADMINS : [])
+          ];
+
+          const existingLocalPhone = allLocalUsers.find(u => {
+            if (!u) return false;
+            const uDigits = String(u.phone || u.phoneNumber || u.mobile || u.id || '').replace(/\D/g, '');
+            return (uDigits && phone10 && (uDigits === phone10 || uDigits.endsWith(phone10) || phone10.endsWith(uDigits)));
           });
-          if (existingLocal) {
+
+          if (existingLocalPhone) {
             isDuplicatePhone = true;
-            debugLog("[handleRegister] Duplicate phone found in local cache:", existingLocal.phone);
+            duplicateReason = "local_phone";
+            debugLog("[handleRegister] Duplicate phone found in local cache:", existingLocalPhone.phone);
+          }
+
+          if (email) {
+            const existingLocalEmail = allLocalUsers.find(u => {
+              if (!u || !u.email) return false;
+              return String(u.email).trim().toLowerCase() === email;
+            });
+            if (existingLocalEmail) {
+              isDuplicateEmail = true;
+              debugLog("[handleRegister] Duplicate email found in local cache:", existingLocalEmail.email);
+            }
           }
         } catch (localErr) {
-          console.warn("Could not check local duplicate phone:", localErr);
+          console.warn("Could not check local duplicate records:", localErr);
         }
 
-        // Check Firestore (ek_users) if not already matched locally
-        if (!isDuplicatePhone && typeof db !== 'undefined' && db) {
+        // 2. Check Firestore across collections and direct doc IDs if cloud is available
+        if (typeof db !== 'undefined' && db) {
           try {
-            for (const variant of phoneVariants) {
-              const qSnap = await db.collection('ek_users').where('phone', '==', variant).limit(1).get();
-              if (!qSnap.empty) {
-                isDuplicatePhone = true;
-                debugLog("[handleRegister] Duplicate phone found in Firestore for variant:", variant);
-                break;
+            // Check direct document ID existence
+            const docIdChecks = [
+              db.collection('ek_users').doc(phone10).get().catch(() => null),
+              db.collection('ek_users').doc(`cust_${phone10}`).get().catch(() => null),
+              db.collection('ek_users').doc(`+91${phone10}`).get().catch(() => null),
+              db.collection('users').doc(phone10).get().catch(() => null)
+            ];
+            const docResults = await Promise.all(docIdChecks);
+            if (docResults.some(r => r && r.exists)) {
+              isDuplicatePhone = true;
+              duplicateReason = "firestore_doc_id";
+            }
+
+            // Check phone variants across ek_users, users, ek_delivery_persons, ek_admin_accounts
+            if (!isDuplicatePhone) {
+              const queryChunk = phoneVariants.slice(0, 10);
+              const cloudChecks = [
+                db.collection('ek_users').where('phone', 'in', queryChunk).limit(1).get().catch(() => null),
+                db.collection('ek_users').where('phoneNumber', 'in', queryChunk).limit(1).get().catch(() => null),
+                db.collection('users').where('phone', 'in', queryChunk).limit(1).get().catch(() => null),
+                db.collection('ek_delivery_persons').where('phone', 'in', queryChunk).limit(1).get().catch(() => null),
+                db.collection('ek_admin_accounts').where('phone', 'in', queryChunk).limit(1).get().catch(() => null)
+              ];
+
+              const results = await Promise.all(cloudChecks);
+              for (const snap of results) {
+                if (snap && !snap.empty) {
+                  isDuplicatePhone = true;
+                  duplicateReason = "firestore_query_phone";
+                  debugLog("[handleRegister] Duplicate phone matched in Firestore collection!");
+                  break;
+                }
+              }
+            }
+
+            // Also check for individual variant matches if 'in' queries were not supported
+            if (!isDuplicatePhone) {
+              for (const variant of phoneVariants) {
+                const qSnap = await db.collection('ek_users').where('phone', '==', variant).limit(1).get().catch(() => null);
+                if (qSnap && !qSnap.empty) {
+                  isDuplicatePhone = true;
+                  duplicateReason = "firestore_individual_variant";
+                  debugLog("[handleRegister] Duplicate phone found in Firestore for variant:", variant);
+                  break;
+                }
+              }
+            }
+
+            // Check email uniqueness on cloud
+            if (!isDuplicateEmail && email) {
+              const emailSnap = await db.collection('ek_users').where('email', '==', email).limit(1).get().catch(() => null);
+              if (emailSnap && !emailSnap.empty) {
+                isDuplicateEmail = true;
+                debugLog("[handleRegister] Duplicate email matched in Firestore ek_users!");
               }
             }
           } catch (e) {
@@ -2411,12 +2746,26 @@ async function verifyOtpAndResetPassword() {
         if (isDuplicatePhone) {
           showToast(
             currentLang === 'ta'
-              ? "இந்த மொபைல் எண் ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது - தயவுசெய்து லாகின் செய்யவும், அல்லது கடவுச்சொல் நினைவில்லை எனில் 'Forgot Password' பயன்படுத்தவும்."
-              : "This phone number is already registered - please login instead, or use 'Forgot Password' if you don't remember your password.",
+              ? `இந்த மொபைல் எண் (${phone10}) ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது! தயவுசெய்து லாகின் செய்யவும், அல்லது 'Forgot Password' பயன்படுத்தவும் ❌`
+              : `This phone number (${phone10}) is already registered! Please log in instead, or use 'Forgot Password' ❌`,
             "error"
           );
           const loginIdentifierInput = document.getElementById('login-identifier');
-          if (loginIdentifierInput) loginIdentifierInput.value = phone;
+          if (loginIdentifierInput) loginIdentifierInput.value = phone10;
+          showScreen('screen-login');
+          restoreButton();
+          return;
+        }
+
+        if (isDuplicateEmail) {
+          showToast(
+            currentLang === 'ta'
+              ? `இந்த மின்னஞ்சல் (${email}) ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது! தயவுசெய்து லாகின் செய்யவும் ❌`
+              : `This email (${email}) is already registered! Please log in instead ❌`,
+            "error"
+          );
+          const loginIdentifierInput = document.getElementById('login-identifier');
+          if (loginIdentifierInput) loginIdentifierInput.value = email;
           showScreen('screen-login');
           restoreButton();
           return;
@@ -2444,20 +2793,51 @@ async function verifyOtpAndResetPassword() {
           if (!referrer) {
             referrer = allUsers.find(u => u.phone && u.phone === referralCodeInput);
           }
+          if (!referrer) {
+            referrer = allUsers.find(u => u.referralCode && u.referralCode.toUpperCase() === referralCodeInput);
+          }
 
           if (referrer) {
             referredByUserId = referrer.id;
             debugLog("[Referral System] Found referrer during signup:", referrer.name, referrer.id);
           } else {
-            referredByUserId = referralCodeInput;
-            debugLog("[Referral System] Storing referral code:", referralCodeInput);
+            let firestoreReferrerFound = false;
+            if (typeof db !== 'undefined' && db) {
+              try {
+                const qSnap = await db.collection('ek_users').where('referralCode', '==', referralCodeInput).limit(1).get();
+                if (!qSnap.empty) {
+                  const doc = qSnap.docs[0];
+                  referredByUserId = doc.id;
+                  firestoreReferrerFound = true;
+                  debugLog("[Referral System] Found referrer in Firestore during signup:", doc.id);
+                }
+              } catch (fsErr) {
+                console.warn("[Referral System] Firestore query error for referralCode:", fsErr);
+              }
+            }
+
+            if (!firestoreReferrerFound) {
+              showToast(
+                typeof currentLang !== 'undefined' && currentLang === 'ta'
+                  ? "செல்லுபடியாகாத ரெஃபரல் குறியீடு — புறக்கணிக்கப்பட்டது"
+                  : "Invalid referral code — ignored",
+                "warning"
+              );
+              referredByUserId = '';
+            }
           }
         }
 
         const uniqueSessionToken = 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
         const newUser = {
           id: '',
-          name, phone, email, password: '', address,
+          name, 
+          phone: phone10 || phone,
+          cleanPhone: phone10,
+          rawPhone: phone,
+          email, 
+          password: '', 
+          address,
           latitude: regLat || null,
           longitude: regLng || null,
           loyaltyPoints: 10,
@@ -2479,6 +2859,22 @@ async function verifyOtpAndResetPassword() {
           try {
             authUserCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
             debugLog("[Firebase Auth] User account created successfully:", authUserCredential.user.uid);
+
+            try {
+              if (authUserCredential && authUserCredential.user && typeof authUserCredential.user.sendEmailVerification === 'function') {
+                authUserCredential.user.sendEmailVerification().catch(verErr => {
+                  console.warn("[Firebase Auth] Verification email could not be sent:", verErr);
+                });
+                showToast(
+                  typeof currentLang !== 'undefined' && currentLang === 'ta'
+                    ? "சரிபார்ப்பு மின்னஞ்சல் அனுப்பப்பட்டது — கடவுச்சொல் மீட்புக்கு சரிபார்க்கவும்."
+                    : "Verification email sent — please verify for password recovery.",
+                  "info"
+                );
+              }
+            } catch (verCatch) {
+              console.warn("[Firebase Auth] Non-blocking email verification catch:", verCatch);
+            }
           } catch (authErr) {
             console.error("[Firebase Auth] Account creation failed:", authErr);
             let friendlyAuthError = currentLang === 'ta'
@@ -2517,6 +2913,10 @@ async function verifyOtpAndResetPassword() {
           const uid = authUserCredential.user.uid;
           newUser.id = uid;
           newUser.password = '';
+
+          unmarkUserAsDeleted(uid);
+          unmarkUserAsDeleted(phone);
+          if (phone10) unmarkUserAsDeleted(phone10);
 
           if (typeof db !== 'undefined' && db) {
             try {

@@ -459,6 +459,7 @@
 
     // Background interval to auto-retry pending writes every 15 seconds
     setInterval(() => {
+      if (document.hidden || window._isAppBackgrounded) return;
       if (navigator.onLine && db) {
         processPendingSyncQueue();
       }
@@ -547,6 +548,39 @@
           );
           window.isPlacingOrder = false;
           return;
+        }
+      }
+
+      // Re-verify all cart items against latest official product catalog
+      const catalogProds = (typeof getData === 'function') ? getData('ek_products', []) : [];
+      if (catalogProds.length > 0) {
+        for (const cItem of cart) {
+          const dbProd = catalogProds.find(p => p.id === cItem.productId);
+          if (dbProd) {
+            if (dbProd.isActive === false || dbProd.isDeleted === true) {
+              const msg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                ? `மன்னிக்கவும்! '${cItem.tamilName || cItem.englishName}' பொருள் தற்போது விற்பனையில் இல்லை.`
+                : `Sorry, '${cItem.englishName || cItem.name}' is no longer available.`;
+              showToast(msg, "error");
+              window.isPlacingOrder = false;
+              return;
+            }
+            if (dbProd.isOutOfStock || (dbProd.stockKg !== undefined && dbProd.stockKg <= 0)) {
+              const msg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                ? `மன்னிக்கவும்! '${cItem.tamilName || cItem.englishName}' கையிருப்பு தீர்ந்துவிட்டது (Out of Stock).`
+                : `Sorry, '${cItem.englishName || cItem.name}' is out of stock.`;
+              showToast(msg, "error");
+              window.isPlacingOrder = false;
+              return;
+            }
+            // Recalculate price using authorized catalog pricePerKg
+            const latestPrice = Number(dbProd.pricePerKg || dbProd.sellingPrice || dbProd.price || cItem.pricePerKg);
+            cItem.pricePerKg = latestPrice;
+            const isWeight = isUnitWeight ? isUnitWeight(cItem.unit || dbProd.sellingUnit || 'kg') : true;
+            cItem.totalPrice = isWeight
+              ? Math.round((latestPrice / 1000) * (cItem.weightGrams || 500))
+              : Math.round(latestPrice * (cItem.weightGrams || 1));
+          }
         }
       }
 
@@ -663,6 +697,57 @@
             console.warn("[Background Geocode] Background geocoding failed/timed out:", bgErr);
           }
         }, 1500);
+      }
+
+      // Atomic Stock Deduction via Cloud Function (Source of Truth)
+      const deductStockFn = (typeof firebase !== 'undefined' && firebase.functions)
+        ? (typeof firebase.app === 'function' && typeof firebase.app().functions === 'function'
+            ? firebase.app().functions('asia-south1').httpsCallable('deductStock')
+            : firebase.functions().httpsCallable('deductStock'))
+        : null;
+
+      if (deductStockFn && order.items && order.items.length > 0) {
+        showToast(currentLang === 'ta' ? "கையிருப்பு சரிபார்க்கப்படுகிறது... ⏳" : "Verifying live stock... ⏳", "info");
+        try {
+          const deductRes = await deductStockFn({ orderItems: order.items });
+          const deductData = (deductRes && deductRes.data) ? deductRes.data : deductRes;
+
+          if (!deductData || deductData.success !== true) {
+            const outOfStockList = (deductData && deductData.items)
+              ? deductData.items.filter(i => !i.success)
+              : ((deductData && deductData.outOfStockItems) ? deductData.outOfStockItems : []);
+
+            let errorMsg;
+            if (outOfStockList.length > 0) {
+              const failedNames = outOfStockList.map(i => i.name || i.productId).join(', ');
+              errorMsg = currentLang === 'ta'
+                ? `மன்னிக்கவும்! பின்வரும் பொருட்கள் கையிருப்பில் இல்லை:\n${failedNames}`
+                : `Sorry! The following items are out of stock:\n${failedNames}`;
+            } else {
+              errorMsg = (deductData && deductData.message)
+                ? deductData.message
+                : (currentLang === 'ta' ? "கையிருப்பு பற்றாக்குறை காரணமாக ஆர்டர் செய்ய இயலவில்லை." : "Unable to place order due to stock insufficiency.");
+            }
+
+            showCustomAlert(currentLang === 'ta' ? "⚠️ கையிருப்பு இல்லை" : "⚠️ Out of Stock", errorMsg);
+            showToast(errorMsg, "error");
+            window.isPlacingOrder = false;
+            return;
+          }
+
+          order.stockDeducted = true;
+          order.stockDeductedAt = new Date().toISOString();
+        } catch (stockErr) {
+          console.error("[Stock Deduction Callable Error]", stockErr);
+          const errMsg = stockErr.message || stockErr.details || "Stock check error";
+          const displayErr = currentLang === 'ta'
+            ? `கையிருப்பு சரிபார்ப்பில் சிக்கல்: ${errMsg}`
+            : `Stock verification failed: ${errMsg}`;
+          showCustomAlert(currentLang === 'ta' ? "⚠️ ஸ்டாக் பிழை" : "⚠️ Stock Error", displayErr);
+          showToast(displayErr, "error");
+          window.isPlacingOrder = false;
+          return;
+        }
       }
 
       if (selectedPaymentMethod === 'UPI') {
@@ -1115,6 +1200,9 @@ function parseAndroidUpiPaymentResult(statusString) {
       cart = [];
       saveCart();
       appliedCouponCode = null;
+      window.appliedCouponServerDiscount = 0;
+      window.appliedCouponServerCode = null;
+      window.appliedCouponData = null;
       renderCartScreen();
       window.isPlacingOrder = false;
 
@@ -1144,6 +1232,8 @@ function parseAndroidUpiPaymentResult(statusString) {
             await orderRef.set(sanitizedOrder, { merge: true });
             debugLog(`[Cloud Sync] Success: Order ${order.id} saved to Firestore ek_orders!`);
             removePendingSync('ek_orders', order.id);
+
+            if (navigator.vibrate) navigator.vibrate([15, 30, 15, 30, 25]);
 
             // Also update user profile on Firestore
             if (customerProfile && customerProfile.id) {
@@ -1596,6 +1686,58 @@ function parseAndroidUpiPaymentResult(statusString) {
         updatedAt: new Date().toISOString()
       };
 
+      // Atomic Stock Deduction via Cloud Function (Source of Truth)
+      const deductStockFn = (typeof firebase !== 'undefined' && firebase.functions)
+        ? (typeof firebase.app === 'function' && typeof firebase.app().functions === 'function'
+            ? firebase.app().functions('asia-south1').httpsCallable('deductStock')
+            : firebase.functions().httpsCallable('deductStock'))
+        : null;
+
+      const validOrderItems = (order.items || []).filter(i => i.productId);
+      if (deductStockFn && validOrderItems.length > 0) {
+        showToast(currentLang === 'ta' ? "கையிருப்பு சரிபார்க்கப்படுகிறது... ⏳" : "Verifying live stock... ⏳", "info");
+        try {
+          const deductRes = await deductStockFn({ orderItems: validOrderItems });
+          const deductData = (deductRes && deductRes.data) ? deductRes.data : deductRes;
+
+          if (!deductData || deductData.success !== true) {
+            const outOfStockList = (deductData && deductData.items)
+              ? deductData.items.filter(i => !i.success)
+              : ((deductData && deductData.outOfStockItems) ? deductData.outOfStockItems : []);
+
+            let errorMsg;
+            if (outOfStockList.length > 0) {
+              const failedNames = outOfStockList.map(i => i.name || i.productId).join(', ');
+              errorMsg = currentLang === 'ta'
+                ? `மன்னிக்கவும்! பின்வரும் பொருட்கள் கையிருப்பில் இல்லை:\n${failedNames}`
+                : `Sorry! The following items are out of stock:\n${failedNames}`;
+            } else {
+              errorMsg = (deductData && deductData.message)
+                ? deductData.message
+                : (currentLang === 'ta' ? "கையிருப்பு பற்றாக்குறை காரணமாக ஆர்டர் செய்ய இயலவில்லை." : "Unable to place order due to stock insufficiency.");
+            }
+
+            showCustomAlert(currentLang === 'ta' ? "⚠️ கையிருப்பு இல்லை" : "⚠️ Out of Stock", errorMsg);
+            showToast(errorMsg, "error");
+            window.isPlacingOrder = false;
+            return;
+          }
+
+          order.stockDeducted = true;
+          order.stockDeductedAt = new Date().toISOString();
+        } catch (stockErr) {
+          console.error("[Stock Deduction Callable Error in Quick Order]", stockErr);
+          const errMsg = stockErr.message || stockErr.details || "Stock check error";
+          const displayErr = currentLang === 'ta'
+            ? `கையிருப்பு சரிபார்ப்பில் சிக்கல்: ${errMsg}`
+            : `Stock verification failed: ${errMsg}`;
+          showCustomAlert(currentLang === 'ta' ? "⚠️ ஸ்டாக் பிழை" : "⚠️ Stock Error", displayErr);
+          showToast(displayErr, "error");
+          window.isPlacingOrder = false;
+          return;
+        }
+      }
+
       if (quickOrderPaymentMethod === 'UPI') {
         window.isPlacingOrder = true;
         showToast(currentLang === 'ta' ? "யுபிஐ செலுத்துதல் துவங்குகிறது... ⏳" : "UPI Payment Initializing... ⏳", "info");
@@ -1838,7 +1980,7 @@ function parseAndroidUpiPaymentResult(statusString) {
       }
 
       try {
-        const LATEST_VERSION = "2.1.8";
+        const LATEST_VERSION = "2.2.0";
         const lastVersion = localStorage.getItem('ek_app_version');
         if (lastVersion !== LATEST_VERSION) {
           debugLog("[Cache Buster] Version mismatch. Upgrading from " + lastVersion + " to " + LATEST_VERSION);
@@ -1915,7 +2057,17 @@ function parseAndroidUpiPaymentResult(statusString) {
 
                     if (!Array.isArray(localList)) localList = [];
                     const mergedMap = new Set([...localList, ...cloudIds]);
-                    const mergedList = Array.from(mergedMap);
+                    let mergedList = Array.from(mergedMap);
+                    if (docId === 'ek_deleted_product_ids' && mergedList.length > 500) {
+                      mergedList = mergedList.slice(-500);
+                      const adminSession = typeof getAdminSession === 'function' ? getAdminSession() : null;
+                      if (adminSession && adminSession.loggedIn && typeof db !== 'undefined' && db) {
+                        db.collection('ek_tombstones').doc(docId).set({
+                          ids: mergedList,
+                          updatedAt: new Date().toISOString()
+                        }).catch(() => {});
+                      }
+                    }
                     saveData(docId, mergedList);
                     if (docId === 'ek_deleted_order_ids') {
                       pruneLocalDeletedOrders();
@@ -1943,6 +2095,52 @@ function parseAndroidUpiPaymentResult(statusString) {
           setupCloudRealtimeListeners2();
         }
       }
+
+// Pending UPI Order Recovery — checks on app startup if a UPI payment was abandoned
+function recoverPendingUpiOrder() {
+  try {
+    const pendingData = getData('ek_pending_upi_order_data', null);
+    if (!pendingData || !pendingData.order) return;
+
+    const createdAt = pendingData.order.createdAt ? new Date(pendingData.order.createdAt) : null;
+    if (!createdAt) {
+      removeData('ek_pending_upi_order_data');
+      window.pendingUpiOrderData = null;
+      return;
+    }
+
+    const elapsed = Date.now() - createdAt.getTime();
+    const fiveMin = 5 * 60 * 1000;
+
+    if (elapsed > fiveMin) {
+      // UPI payment was abandoned — clean up and notify user
+      const orderAmount = pendingData.order.totalAmount || 0;
+      showToast(
+        currentLang === 'ta'
+          ? `முந்தைய UPI செலுத்துதல் முடிக்கப்படவில்லை. கையிருப்பு மீண்டும் சேர்க்கப்படும். மீண்டும் ஆர்டர் செய்யவும்.`
+          : `Previous UPI payment was not completed. Stock will be restored. Please place your order again.`,
+        "warning"
+      );
+
+      // Clean up pending data
+      removeData('ek_pending_upi_order_data');
+      window.pendingUpiOrderData = null;
+
+      console.log('[UPI Recovery] Cleaned up abandoned UPI order data. Amount: ₹' + orderAmount);
+    } else {
+      // Within 5 minutes — keep the pending data for UPI callback
+      window.pendingUpiOrderData = pendingData;
+      console.log('[UPI Recovery] Pending UPI order found, waiting for callback. Elapsed: ' + Math.round(elapsed / 1000) + 's');
+    }
+  } catch (err) {
+    console.error('[UPI Recovery] Error:', err);
+    removeData('ek_pending_upi_order_data');
+    window.pendingUpiOrderData = null;
+  }
+}
+
+// Run recovery on script load
+recoverPendingUpiOrder();
 
      if (typeof prefillLoginCredentials === "function") prefillLoginCredentials(); if (typeof populateAdminSelector === "function") populateAdminSelector(); if (typeof updateNotificationUnreadCount === "function") updateNotificationUnreadCount(); if (typeof updateCartBadge === "function") updateCartBadge(); if (typeof applyTranslations === "function") applyTranslations(); if (typeof startRealtimeSync === "function") startRealtimeSync(); if (typeof registerRealFcmToken === "function") registerRealFcmToken();
 
@@ -1978,7 +2176,13 @@ function parseAndroidUpiPaymentResult(statusString) {
       });
 
       try {
-        if (typeof runTimeScheduler === "function") { runTimeScheduler(); setInterval(runTimeScheduler, 60000); }
+        if (typeof runTimeScheduler === "function") {
+          runTimeScheduler();
+          setInterval(() => {
+            if (document.hidden || window._isAppBackgrounded) return;
+            runTimeScheduler();
+          }, 60000);
+        }
       } catch (e) {
         console.error("Time scheduler initialization failed:", e);
       }
@@ -2024,9 +2228,10 @@ function parseAndroidUpiPaymentResult(statusString) {
       }
     }
 
-    function applyCartCouponCode() {
+    async function applyCartCouponCode() {
       const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector('button[onclick*="applyCartCouponCode"]');
       if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
+
       try {
         const inp = document.getElementById('cart-coupon-input');
         if (!inp) return;
@@ -2036,30 +2241,95 @@ function parseAndroidUpiPaymentResult(statusString) {
           return;
         }
 
-        const coupons = getCoupons();
-        const match = coupons.find(c => c.code === code);
-        if (!match) {
-          showToast(currentLang === 'ta' ? "தவறான கூப்பன் குறியீடு! WELCOME10, FREEFRESH அல்லது SAVEMORE முயற்சிக்கவும்." : "Invalid Coupon Code! Try WELCOME10, FREEFRESH or SAVEMORE.", "error");
-          return;
-        }
-
+        // Verify subtotal is valid
         const subtotal = cart.reduce((acc, curr) => acc + curr.totalPrice, 0);
-        if (subtotal < match.minAmount) {
-          showToast(currentLang === 'ta' ? `மன்னிக்கவும்! இந்த கூப்பனைப் பயன்படுத்த குறைந்தபட்ச ஆர்டர் ₹${match.minAmount} தேவை.` : `This coupon requires a minimum subtotal of ₹${match.minAmount}!`, "warning");
+        if (subtotal <= 0) {
+          showToast(currentLang === 'ta' ? "கார்ட் காலியாக உள்ளது!" : "Your cart is empty!", "warning");
           return;
         }
 
-        appliedCouponCode = code;
-        recalculateBill();
-        showToast(currentLang === 'ta' ? `கூப்பன் '${code}' வெற்றிகரமாக சேர்க்கப்பட்டது! 🎉` : `Coupon ${code} applied successfully! 🎉`, "success");
-        inp.value = '';
+        // Authenticated customer check
+        const activeUser = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+        if (!activeUser || activeUser.isAnonymous) {
+          showToast(
+            currentLang === 'ta'
+              ? "கூப்பனை பயன்படுத்த முதலில் உள்நுழைக (Please login to apply coupon)"
+              : "Please login to apply promo coupon",
+            "warning"
+          );
+          if (typeof showScreen === 'function') showScreen('screen-login');
+          return;
+        }
 
-        triggerConfettiExplosion();
-        playCelebrationSound();
+        // Call the secure HTTPS Callable Cloud Function (Server Source of Truth)
+        const redeemFn = (typeof firebase !== 'undefined' && firebase.functions)
+          ? (typeof firebase.app === 'function' && typeof firebase.app().functions === 'function'
+              ? firebase.app().functions('asia-south1').httpsCallable('redeemCoupon')
+              : firebase.functions().httpsCallable('redeemCoupon'))
+          : null;
+
+        if (!redeemFn) {
+          showToast(currentLang === 'ta' ? "சேவையக இணைப்பு கிடைக்கவில்லை." : "Server connection unavailable.", "error");
+          return;
+        }
+
+        showToast(currentLang === 'ta' ? "கூப்பன் சரிபார்க்கப்படுகிறது... ⏳" : "Verifying coupon with server... ⏳", "info");
+
+        const response = await redeemFn({
+          couponCode: code,
+          orderId: 'preview_' + Date.now(),
+          cartSubtotal: subtotal
+        });
+
+        const resData = (response && response.data) ? response.data : response;
+
+        if (resData && resData.success === true && typeof resData.discountAmount === 'number') {
+          appliedCouponCode = resData.couponCode || code;
+          window.appliedCouponServerDiscount = resData.discountAmount;
+          window.appliedCouponServerCode = appliedCouponCode;
+          window.appliedCouponData = resData.coupon || null;
+
+          recalculateBill();
+          showToast(
+            currentLang === 'ta'
+              ? `கூப்பன் '${appliedCouponCode}' மூலம் ₹${resData.discountAmount} தள்ளுபடி பெறப்பட்டது! 🎉`
+              : `Coupon '${appliedCouponCode}' applied! You saved ₹${resData.discountAmount}! 🎉`,
+            "success"
+          );
+          inp.value = '';
+
+          triggerConfettiExplosion();
+          playCelebrationSound();
+        } else {
+          // Reject client-only coupon application
+          appliedCouponCode = null;
+          window.appliedCouponServerDiscount = 0;
+          window.appliedCouponServerCode = null;
+          window.appliedCouponData = null;
+          recalculateBill();
+
+          const errMsg = (resData && resData.message)
+            ? resData.message
+            : (currentLang === 'ta' ? "கூப்பன் செல்லுபடியாகவில்லை." : "Invalid or inapplicable coupon code.");
+          showToast(errMsg, "error");
+        }
+      } catch (err) {
+        // Reject client-only coupon application on any server error
+        appliedCouponCode = null;
+        window.appliedCouponServerDiscount = 0;
+        window.appliedCouponServerCode = null;
+        window.appliedCouponData = null;
+        recalculateBill();
+
+        console.error("[Coupon Redemption Error]", err);
+        const errMsg = err.message || err.details || (currentLang === 'ta' ? "கூப்பன் சரிபார்ப்பு தோல்வியடைந்தது." : "Failed to redeem coupon.");
+        showToast(errMsg, "error");
       } finally {
         if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, false);
       }
     }
+
+    window.applyCoupon = applyCartCouponCode;
 
     function playCelebrationSound() {
       try {
@@ -2229,6 +2499,9 @@ function parseAndroidUpiPaymentResult(statusString) {
 
     function removeCartCouponCode() {
       appliedCouponCode = null;
+      window.appliedCouponServerDiscount = 0;
+      window.appliedCouponServerCode = null;
+      window.appliedCouponData = null;
       recalculateBill();
       showToast(currentLang === 'ta' ? "கூப்பன் நீக்கப்பட்டது." : "Coupon code retracted.", "info");
     }
@@ -2862,81 +3135,58 @@ function parseAndroidUpiPaymentResult(statusString) {
 
       // 2. Product Intelligence Engine
       ProductIntelligenceEngine: {
-        synonymDictionary: {
-          "mutton": ["mutton", "lamb", "goat", "aattu", "ஆட்டு", "மட்டன்", "ஈரல்", "suvarotti"],
-          "muttan": ["mutton"],
-          "muttan erachi": ["mutton"],
-          "aattu erachi": ["mutton"],
-          "aattu keri": ["mutton"],
-          "goat": ["mutton"],
-          "eeral": ["mutton liver"],
-          "liver": ["mutton liver"],
-          "chicken": ["chicken", "kozhi", "கோழி", "சிக்கன்", "broiler", "nattu kozhi"],
-          "chikkan": ["chicken"],
-          "chiken": ["chicken"],
-          "chickin": ["chicken"],
-          "chikn": ["chicken"],
-          "kozhi": ["chicken"],
-          "nattu kozhi": ["country chicken", "nattu kozhi"],
-          "country chicken": ["nattu kozhi", "country chicken"],
-          "broiler": ["broiler chicken"],
-          "kadai": ["kadai", "quail"],
-          "quail": ["quail", "kadai"],
-          "fish": ["fish", "meen", "மீன்", "vanjaram", "nethili", "katla", "rohu", "viral"],
-          "meen": ["fish"],
-          "vanjaram": ["vanjaram", "seer fish"],
-          "nethili": ["anchovy", "nethili"],
-          "prawn": ["prawns", "eyera", "இறால்"],
-          "prawns": ["prawns", "eyera", "இறால்"],
-          "eyera": ["prawns"],
-          "iral": ["prawns"],
-          "crab": ["crab", "nandu", "நண்டு"],
-          "nandu": ["crab"],
-          "egg": ["egg", "eggs", "muttai", "முட்டை"],
-          "eggs": ["egg", "eggs", "muttai", "முட்டை"],
-          "muttai": ["egg", "eggs"],
-          "muttay": ["egg", "eggs"],
-          "milk": ["milk", "paal", "பால்"],
-          "paal": ["milk"],
-          "pal": ["milk"],
-          "curd": ["curd", "thayir", "தயிர்"],
-          "thayir": ["curd"],
-          "paneer": ["paneer", "பனீர்"],
-          "ghee": ["ghee", "ney", "நெய்"],
-          "butter": ["butter", "vennai", "வெண்ணெய்"],
-          "tomato": ["tomato", "thakkali", "தக்காளி"],
-          "thakkali": ["tomato"],
-          "takali": ["tomato"],
-          "tomoto": ["tomato"],
-          "tamato": ["tomato"],
-          "onion": ["onion", "vengayam", "வெங்காயம்"],
-          "vengayam": ["onion"],
-          "vengaayam": ["onion"],
-          "chinna vengayam": ["small onion", "shallots"],
-          "shallots": ["small onion"],
-          "potato": ["potato", "urulai", "உருளை"],
-          "urulai": ["potato"],
-          "chilli": ["chilli", "milagai", "மிளகாய்"],
-          "milagai": ["chilli"],
-          "ginger": ["ginger", "inji", "இஞ்சி"],
-          "inji": ["ginger"],
-          "poondu": ["garlic"],
-          "garlic": ["garlic", "poondu", "பூண்டு"],
-          "coriander": ["coriander", "kothamalli", "கொத்தமல்லி"],
-          "kothamalli": ["coriander"],
-          "pudina": ["mint", "pudina"],
-          "mint": ["mint"],
-          "rice": ["rice", "arisi", "அரிசி"],
-          "arisi": ["rice"],
-          "oil": ["oil", "ennai", "எண்ணெய்"],
-          "ennai": ["oil"]
-        },
+        synonymDictionary: (typeof window.getActiveNluDictionary === 'function')
+          ? window.getActiveNluDictionary()
+          : ((typeof window.EK_BASE_SYNONYMS !== 'undefined' && window.EK_BASE_SYNONYMS)
+            ? window.EK_BASE_SYNONYMS
+            : {
+                'mutton': ['mutton', 'lamb', 'goat', 'aattu', 'ஆட்டு', 'மட்டன்', 'muttan', 'goat mutton', 'aattu erachi', 'aattu keri', 'aattukari', 'aattukkari', 'ஆட்டுக்கறி', 'ஆட்டுக்கறி துண்டுகள்', 'aattu kari', 'ஆடு', 'aadu'],
+                'mutton_liver': ['mutton liver', 'eeral', 'liver', 'ஈரல்', 'மட்டன் ஈரல்', 'suvarotti', 'சுவரொட்டி', 'சுவரொட்டி ஈரல்', 'liver fry'],
+                'head_curry': ['head curry', 'goat head', 'thalaikkari', 'thalaikari', 'தலைக்கறி', 'தலைகறி', 'ஆட்டுத்தலை', 'ஆட்டு தலைக்கறி', 'ஆட்டுத் தலைக்கறி', 'ஆட்டுத்தலை கறி', 'ஆட்டுத்தலைக்கறி', 'goat head curry', 'head meat'],
+                'country_chicken': ['country chicken', 'nattu koli', 'nattu kozhi', 'naattu kozhi', 'naattu koli', 'nattukoli', 'nattu chicken', 'நாட்டுக்கோழி', 'நாட்டு கோழி', 'நாட்டுக்கறி', 'நாட்டு கோழிக்கறி', 'நாட்டு'],
+                'broiler_chicken': ['broiler chicken', 'broiler', 'farm chicken', 'பிராய்லர்', 'பிராய்லர் சிக்கன்', 'பிறாய்லர்', 'பிராய்லர் கோழி'],
+                'chicken': ['chicken', 'சிக்கன்', 'கோழி', 'koli', 'chiken', 'chickn', 'chikkan', 'chickin', 'கோழிக்கறி', 'chicken curry'],
+                'country_egg': ['country egg', 'country chicken egg', 'nattu muttai', 'naattu muttai', 'நாட்டுக்கோழி முட்டை', 'நாட்டு முட்டை'],
+                'egg': ['egg', 'eggs', 'muttai', 'muttas', 'முட்டை', 'முட்டைகள்', 'white egg', 'white eggs', 'farm egg', 'egg packet', 'muttai tray'],
+                'kadai': ['kadai', 'quail', 'காடை', 'காடைக்கறி'],
+                'fish': ['fish', 'meen', 'மீன்', 'vanjaram', 'nethili', 'katla', 'rohu', 'viral', 'வஞ்சரம்', 'நெத்திலி', 'கட்லா', 'ரோகு', 'விரால்'],
+                'prawn': ['prawn', 'prawns', 'eyera', 'iral', 'இறால்', 'இறால் மீன்'],
+                'crab': ['crab', 'nandu', 'நண்டு'],
+                'milk': ['milk', 'பால்', 'paal', 'pal', 'milk packet', 'paal packet', 'பசும்பால்'],
+                'curd': ['curd', 'தயிர்', 'thayir', 'curd packet'],
+                'paneer': ['paneer', 'பன்னீர்', 'பனீர்', 'panir'],
+                'ghee': ['ghee', 'நெய்', 'nei', 'neyy', 'ney', 'பசு நெய்'],
+                'butter': ['butter', 'vennai', 'வெண்ணெய்'],
+                'potato': ['potato', 'potatoes', 'உருளைக்கிழங்கு', 'உருளை கிழங்கு', 'உருளை', 'urulaikilangu', 'urulai', 'potatos'],
+                'onion': ['onion', 'onions', 'வெங்காயம்', 'vengayam', 'vengaym', 'vengaiyam', 'பெரிய வெங்காயம்'],
+                'small_onion': ['small onion', 'chinna vengayam', 'shallots', 'சின்ன வெங்காயம்', 'சாம்பார் வெங்காயம்'],
+                'tomato': ['tomato', 'thakkali', 'தக்காளி', 'takali', 'tomoto', 'tamato'],
+                'chilli': ['chilli', 'chili', 'மிளகாய்', 'milagai', 'green chilli', 'red chilli', 'பச்சை மிளகாய்'],
+                'coriander': ['coriander', 'கொத்தமல்லி', 'kothamalli', 'malli', 'koththamalli', 'coriander leaves'],
+                'pudina': ['mint', 'pudina', 'புதினா'],
+                'garlic': ['garlic', 'பூண்டு', 'poondhu', 'poondu'],
+                'ginger': ['ginger', 'இஞ்சி', 'inji'],
+                'lemon': ['lemon', 'lemons', 'எலுமிச்சை', 'elumichai'],
+                'sugar': ['sugar', 'சர்க்கரை', 'sarkarai', 'sakkarai'],
+                'salt': ['salt', 'உப்பு', 'uppu'],
+                'rice': ['rice', 'அரிசி', 'arisi', 'ponni rice'],
+                'dal': ['dal', 'பருப்பு', 'paruppu', 'toor dal', 'urad dal'],
+                'oil': ['oil', 'எண்ணெய்', 'ennai', 'ennay'],
+                'coconut_oil': ['coconut oil', 'theangai ennai', 'theangai enney', 'தேங்காய் எண்ணெய்'],
+                'gingelly_oil': ['gingelly oil', 'sesame oil', 'nallennai', 'nallenney', 'நல்லெண்ணெய்'],
+                'sunflower_oil': ['sunflower oil', 'சூரியகாந்தி எண்ணெய்']
+              }),
 
         getTargetTerms(cleanQuery) {
           let targetTerms = [cleanQuery];
-          for (const [key, terms] of Object.entries(this.synonymDictionary)) {
-            if (cleanQuery.includes(key) || key.includes(cleanQuery)) {
-              terms.forEach(t => { if (!targetTerms.includes(t)) targetTerms.push(t); });
+          const synDict = (typeof window.getActiveNluDictionary === 'function') 
+            ? window.getActiveNluDictionary() 
+            : ((typeof window.EK_BASE_SYNONYMS !== 'undefined') ? window.EK_BASE_SYNONYMS : this.synonymDictionary);
+          for (const [key, terms] of Object.entries(synDict)) {
+            if (cleanQuery.includes(key) || key.includes(cleanQuery) || (Array.isArray(terms) && terms.some(t => t === cleanQuery || cleanQuery.includes(t)))) {
+              if (Array.isArray(terms)) {
+                terms.forEach(t => { if (!targetTerms.includes(t)) targetTerms.push(t); });
+              }
             }
           }
           return targetTerms;

@@ -465,10 +465,10 @@ function updateRiderLiveLocation() {
           const isAssignedSelected = activeBtn && activeBtn.id === 'btn-delivery-filter-assigned';
           if (isAssignedSelected) {
             const orders = getData('ek_orders', []);
-            const assignedActive = orders.filter(o =>
-              (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id) &&
-              ['ready', 'delivering'].includes(o.status)
-            );
+            const assignedActive = orders.filter(o => {
+              const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+              return exec && exec.id === session.id && ['ready', 'delivering'].includes(o.status);
+            });
             const activeOrder = assignedActive.find(o => o.status === 'delivering') || assignedActive.find(o => o.status === 'ready');
             if (activeOrder && typeof initDeliveryRiderMap === 'function') {
               initDeliveryRiderMap(activeOrder);
@@ -629,8 +629,14 @@ function updateRiderLiveLocation() {
       const deletedOrderIds = getDeletedOrderIds();
       const orders = rawOrders.filter(o => !deletedOrderIds.includes(o.id) && o.hiddenByAdmin !== true);
 
-      const completedToday = orders.filter(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id) && isDeliveredOrderStatus(o.status));
-      const assignedActive = orders.filter(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id) && (isReadyOrderStatus(o.status) || isPendingOrderStatus(o.status)));
+      const completedToday = orders.filter(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        return exec && exec.id === session.id && isDeliveredOrderStatus(o.status);
+      });
+      const assignedActive = orders.filter(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        return exec && exec.id === session.id && (isReadyOrderStatus(o.status) || isPendingOrderStatus(o.status));
+      });
 
       let cashToCollect = 0;
       assignedActive.forEach(o => {
@@ -646,7 +652,10 @@ function updateRiderLiveLocation() {
       const salaryType = riderConfig?.salaryType || 'per_order';
       const salaryRate = parseFloat(riderConfig?.salaryRate || 35);
 
-      const completedAllTime = orders.filter(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id) && isDeliveredOrderStatus(o.status));
+      const completedAllTime = orders.filter(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        return exec && exec.id === session.id && isDeliveredOrderStatus(o.status);
+      });
 
       let todayEarnings = 0;
       if (salaryType === 'per_order') {
@@ -699,9 +708,15 @@ function updateRiderLiveLocation() {
         `;
       }
 
-      const readyForPick = orders.filter(o => !(o.assignedExecutiveId || o.deliveryExecutiveId) && isReadyOrderStatus(o.status));
-      const assignedRider = orders.filter(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id) && !isDeliveredOrderStatus(o.status) && !isCancelledOrderStatus(o.status));
-      const historyRider = orders.filter(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id) && isDeliveredOrderStatus(o.status));
+      const readyForPick = orders.filter(o => !(typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : (o.assignedExecutiveId || o.deliveryExecutiveId)) && isReadyOrderStatus(o.status));
+      const assignedRider = orders.filter(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        return exec && exec.id === session.id && !isDeliveredOrderStatus(o.status) && !isCancelledOrderStatus(o.status);
+      });
+      const historyRider = orders.filter(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        return exec && exec.id === session.id && isDeliveredOrderStatus(o.status);
+      });
 
       document.getElementById('count-delivery-assigned').innerText = assignedRider.length;
       document.getElementById('count-delivery-ready').innerText = readyForPick.length;
@@ -987,7 +1002,10 @@ function updateRiderLiveLocation() {
       const orders = getData('ek_orders', []);
       const session = getData('ek_delivery_session', null);
       if (session) {
-        const historyRider = orders.filter(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id) && o.status === 'delivered');
+        const historyRider = orders.filter(o => {
+          const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+          return exec && exec.id === session.id && o.status === 'delivered';
+        });
         historyRider.forEach(o => {
           window.expandedDeliveryOrders[o.id] = expand;
         });
@@ -1031,17 +1049,18 @@ function updateRiderLiveLocation() {
       }
       showToast("Syncing with Cloud real-time database...", "info");
       if (typeof db !== 'undefined' && db) {
-        const q1 = db.collection('ek_orders').where('assignedExecutiveId', '==', session.id).get();
-        const q2 = db.collection('ek_orders').where('assignedDeliveryPartnerUid', '==', session.id).get();
-        const q3 = db.collection('ek_orders').where('riderUid', '==', session.id).get();
+        const q0 = db.collection('ek_orders').where('assignedTo.id', '==', session.id).get().catch(() => null);
+        const q1 = db.collection('ek_orders').where('assignedExecutiveId', '==', session.id).get().catch(() => null);
+        const q2 = db.collection('ek_orders').where('assignedDeliveryPartnerUid', '==', session.id).get().catch(() => null);
+        const q3 = db.collection('ek_orders').where('riderUid', '==', session.id).get().catch(() => null);
 
-        Promise.all([q1, q2, q3])
-          .then(([snap1, snap2, snap3]) => {
+        Promise.all([q0, q1, q2, q3])
+          .then(([snap0, snap1, snap2, snap3]) => {
             const localOrders = getData('ek_orders', []);
             const localOrdersMap = new Map(localOrders.map(o => [o.id, o]));
 
             const list = [];
-            [snap1, snap2, snap3].forEach(snap => {
+            [snap0, snap1, snap2, snap3].forEach(snap => {
               if (snap && !snap.empty) {
                 snap.forEach(doc => {
                   const data = normalizeFirestoreData(doc.data());
@@ -1187,6 +1206,14 @@ function updateRiderLiveLocation() {
         const orders = getData('ek_orders', []);
         const idx = orders.findIndex(o => o.id === orderId);
         if (idx === -1) return;
+        // Canonical assignment
+        orders[idx].assignedTo = {
+          id: session.id,
+          name: session.name,
+          phone: session.phone || '',
+          role: 'rider'
+        };
+        // TODO: Remove legacy rider assignment fields in the next release
         orders[idx].assignedDeliveryPartnerUid = session.id;
         orders[idx].assignedDeliveryPartnerName = session.name;
         orders[idx].riderUid = session.id;
@@ -1233,10 +1260,18 @@ function updateRiderLiveLocation() {
           if (orderData.status === 'delivered') {
             throw "already_delivered";
           }
-          if (orderData.assignedExecutiveId && orderData.assignedExecutiveId !== session.id) {
+          const existingExec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(orderData) : null;
+          if (existingExec && existingExec.id !== session.id) {
             throw "already_claimed";
           }
           transaction.update(orderRef, {
+            assignedTo: {
+              id: session.id,
+              name: session.name,
+              phone: session.phone || '',
+              role: 'rider'
+            },
+            // TODO: Remove legacy rider assignment fields in the next release
             assignedDeliveryPartnerUid: session.id,
             assignedDeliveryPartnerName: session.name,
             riderUid: session.id,
@@ -1255,6 +1290,13 @@ function updateRiderLiveLocation() {
         const orders = getData('ek_orders', []);
         const idx = orders.findIndex(o => o.id === orderId);
         if (idx !== -1) {
+          orders[idx].assignedTo = {
+            id: session.id,
+            name: session.name,
+            phone: session.phone || '',
+            role: 'rider'
+          };
+          // TODO: Remove legacy rider assignment fields in the next release
           orders[idx].assignedDeliveryPartnerUid = session.id;
           orders[idx].assignedDeliveryPartnerName = session.name;
           orders[idx].riderUid = session.id;
@@ -2277,10 +2319,10 @@ function updateRiderLiveLocation() {
           zones = DEFAULT_SETTINGS.deliveryZones;
         } else {
           zones = [
-            { id: 'zone_1', nameEn: 'Local Town', nameTa: 'உள்ளூர் நகரம்', maxKm: 3, charge: 20 },
-            { id: 'zone_2', nameEn: 'Suburbs Near', nameTa: 'அருகிலுள்ள புறநகர்', maxKm: 6, charge: 45 },
-            { id: 'zone_3', nameEn: 'Suburbs Far', nameTa: 'தொலைதூர புறநகர்', maxKm: 10, charge: 75 },
-            { id: 'zone_4', nameEn: 'Outer Boundary', nameTa: 'வெளிப்புற எல்லை', maxKm: 15, charge: 110 }
+            { id: 'zone_1', nameEn: 'Local Town', nameTa: 'உள்ளூர் நகரம்', maxKm: 3, charge: 20, pincodes: ['637101'] },
+            { id: 'zone_2', nameEn: 'Suburbs Near', nameTa: 'அருகிலுள்ள புறநகர்', maxKm: 6, charge: 45, pincodes: ['637105'] },
+            { id: 'zone_3', nameEn: 'Suburbs Far', nameTa: 'தொலைதூர புறநகர்', maxKm: 10, charge: 75, pincodes: ['637102'] },
+            { id: 'zone_4', nameEn: 'Outer Boundary', nameTa: 'வெளிப்புற எல்லை', maxKm: 15, charge: 110, pincodes: ['637107', '636306'] }
           ];
         }
       }
@@ -2314,27 +2356,74 @@ function updateRiderLiveLocation() {
       const sortedZones = [...zones].sort((a, b) => parseFloat(a.maxKm) - parseFloat(b.maxKm));
 
       let dist = null;
+      let matchedZone = null;
+
       if (custLat && custLng && !isNaN(custLat) && !isNaN(custLng)) {
         dist = calculateDistanceKm(storeLat, storeLng, custLat, custLng);
       }
 
-      // If exact GPS not found, estimate based on address keyword matching with delivery zones
+      // If exact GPS not found, resolve via pincode-to-zone map from ek_delivery_zones
       if (dist === null) {
         const addressText = (textAddress ? textAddress.value : '') || (user ? user.address : '') || '';
         const lowerAddr = addressText.toLowerCase();
-        if (lowerAddr.includes('town') || lowerAddr.includes('bus stand') || lowerAddr.includes('market') || lowerAddr.includes('bazaar') || lowerAddr.includes('main road') || lowerAddr.includes('kovil') || lowerAddr.includes('street')) {
-          dist = 1.8; // Local Town Zone 1
-        } else if (lowerAddr.includes('vellandivalasai') || lowerAddr.includes('avaniperur') || lowerAddr.includes('chithur') || lowerAddr.includes('dadapuram')) {
-          dist = 4.5; // Suburbs Near Zone 2
-        } else if (lowerAddr.includes('poolampatti') || lowerAddr.includes('konganapuram') || lowerAddr.includes('nedungulam')) {
-          dist = 8.2; // Suburbs Far Zone 3
-        } else if (lowerAddr.includes('jalakandapuram') || lowerAddr.includes('tharamangalam') || lowerAddr.includes('sankari') || lowerAddr.includes('mecheri')) {
-          dist = 13.5; // Outer Boundary Zone 4
+
+        // 1. Extract 6-digit pincode from address
+        const pinMatch = addressText.match(/\b(\d{6})\b/);
+        if (pinMatch) {
+          const matchedPin = pinMatch[1];
+          // Check if any zone doc in ek_delivery_zones explicitly contains this pincode
+          for (const zone of sortedZones) {
+            const zPins = Array.isArray(zone.pincodes)
+              ? zone.pincodes.map(p => String(p).trim())
+              : (typeof zone.pincodes === 'string' ? zone.pincodes.split(',').map(p => p.trim()) : []);
+            if (zPins.includes(matchedPin)) {
+              matchedZone = zone;
+              dist = parseFloat(zone.maxKm) ? (parseFloat(zone.maxKm) * 0.75) : 3.0;
+              break;
+            }
+          }
+
+          // Fallback to settings.pincodeZones if not mapped to a specific zone doc
+          if (!matchedZone) {
+            const pincodeMap = (settings && settings.pincodeZones) ? settings.pincodeZones : {
+              '637101': 2.0,  // Edappadi Town Core
+              '637105': 4.5,  // Vellandivalasai / Avaniperur
+              '637102': 8.0,  // Poolampatti / Konganapuram
+              '637107': 12.0, // Sankari / Jalakandapuram
+              '636306': 14.0  // Tharamangalam
+            };
+            if (pincodeMap[matchedPin]) {
+              dist = pincodeMap[matchedPin];
+            }
+          }
+        }
+
+        // 2. If no pincode match, fallback to village keywords / institutions
+        if (dist === null && !matchedZone) {
+          if (lowerAddr.includes('town') || lowerAddr.includes('bus stand') || lowerAddr.includes('market') || lowerAddr.includes('bazaar') || lowerAddr.includes('main road') || lowerAddr.includes('kovil') || lowerAddr.includes('street') || lowerAddr.includes('school') || lowerAddr.includes('ghss') || lowerAddr.includes('college')) {
+            dist = 1.8; // Local Town Zone 1
+          } else if (lowerAddr.includes('vellandivalasai') || lowerAddr.includes('avaniperur') || lowerAddr.includes('chithur') || lowerAddr.includes('dadapuram') || lowerAddr.includes('pakkunadhu')) {
+            dist = 4.5; // Suburbs Near Zone 2
+          } else if (lowerAddr.includes('poolampatti') || lowerAddr.includes('konganapuram') || lowerAddr.includes('nedungulam') || lowerAddr.includes('koodakkal')) {
+            dist = 8.2; // Suburbs Far Zone 3
+          } else if (lowerAddr.includes('jalakandapuram') || lowerAddr.includes('tharamangalam') || lowerAddr.includes('sankari') || lowerAddr.includes('mecheri') || lowerAddr.includes('idumban')) {
+            dist = 13.5; // Outer Boundary Zone 4
+          }
         }
       }
 
+      // If matched directly by zone pincode
+      if (matchedZone) {
+        const zName = (matchedZone.nameTa || matchedZone.nameEn || matchedZone.name || 'Pincode Zone') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '');
+        return {
+          charge: (parseFloat(matchedZone.charge) || 20) + rainAdd,
+          distance: dist,
+          zoneName: zName
+        };
+      }
+
+      // If distance was computed (via GPS or distance fallback)
       if (dist !== null && dist !== undefined && !isNaN(dist)) {
-        let matchedZone = null;
         for (const zone of sortedZones) {
           if (dist <= parseFloat(zone.maxKm)) {
             matchedZone = zone;
@@ -2794,7 +2883,10 @@ function updateRiderLiveLocation() {
         return;
       }
       const orders = getData('ek_orders', []);
-      const activeOrder = orders.find(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id || o.riderUid === session.id) && o.status === 'delivering');
+      const activeOrder = orders.find(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        return exec && exec.id === session.id && o.status === 'delivering';
+      });
       if (!activeOrder) {
         showToast("No active delivering orders to simulate!", "error");
         stopRiderGpsSimulation(false);
@@ -2966,7 +3058,10 @@ function updateRiderLiveLocation() {
         return;
       }
       const orders = getData('ek_orders', []);
-      const activeOrder = orders.find(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id || o.riderUid === session.id) && o.status === 'delivering');
+      const activeOrder = orders.find(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        return exec && exec.id === session.id && o.status === 'delivering';
+      });
       if (!activeOrder) {
         showToast("No active delivering orders to track with real GPS!", "error");
         stopRealRiderGpsTracking(false);

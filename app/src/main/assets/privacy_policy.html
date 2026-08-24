@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Privacy Policy - Edappadi Kadai (எடப்பாடி கடை)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Tamil:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0b0e17;
+      --card-bg: #141926;
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent-amber: #f59e0b;
+      --accent-amber-glow: rgba(245, 158, 11, 0.2);
+      --accent-green: #10b981;
+      --accent-blue: #3b82f6;
+      --accent-red: #ef4444;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --text-muted: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      padding: 20px 16px 40px;
+      max-width: 768px;
+      margin: 0 auto;
+    }
+
+    .tamil-font {
+      font-family: 'Noto Sans Tamil', 'Plus Jakarta Sans', sans-serif;
+    }
+
+    /* Header & Navigation Bar */
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      background: rgba(11, 14, 23, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 4px 14px var(--accent-amber-glow);
+    }
+
+    .brand-name {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-sub {
+      font-size: 11px;
+      color: var(--text-sub);
+      font-weight: 600;
+    }
+
+    .lang-switcher {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      padding: 3px;
+      gap: 4px;
+    }
+
+    .lang-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-sub);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .lang-btn.active {
+      background: var(--accent-amber);
+      color: #000000;
+      box-shadow: 0 2px 8px var(--accent-amber-glow);
+    }
+
+    /* Hero Banner */
+    .hero-card {
+      background: linear-gradient(145deg, #182032, #101624);
+      border: 1.5px solid rgba(245, 158, 11, 0.3);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .badge-pill {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-amber);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .hero-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+
+    .hero-meta {
+      font-size: 12.5px;
+      color: var(--text-sub);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .hero-meta span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Policy Content Sections */
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 16px;
+      transition: border-color 0.2s ease;
+    }
+
+    .section-card:hover {
+      border-color: rgba(245, 158, 11, 0.25);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .section-body {
+      font-size: 13.5px;
+      color: #cbd5e1;
+      line-height: 1.65;
+    }
+
+    .section-body p {
+      margin-bottom: 10px;
+    }
+
+    .section-body p:last-child {
+      margin-bottom: 0;
+    }
+
+    .styled-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 10px 0;
+    }
+
+    .styled-list li {
+      position: relative;
+      padding-left: 24px;
+      margin-bottom: 8px;
+      font-size: 13.5px;
+      color: #cbd5e1;
+    }
+
+    .styled-list li::before {
+      content: "•";
+      position: absolute;
+      left: 8px;
+      color: var(--accent-amber);
+      font-size: 18px;
+      line-height: 1;
+      top: 0px;
+    }
+
+    .highlight-box {
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-top: 12px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .highlight-box.secure {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    .highlight-box.warning {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+    }
+
+    .highlight-box.info {
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+    }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .contact-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .contact-item a {
+      color: var(--accent-amber);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .contact-item a:hover {
+      text-decoration: underline;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 36px;
+      padding-top: 20px;
+      border-top: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .back-btn-container {
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .back-btn {
+      background: linear-gradient(135deg, var(--accent-amber), #d97706);
+      color: #000000;
+      border: none;
+      font-size: 14px;
+      font-weight: 800;
+      padding: 12px 28px;
+      border-radius: 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px var(--accent-amber-glow);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Bar -->
+  <header class="header-bar">
+    <div class="brand-title">
+      <div class="brand-icon">🥩</div>
+      <div>
+        <div class="brand-name">Edappadi Kadai</div>
+        <div class="brand-sub">com.edappadikadai.app</div>
+      </div>
+    </div>
+
+    <!-- Language Selector -->
+    <div class="lang-switcher">
+      <button class="lang-btn active" id="btn-lang-en" onclick="setLanguage('en')">English</button>
+      <button class="lang-btn" id="btn-lang-ta" onclick="setLanguage('ta')">தமிழ்</button>
+    </div>
+  </header>
+
+  <!-- ENGLISH SECTION -->
+  <div id="content-en">
+    <div class="hero-card">
+      <span class="badge-pill">Privacy &amp; Data Protection</span>
+      <h1 class="hero-title">Privacy Policy</h1>
+      <p style="font-size: 13.5px; color: #cbd5e1; line-height: 1.5;">
+        Edappadi Kadai is committed to protecting your privacy and ensuring your personal information is treated with highest security, transparency, and integrity.
+      </p>
+      <div class="hero-meta">
+        <span>📅 Effective: August 2026</span>
+        <span>📍 Salem, Tamil Nadu, India</span>
+        <span>🛡️ Package: com.edappadikadai.app</span>
+      </div>
+    </div>
+
+    <!-- 1. Data Collected -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">📋</div>
+        <div class="section-title">1. Data We Collect</div>
+      </div>
+      <div class="section-body">
+        <p>To provide fast, reliable fresh meat and vegetable delivery in Tamil Nadu, India, we collect the following personal and operational information:</p>
+        <ul class="styled-list">
+          <li><strong>Identity Details:</strong> Full Name, Phone Number, and optional Email Address for account creation and login.</li>
+          <li><strong>Delivery Address &amp; GPS Location:</strong> Physical delivery address and precise/approximate GPS coordinates (Latitude &amp; Longitude) to route delivery drivers accurately to your doorstep.</li>
+          <li><strong>Order &amp; Cart Details:</strong> Selected products, weights/quantities, custom cutting preferences, active cart items, and complete order history.</li>
+          <li><strong>UPI Transaction References:</strong> Transaction ID (txnId), approval reference number (approvalRef), and payment status received via UPI Intent callback.</li>
+        </ul>
+        <div class="highlight-box secure">
+          <span>🔒</span>
+          <div>
+            <strong>Zero Financial Credentials Stored:</strong> We strictly <strong>DO NOT</strong> collect, store, or process your Bank Account Numbers, Debit/Credit Card Details, CVV, or UPI PINs.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. How Data is Used -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">⚙️</div>
+        <div class="section-title">2. How We Use Your Data</div>
+      </div>
+      <div class="section-body">
+        <p>We use your information strictly for core app operations and customer convenience:</p>
+        <ul class="styled-list">
+          <li><strong>Account Authentication:</strong> Secure sign-in and session verification using Firebase Authentication (SMS Phone Auth &amp; Google Sign-In).</li>
+          <li><strong>Order Fulfillment &amp; Delivery:</strong> Preparing your custom meat/vegetable cuts and guiding assigned delivery partners to your location.</li>
+          <li><strong>Real-time Push Notifications:</strong> Sending instant order status updates (Packed, Out for Delivery, Delivered) via Firebase Cloud Messaging (FCM).</li>
+          <li><strong>Customer Support:</strong> Resolving order queries, refunds, delivery assistance, and feedback via phone or chat.</li>
+          <li><strong>Loyalty Points &amp; Rewards:</strong> Managing cashback credits, wallet balances, and promotional coupons.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 3. Firebase & Cloud Infrastructure -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">☁️</div>
+        <div class="section-title">3. Firebase Services &amp; Cloud Infrastructure</div>
+      </div>
+      <div class="section-body">
+        <p>Edappadi Kadai uses industry-standard, secure Google Cloud and Firebase services:</p>
+        <ul class="styled-list">
+          <li><strong>Firebase Authentication:</strong> Secure phone number OTP &amp; email authentication.</li>
+          <li><strong>Cloud Firestore:</strong> Encrypted, real-time cloud database for storing menus, orders, customer profiles, and shop operational status.</li>
+          <li><strong>Cloud Storage:</strong> Secure storage for product images and order invoice attachments.</li>
+          <li><strong>Firebase Cloud Messaging (FCM):</strong> Encrypted push notification delivery to Android devices.</li>
+          <li><strong>Cloud Functions:</strong> Serverless backend execution for order validation, SMS notifications, and secure account deletion.</li>
+          <li><strong>Firebase Crashlytics:</strong> Diagnostic crash logging to identify and resolve stability issues without capturing personal data.</li>
+          <li><strong>Firebase App Check (Play Integrity):</strong> Protecting the app against unauthorized clients and tampering.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 4. UPI Payment Security -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">💳</div>
+        <div class="section-title">4. UPI Payments (Intent Flow)</div>
+      </div>
+      <div class="section-body">
+        <p>Payments on Edappadi Kadai are processed via direct <strong>UPI Intent Flow (<code>upi://pay</code> deep link)</strong>:</p>
+        <ul class="styled-list">
+          <li>When you checkout using UPI, our app initiates a deep link directly opening your installed NPCI-approved UPI app (Google Pay, PhonePe, Paytm, BHIM, CRED, etc.).</li>
+          <li>The entire transaction and UPI PIN authorization occur inside your chosen UPI payment app, governed by your bank's security protocols.</li>
+          <li>Our app only receives the confirmation response (Transaction ID and approval reference) to verify order completion.</li>
+        </ul>
+        <div class="highlight-box secure">
+          <span>🛡️</span>
+          <div>
+            <strong>NPCI Compliance:</strong> We never have access to your bank passwords, PINs, or card details.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Data Encryption & Security -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">🔒</div>
+        <div class="section-title">5. Data Encryption &amp; Security Standards</div>
+      </div>
+      <div class="section-body">
+        <p>We enforce strict technical and organizational measures to safeguard your data:</p>
+        <ul class="styled-list">
+          <li><strong>HTTPS Enforced:</strong> 100% of network traffic between your Android device and our backend uses TLS/HTTPS encryption with cleartext traffic strictly blocked by Android Network Security Config.</li>
+          <li><strong>Hardware-Backed Local Storage:</strong> On-device sensitive caches and session tokens are encrypted with AES-256 GCM using master keys stored securely in the <strong>Android Keystore</strong>.</li>
+          <li><strong>Cryptographic Hashing:</strong> Credentials and verification codes are hashed using SHA-256 and secure cryptographic algorithms.</li>
+          <li><strong>Database Security Rules:</strong> Firestore database access is governed by strict server-side rules preventing unauthorized reading or tampering.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 6. Third-Party Data Sharing -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">🚫</div>
+        <div class="section-title">6. Third-Party Data Sharing</div>
+      </div>
+      <div class="section-body">
+        <p>Your personal data is <strong>never sold, rented, or monetized</strong>:</p>
+        <ul class="styled-list">
+          <li>We <strong>DO NOT</strong> integrate third-party advertising networks, ad trackers, or commercial data brokers.</li>
+          <li>Data is shared strictly with <strong>Google Firebase (Google Cloud Platform)</strong> exclusively to host infrastructure and process essential app functions.</li>
+          <li>Assigned delivery drivers receive only your delivery address and phone number for the active order.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 7. Data Retention & Account Deletion -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">🗑️</div>
+        <div class="section-title">7. Data Retention &amp; Account Deletion</div>
+      </div>
+      <div class="section-body">
+        <p>We retain your profile and order data as long as your account is active to facilitate order history and rewards:</p>
+        <ul class="styled-list">
+          <li>You may delete your account at any time via the in-app <strong>Delete Account</strong> option in Profile Settings or by contacting admin.</li>
+          <li>Account deletion invokes our secure Cloud Function (<code>deleteCustomerAccount</code>), permanently removing your profile, saved addresses, authentication records, and favorites from our database.</li>
+        </ul>
+        <div class="highlight-box warning">
+          <span>⚠️</span>
+          <div>
+            Account deletion is permanent and cannot be reversed once processed.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Children's Privacy -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">👶</div>
+        <div class="section-title">8. Children's Privacy</div>
+      </div>
+      <div class="section-body">
+        <p>Our app and delivery services are not directed to or intended for children under the age of 18. We do not knowingly collect personal information from minors.</p>
+      </div>
+    </div>
+
+    <!-- 9. User Rights -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">⚖️</div>
+        <div class="section-title">9. Your Rights &amp; Choices</div>
+      </div>
+      <div class="section-body">
+        <p>Under applicable Indian data protection laws, including the <strong>Digital Personal Data Protection Act, 2023</strong> and IT Act, you have the right to:</p>
+        <ul class="styled-list">
+          <li>Access and review personal information associated with your account.</li>
+          <li>Request correction of inaccurate phone numbers, names, or addresses.</li>
+          <li>Request complete deletion of your account and personal records.</li>
+          <li>Opt-out of promotional notifications by adjusting notification preferences.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 10. Contact Us -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">📬</div>
+        <div class="section-title">10. Contact Us</div>
+      </div>
+      <div class="section-body">
+        <p>For questions, privacy grievances, or data deletion requests, please contact our support team:</p>
+        <div class="contact-grid">
+          <div class="contact-item">
+            <span>📧</span>
+            <div>
+              <div style="font-size: 11px; color: var(--text-muted);">Official Email</div>
+              <a href="mailto:edappadikadai@gmail.com">edappadikadai@gmail.com</a>
+            </div>
+          </div>
+          <div class="contact-item">
+            <span>🏪</span>
+            <div>
+              <div style="font-size: 11px; color: var(--text-muted);">Business Operating Address</div>
+              <div style="font-size: 13px; color: #f1f5f9;">Edappadi Kadai (Lyo Food Delivery), Kavandampatti, Edappadi, Salem, Tamil Nadu — 637101, India</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAMIL SECTION -->
+  <div id="content-ta" class="tamil-font" style="display: none;">
+    <div class="hero-card">
+      <span class="badge-pill">தனியுரிமை &amp; தகவல் பாதுகாப்பு</span>
+      <h1 class="hero-title">தனியுரிமைக் கொள்கை (Privacy Policy)</h1>
+      <p style="font-size: 13.5px; color: #cbd5e1; line-height: 1.6;">
+        எடப்பாடி கடை (Edappadi Kadai) செயலி உங்களின் தனிப்பட்ட தகவல்களை மிகவும் பாதுகாப்பாகவும், வெளிப்படைத்தன்மையுடனும் பராமரிக்க உறுதிபூண்டுள்ளது.
+      </p>
+      <div class="hero-meta">
+        <span>📅 நடைமுறை: ஆகஸ்ட் 2026</span>
+        <span>📍 எடப்பாடி, சேலம், தமிழ்நாடு</span>
+        <span>🛡️ Package: com.edappadikadai.app</span>
+      </div>
+    </div>
+
+    <!-- 1. Data Collected (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">📋</div>
+        <div class="section-title">1. நாங்கள் சேகரிக்கும் தகவல்கள்</div>
+      </div>
+      <div class="section-body">
+        <p>தமிழ்நாட்டில் சிறந்த இறைச்சி மற்றும் காய்கறி டெலிவரி சேவையை வழங்க பின்வரும் அவசியமான தகவல்களை சேகரிக்கிறோம்:</p>
+        <ul class="styled-list">
+          <li><strong>அடையாள விவரங்கள்:</strong> உங்கள் பெயர், தொலைபேசி எண், மற்றும் விருப்பப்பட்டால் மின்னஞ்சல் முகவரி.</li>
+          <li><strong>டெலிவரி முகவரி &amp; GPS இருப்பிடம்:</strong> உங்கள் இருப்பிடத்திற்கு சரியான நேரத்தில் டெலிவரி செய்ய முகவரி மற்றும் அட்சரேகை/தீர்க்கரேகை (GPS Coordinates).</li>
+          <li><strong>ஆர்டர் விவரங்கள்:</strong> தேர்ந்தெடுக்கப்பட்ட பொருட்கள், இறைச்சி கட் செய்யும் முறை, கார்ட் பொருட்கள் மற்றும் முந்தைய ஆர்டர் வரலாறு.</li>
+          <li><strong>UPI பரிவர்த்தனை குறிப்பு:</strong> UPI மூலம் செலுத்தப்பட்ட Transaction ID மற்றும் ஒப்புதல் எண் (Approval Ref No).</li>
+        </ul>
+        <div class="highlight-box secure">
+          <span>🔒</span>
+          <div>
+            <strong>வங்கித் தகவல்கள் சேகரிக்கப்படுவதில்லை:</strong> உங்கள் வங்கி கணக்கு எண், டெபிட்/கிரெடிட் கார்டு எண்கள், CVV அல்லது UPI PIN எண்களை நாங்கள் <strong>சேகரிப்பதோ சேமிப்பதோ இல்லை</strong>.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. How Data is Used (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">⚙️</div>
+        <div class="section-title">2. தகவல்களை எவ்வாறு பயன்படுத்துகிறோம்?</div>
+      </div>
+      <div class="section-body">
+        <ul class="styled-list">
+          <li><strong>கணக்கு உள்நுழைவு:</strong> Firebase Auth மூலம் OTP பாதுகாப்பான உள்நுழைவு.</li>
+          <li><strong>ஆர்டர் தயாரிப்பு &amp; விநியோகம்:</strong> நீங்கள் கோரியவாறு பொருட்களை பேக் செய்து டெலிவரி நபரிடம் வழிகாட்ட.</li>
+          <li><strong>உடனடி அறிவிப்புகள் (FCM):</strong> ஆர்டர் நிலை (தயாராகிறது, டெலிவரிக்கு புறப்பட்டது, டெலிவரி செய்யப்பட்டது) பற்றிய நேரடி அறிவிப்புகள்.</li>
+          <li><strong>வாடிக்கையாளர் சேவை:</strong> உங்கள் ஆர்டர் சந்தேகங்கள் மற்றும் உதவிக்கு உடனடி தீர்வு வழங்க.</li>
+          <li><strong>ரிவார்ட் &amp; பாயிண்ட்கள்:</strong> கேஷ்பேக் மற்றும் வேலட் சலுகைகளை நிர்வகிக்க.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 3. Firebase Services (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">☁️</div>
+        <div class="section-title">3. பயன்படுத்தப்படும் Google Firebase சேவைகள்</div>
+      </div>
+      <div class="section-body">
+        <ul class="styled-list">
+          <li><strong>Firebase Authentication:</strong> பாதுகாப்பான தொலைபேசி OTP உள்நுழைவு.</li>
+          <li><strong>Cloud Firestore:</strong> குறியாக்கம் செய்யப்பட்ட அதிவேக கிளவுட் தரவுத்தளம்.</li>
+          <li><strong>Cloud Storage:</strong> தயாரிப்பு படங்கள் மற்றும் பில் ஆவணங்கள் பாதுகாப்பு.</li>
+          <li><strong>Cloud Messaging (FCM):</strong> நிகழ்நேர புஷ் அறிவிப்புகள்.</li>
+          <li><strong>Cloud Functions:</strong> பாதுகாப்பான சர்வர்லெஸ் ஆர்டர் செயலாக்கம் மற்றும் கணக்கு நீக்கம்.</li>
+          <li><strong>Crashlytics &amp; Play Integrity:</strong> செயலியின் ஸ்திரத்தன்மை மற்றும் பாதுகாப்பு உறுதிப்படுத்தல்.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 4. UPI Payments (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">💳</div>
+        <div class="section-title">4. UPI கட்டண பாதுகாப்பு (UPI Intent)</div>
+      </div>
+      <div class="section-body">
+        <p>எடப்பாடி கடை செயலியில் UPI கட்டணம் நேரடி <strong>UPI Intent (<code>upi://pay</code>)</strong> மூலம் பாதுகாப்பாக நடைபெறுகிறது:</p>
+        <ul class="styled-list">
+          <li>நீங்கள் பணம் செலுத்தும்போது, உங்கள் போனில் உள்ள GPay, PhonePe, Paytm அல்லது BHIM செயலி நேரடியாகத் திறக்கும்.</li>
+          <li>பரிவர்த்தனை மற்றும் UPI PIN பதிவிடுவது அனைத்தும் உங்களின் அதிகாரப்பூர்வ UPI செயலியில் மட்டுமே நடக்கும்.</li>
+          <li>எங்கள் செயலி பரிவர்த்தனை குறிப்பு எண்ணை (Txn ID) மட்டுமே ஆர்டர் உறுதிப்படுத்தலுக்குப் பெறுகிறது.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 5. Security & Encryption (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">🔒</div>
+        <div class="section-title">5. தகவல் குறியாக்கம் &amp; பாதுகாப்பு</div>
+      </div>
+      <div class="section-body">
+        <ul class="styled-list">
+          <li><strong>100% HTTPS நெட்வொர்க்:</strong> உங்கள் மொபைலுக்கும் சர்வர்க்கும் இடையேயான அனைத்து தகவல்களும் TLS/HTTPS மூலம் குறியாக்கம் செய்யப்படுகின்றன.</li>
+          <li><strong>Android Keystore AES-256 GCM:</strong> மொபைலில் உள்ள உள்ளூர் தகவல்கள் ஆண்ட்ராய்டு கீஸ்டோர் மூலம் மிகப்பாதுகாப்பாக குறியாக்கம் செய்யப்படுகின்றன.</li>
+          <li><strong>SHA-256 Hashing:</strong> பாஸ்வேர்டுகள் மற்றும் சான்றுகள் பாதுகாப்பான கிரிப்டோகிராஃபிக் ஹாஷிங் மூலம் பாதுகாக்கப்படுகின்றன.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 6. Third-Party Sharing (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">🚫</div>
+        <div class="section-title">6. மூன்றாம் தரப்பினருடன் பகிர்தல் இல்லை</div>
+      </div>
+      <div class="section-body">
+        <p>உங்கள் தனிப்பட்ட தகவல்கள் எந்தவொரு வணிக விளம்பர நிறுவனத்திற்கும் விற்கப்படுவதோ, பகிரப்படுவதோ இல்லை. அத்தியாவசிய உள்கட்டமைப்பு சேவைகளான Google Firebase தவிர வேறு எதற்கும் பகிரப்படாது.</p>
+      </div>
+    </div>
+
+    <!-- 7. Data Retention & Deletion (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">🗑️</div>
+        <div class="section-title">7. தகவல் தக்கவைப்பு மற்றும் கணக்கு நீக்கம்</div>
+      </div>
+      <div class="section-body">
+        <p>உங்கள் கணக்கு செயலில் உள்ள வரை மட்டுமே தகவல்கள் வைத்திருக்கப்படும். செயலியில் உள்ள <strong>Delete Account</strong> பொத்தான் மூலம் அல்லது எங்களை தொடர்புகொண்டு உங்கள் கணக்கையும் அனைத்து தகவல்களையும் நிரந்தரமாக நீக்கலாம் (<code>deleteCustomerAccount</code> Cloud Function).</p>
+      </div>
+    </div>
+
+    <!-- 8. Children's Privacy (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">👶</div>
+        <div class="section-title">8. குழந்தைகள் பாதுகாப்பு</div>
+      </div>
+      <div class="section-body">
+        <p>எங்கள் செயலி 18 வயதிற்குட்பட்ட குழந்தைகளுக்கானது அல்ல. சிறார்களின் தகவல்களை நாங்கள் அறிந்தே சேகரிப்பதில்லை.</p>
+      </div>
+    </div>
+
+    <!-- 9. User Rights (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">⚖️</div>
+        <div class="section-title">9. உங்கள் உரிமைகள்</div>
+      </div>
+      <div class="section-body">
+        <p>இந்தியாவின் Digital Personal Data Protection Act, 2023 சட்டப்படி உங்கள் தகவல்களைப் பார்வையிட, திருத்த அல்லது நிரந்தரமாக அழிக்க உங்களுக்கு முழு உரிமை உண்டு.</p>
+      </div>
+    </div>
+
+    <!-- 10. Contact Us (Tamil) -->
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-icon">📬</div>
+        <div class="section-title">10. தொடர்பு விவரங்கள்</div>
+      </div>
+      <div class="section-body">
+        <div class="contact-grid">
+          <div class="contact-item">
+            <span>📧</span>
+            <div>
+              <div style="font-size: 11px; color: var(--text-muted);">அதிகாரப்பூர்வ மின்னஞ்சல்</div>
+              <a href="mailto:edappadikadai@gmail.com">edappadikadai@gmail.com</a>
+            </div>
+          </div>
+          <div class="contact-item">
+            <span>🏪</span>
+            <div>
+              <div style="font-size: 11px; color: var(--text-muted);">முகவரி</div>
+              <div style="font-size: 13px; color: #f1f5f9;">எடப்பாடி கடை (Lyo Food Delivery), காவண்டம்பட்டி, எடப்பாடி, சேலம், தமிழ்நாடு — 637101</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="back-btn-container">
+    <button class="back-btn" onclick="handleGoBack()">
+      <span>←</span> <span id="back-btn-text">Back to App / பின்செல்க</span>
+    </button>
+  </div>
+
+  <footer class="footer">
+    <p>© 2026 Edappadi Kadai (Lyo Food Delivery). All rights reserved.</p>
+    <p style="margin-top: 4px; color: var(--text-muted); font-size: 11px;">Package ID: com.edappadikadai.app</p>
+  </footer>
+
+  <script>
+    function setLanguage(lang) {
+      const enSection = document.getElementById('content-en');
+      const taSection = document.getElementById('content-ta');
+      const btnEn = document.getElementById('btn-lang-en');
+      const btnTa = document.getElementById('btn-lang-ta');
+      const backBtnText = document.getElementById('back-btn-text');
+
+      if (lang === 'ta') {
+        if (enSection) enSection.style.display = 'none';
+        if (taSection) taSection.style.display = 'block';
+        if (btnEn) btnEn.classList.remove('active');
+        if (btnTa) btnTa.classList.add('active');
+        if (backBtnText) backBtnText.innerText = 'செயலிக்குத் திரும்பு';
+        document.body.classList.add('tamil-font');
+      } else {
+        if (enSection) enSection.style.display = 'block';
+        if (taSection) taSection.style.display = 'none';
+        if (btnTa) btnTa.classList.remove('active');
+        if (btnEn) btnEn.classList.add('active');
+        if (backBtnText) backBtnText.innerText = 'Back to App';
+        document.body.classList.remove('tamil-font');
+      }
+    }
+
+    function handleGoBack() {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = 'index.html';
+      }
+    }
+
+    // Auto-detect language parameter if passed
+    const urlParams = new URLSearchParams(window.location.search);
+    const langParam = urlParams.get('lang');
+    if (langParam === 'ta') {
+      setLanguage('ta');
+    } else {
+      setLanguage('en');
+    }
+  </script>
+</body>
+</html>

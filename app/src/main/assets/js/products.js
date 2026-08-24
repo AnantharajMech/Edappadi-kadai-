@@ -134,6 +134,45 @@
       }
     }
 
+    function syncAdminCategoryListToCloud(catList) {
+      if (!Array.isArray(catList)) return;
+      if (typeof db !== 'undefined' && db) {
+        try {
+          const batch = db.batch();
+          catList.forEach(c => {
+            if (c && c.id) {
+              const ref = db.collection('ek_categories').doc(String(c.id));
+              batch.set(ref, cleanFirestoreData(c), { merge: true });
+            }
+          });
+          batch.commit()
+            .then(() => debugLog("[Cloud Sync] Category order batch write success"))
+            .catch(e => {
+              console.warn("[Cloud Sync] Category batch set failed, attempting fallback sequential write", e);
+              catList.forEach(c => {
+                if (c && c.id) {
+                  db.collection('ek_categories').doc(String(c.id)).set(cleanFirestoreData(c), { merge: true }).catch(() => {});
+                }
+              });
+            });
+        } catch (batchErr) {
+          console.warn("[Cloud Sync] Batch error, fallback to sequential set", batchErr);
+          catList.forEach(c => {
+            if (c && c.id) {
+              db.collection('ek_categories').doc(String(c.id)).set(cleanFirestoreData(c), { merge: true }).catch(() => {});
+            }
+          });
+        }
+
+        try {
+          const cleanList = catList.map(c => cleanFirestoreData(c));
+          db.collection('ek_settings').doc('global_config').set({ categories: cleanList }, { merge: true }).catch(() => {});
+          db.collection('ek_settings').doc('global').set({ categories: cleanList }, { merge: true }).catch(() => {});
+        } catch(e) {}
+      }
+    }
+    window.syncAdminCategoryListToCloud = syncAdminCategoryListToCloud;
+
     function saveEditedCategory(id) {
       const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button, .btn') : document.querySelector(`button[onclick*="saveEditedCategory('${id}')"]`);
       if (btn && typeof setButtonLoading === 'function') setButtonLoading(btn, true);
@@ -182,22 +221,7 @@
           window._lastProductsHash = '';
           _lastProductsHash = '';
 
-          if (typeof db !== 'undefined' && db) {
-            try {
-              const batch = db.batch();
-              catList.forEach(c => {
-                const ref = db.collection('ek_categories').doc(c.id);
-                batch.set(ref, cleanFirestoreData(c));
-              });
-              batch.commit()
-                .then(() => debugLog("[Cloud Sync] Category order batch write success on save"))
-                .catch(e => console.error("[Cloud Sync] Category batch failed on save:", e));
-            } catch(batchErr) {
-              catList.forEach(c => {
-                db.collection('ek_categories').doc(c.id).set(cleanFirestoreData(c)).catch(e => {});
-              });
-            }
-          }
+          syncAdminCategoryListToCloud(catList);
 
           showToast("Category updated successfully!", "success");
           renderAdminDashboard();
@@ -249,6 +273,7 @@
               .then(() => debugLog(`[Cloud Sync] Category ${id} deleted from Firestore`))
               .catch(e => console.error(e));
           }
+          syncAdminCategoryListToCloud(catList);
 
           showToast("Category deleted successfully!", "success");
           renderAdminDashboard();
@@ -281,11 +306,7 @@
         window._lastProductsHash = '';
         _lastProductsHash = '';
 
-        if (typeof db !== 'undefined' && db) {
-          db.collection('ek_categories').doc(id).set(cleanFirestoreData(matched))
-            .then(() => debugLog(`[Cloud Sync] Category ${id} visibility written to cloud`))
-            .catch(e => console.error(e));
-        }
+        syncAdminCategoryListToCloud(catList);
 
         showToast("Category visibility updated successfully!", "success");
         showAdminSuccessModal(
@@ -327,9 +348,7 @@
         matched.updatedAt = new Date().toISOString();
         updateCategoryAvailability(matched);
         saveData('ek_categories', catList);
-        if (typeof db !== 'undefined' && db) {
-          db.collection('ek_categories').doc(id).set(cleanFirestoreData(matched)).catch(e => console.error(e));
-        }
+        syncAdminCategoryListToCloud(catList);
         renderAdminCategoriesList();
         if (typeof renderCategoryPills === 'function') renderCategoryPills();
       }
@@ -344,9 +363,7 @@
         matched.updatedAt = new Date().toISOString();
         updateCategoryAvailability(matched);
         saveData('ek_categories', catList);
-        if (typeof db !== 'undefined' && db) {
-          db.collection('ek_categories').doc(id).set(cleanFirestoreData(matched)).catch(e => console.error(e));
-        }
+        syncAdminCategoryListToCloud(catList);
       }
     }
 
@@ -377,23 +394,7 @@
         saveData('ek_categories', catList);
         invalidateDataCache('ek_categories');
 
-        if (typeof db !== 'undefined' && db) {
-          try {
-            const batch = db.batch();
-            catList.forEach(c => {
-              const ref = db.collection('ek_categories').doc(c.id);
-              batch.set(ref, cleanFirestoreData(c));
-            });
-            batch.commit()
-              .then(() => debugLog("[Cloud Sync] Category order batch write success"))
-              .catch(e => console.error("[Cloud Sync] Category order batch write failed", e));
-          } catch (batchErr) {
-            console.error("[Cloud Sync] Category order batch error, falling back to sequential set", batchErr);
-            catList.forEach(c => {
-              db.collection('ek_categories').doc(c.id).set(cleanFirestoreData(c)).catch(e => {});
-            });
-          }
-        }
+        syncAdminCategoryListToCloud(catList);
 
         showToast("Category order updated!", "success");
         renderAdminDashboard();
@@ -424,7 +425,7 @@
         return;
       }
 
-      const list = getData('ek_categories', []);
+      const list = getCategoriesList();
       const newId = 'cat_' + Date.now();
       const newCat = {
         id: newId,
@@ -455,10 +456,7 @@
       window._lastProductsHash = '';
       _lastProductsHash = '';
 
-      if (typeof db !== 'undefined' && db) {
-        db.collection('ek_categories').doc(newId).set(cleanFirestoreData(newCat))
-          .catch(e => console.error(e));
-      }
+      syncAdminCategoryListToCloud(list);
 
       enInput.value = '';
       taInput.value = '';
@@ -648,7 +646,7 @@ function renderSlidingBanners() {
     const imgUrl = b.image || 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800';
     html += `
       <div class="carousel-slide" style="min-width: 100%; flex: 0 0 100%; position: relative; height: 140px; overflow: hidden; border-radius: 20px;">
-        <img src="${imgUrl}" alt="${title}" style="width: 100%; height: 100%; object-fit: cover; filter: brightness(0.75);" loading="eager" decoding="async" onError="this.onerror=null;this.src='https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800';" />
+        <img src="${imgUrl}" alt="${title}" onload="this.classList.add('loaded')" style="width: 100%; height: 100%; object-fit: cover; filter: brightness(0.75);" loading="eager" decoding="async" onError="this.onerror=null;this.src='https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=800';" />
         <div style="position: absolute; bottom: 0; left: 0; right: 0; top: 0; background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0.0) 100%); padding: 14px 16px; display: flex; flex-direction: column; justify-content: flex-end;">
           ${title ? `<h3 style="color: #ffffff; font-size: 15px; font-weight: 800; margin: 0 0 2px 0; text-shadow: 0 2px 4px rgba(0,0,0,0.6);">${title}</h3>` : ''}
           ${sub ? `<p style="color: rgba(255,255,255,0.88); font-size: 11px; margin: 0; text-shadow: 0 1px 3px rgba(0,0,0,0.6); line-height: 1.3;">${sub}</p>` : ''}
@@ -717,6 +715,7 @@ function startCarouselAutoSlide(count) {
   if (_carouselAutoTimer) clearInterval(_carouselAutoTimer);
   if (count <= 1) return;
   _carouselAutoTimer = setInterval(() => {
+    if (document.hidden || window._isAppBackgrounded) return;
     slideCarouselNext();
   }, 4000);
 }
@@ -1146,12 +1145,12 @@ function renderHomeScreen(forceReRender = false) {
       }
 
       try {
-        renderHomeScreenProducts();
+        renderHomeScreenProducts(forceReRender);
       } catch (productsRenderErr) {
         console.error("renderHomeScreenProducts failed:", productsRenderErr);
       }
 
-      const settings = getDataCached('ek_settings', {});
+      const settings = (typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS)) || DEFAULT_SETTINGS || {};
 
       const custSession = getActiveSession();
       const guestBanner = document.getElementById('home-guest-banner');
@@ -1161,6 +1160,13 @@ function renderHomeScreen(forceReRender = false) {
         } else {
           guestBanner.style.display = 'block';
         }
+      }
+
+      // Update Email Verification Reminder Banner
+      try {
+        updateEmailVerificationBanner();
+      } catch (evErr) {
+        console.warn("updateEmailVerificationBanner error:", evErr);
       }
       const loyaltyPtsSpan = document.getElementById('home-loyalty-pts');
       if (loyaltyPtsSpan) {
@@ -1175,9 +1181,9 @@ function renderHomeScreen(forceReRender = false) {
 
       const shopBadge = document.getElementById('shop-status-badge');
       if (shopBadge) {
-        const isOpen = settings.shopOpen !== false;
+        const isOpen = settings ? (settings.shopOpen !== false) : true;
         shopBadge.style.transition = 'all 0.3s ease';
-        if (settings.leaveMode) {
+        if (settings && settings.leaveMode) {
           shopBadge.className = 'badge';
           shopBadge.style.background = 'rgba(245,158,11,0.15)';
           shopBadge.style.color = '#f59e0b';
@@ -1201,9 +1207,9 @@ function renderHomeScreen(forceReRender = false) {
       const elLeaveBanner = document.getElementById('home-leave-banner');
       const elLeaveBannerText = document.getElementById('home-leave-banner-text');
       if (elLeaveBanner && elLeaveBannerText) {
-        if (settings.leaveMode) {
+        if (settings && settings.leaveMode) {
           elLeaveBanner.style.display = 'block';
-          elLeaveBannerText.innerText = settings.leaveNotice || (currentLang === 'ta' ? "மன்னிக்கவும்! கடை தற்காலிகமாக விடுமுறையில் உள்ளது." : "Sorry, the shop is currently closed on holiday.");
+          elLeaveBannerText.innerText = (settings && settings.leaveNotice) || (currentLang === 'ta' ? "மன்னிக்கவும்! கடை தற்காலிகமாக விடுமுறையில் உள்ளது." : "Sorry, the shop is currently closed on holiday.");
         } else {
           elLeaveBanner.style.display = 'none';
         }
@@ -1470,22 +1476,16 @@ function renderHomeScreen(forceReRender = false) {
       if (force) {
         _lastProductsHash = '';
         _lastSpecialsHash = '';
+        _lastDataSnapshotHash = '';
+        if (typeof window !== 'undefined') {
+          window._lastProductsHash = '';
+          window._lastDataSnapshotHash = '';
+        }
       }
       const grid = document.getElementById('home-product-grid');
       let rawLocalProducts = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
-      const isDemoEnabled = typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA === true;
-      if (!isDemoEnabled && Array.isArray(rawLocalProducts) && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
-        const demoIds = new Set(DEMO_PRODUCTS.map(p => p.id));
-        rawLocalProducts = rawLocalProducts.filter(p => p && p.id && !demoIds.has(p.id));
-      }
-      const demoList = (isDemoEnabled && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) ? DEMO_PRODUCTS : [];
-      if ((!rawLocalProducts || rawLocalProducts.length === 0) && demoList.length > 0) {
-        rawLocalProducts = demoList.filter(p => p && p.id && !deletedProdIds.includes(p.id));
-        if (rawLocalProducts.length > 0) {
-          saveData('ek_products', rawLocalProducts);
-          if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
-        }
-      }
+      if (!Array.isArray(rawLocalProducts)) rawLocalProducts = [];
+
       if ((!rawLocalProducts || rawLocalProducts.length === 0) && !window._hasFreshCloudData && (isProductsLoading || window.isProductsLoading)) {
         if (grid) {
           let skeletonCardsHtml = '';
@@ -1515,14 +1515,6 @@ function renderHomeScreen(forceReRender = false) {
         if (Array.isArray(products)) { products.forEach(p => { if (p) updateProductAvailability(p); }); }
         const catList = getCategoriesList() || [];
         const grid = document.getElementById('home-product-grid');
-
-        if ((!products || products.length === 0) && isDemoEnabled && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
-          products = DEMO_PRODUCTS.filter(p => p && p.id && !deletedProdIds.includes(p.id));
-          if (products.length > 0) {
-            saveData('ek_products', products);
-            if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
-          }
-        }
 
         // Show connection error UI with Retry button if load failed and no local data
         if (productsLoadError && (!rawLocalProducts || rawLocalProducts.length === 0) && (!products || products.length === 0)) {
@@ -1681,9 +1673,32 @@ function renderHomeScreen(forceReRender = false) {
 
         const catListForSorting = getCategoriesList() || [];
         const catOrderMap = new Map();
+        const categoryAliases = {
+          'veg': ['veg', 'vegetable', 'vegetables', 'காய்கறி', 'காய்கறிகள்'],
+          'meat': ['meat', 'chicken', 'mutton', 'beef', 'pork', 'poultry', 'கறி', 'கறிவகை', 'சிக்கன்', 'மட்டன்', 'ஆடு', 'கோழி'],
+          'fish': ['fish', 'seafood', 'prawn', 'crab', 'மீன்', 'மீன்வகை', 'கடல் உணவு'],
+          'fruits': ['fruits', 'fruit', 'பழங்கள்', 'பழம்'],
+          'dairy': ['dairy', 'milk', 'egg', 'eggs', 'பால்', 'முட்டை'],
+          'bakery': ['bakery', 'bread', 'cake', 'பேக்கரி'],
+          'groceries': ['groceries', 'grocery', 'provision', 'மளிகை']
+        };
+
         catListForSorting.forEach((c, idx) => {
           const catKey = String(c.id || '').toLowerCase().trim();
-          catOrderMap.set(catKey, c.order !== undefined && c.order !== null ? Number(c.order) : idx);
+          const orderVal = (c.order !== undefined && c.order !== null && !isNaN(Number(c.order))) ? Number(c.order) : idx;
+          catOrderMap.set(catKey, orderVal);
+          if (c.nameEn) catOrderMap.set(String(c.nameEn).toLowerCase().trim(), orderVal);
+          if (c.en) catOrderMap.set(String(c.en).toLowerCase().trim(), orderVal);
+          if (c.nameTa) catOrderMap.set(String(c.nameTa).toLowerCase().trim(), orderVal);
+          if (c.ta) catOrderMap.set(String(c.ta).toLowerCase().trim(), orderVal);
+
+          if (categoryAliases[catKey]) {
+            categoryAliases[catKey].forEach(alias => {
+              if (!catOrderMap.has(alias)) {
+                catOrderMap.set(alias, orderVal);
+              }
+            });
+          }
         });
 
         filtered.sort((a, b) => {
@@ -1696,6 +1711,10 @@ function renderHomeScreen(forceReRender = false) {
           const prodOrderA = Number(a.order !== undefined && a.order !== null ? a.order : (a.displayOrder !== undefined ? a.displayOrder : 999));
           const prodOrderB = Number(b.order !== undefined && b.order !== null ? b.order : (b.displayOrder !== undefined ? b.displayOrder : 999));
           if (prodOrderA !== prodOrderB) return prodOrderA - prodOrderB;
+
+          const indexA = (rawLocalProducts || []).indexOf(a);
+          const indexB = (rawLocalProducts || []).indexOf(b);
+          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
 
           return String(a.id || '').localeCompare(String(b.id || ''));
         });
@@ -1716,29 +1735,12 @@ function renderHomeScreen(forceReRender = false) {
           lazyLoadImages();
           return;
         }
-        const prevKey = (grid.dataset && grid.dataset.filterKey) || grid.getAttribute('data-filter-key');
-        const isFilterChange = (prevKey !== filterKey);
         if (grid.dataset) grid.dataset.filterKey = filterKey;
         grid.setAttribute('data-filter-key', filterKey);
         _lastDataSnapshotHash = combinedKey;
+        grid.innerHTML = '';
         _currentRenderedCount = 0;
         _currentFilteredProducts = buildGroupedRenderList(filtered);
-        const currentCardCount = grid.querySelectorAll('.product-grid-card').length;
-        if (isFilterChange || currentCardCount === 0) {
-          grid.innerHTML = '';
-        } else {
-          const validProductIds = new Set(
-            _currentFilteredProducts
-              .filter(item => item && item.type === 'product' && item.data && item.data.id)
-              .map(item => String(item.data.id))
-          );
-          grid.querySelectorAll('.product-grid-card').forEach(card => {
-            const cardId = card.id.replace('card-prod-', '');
-            if (!validProductIds.has(cardId)) {
-              card.remove();
-            }
-          });
-        }
         const renderTargetCount = _currentFilteredProducts.length;
         while (_currentRenderedCount < renderTargetCount && _currentRenderedCount < _currentFilteredProducts.length) {
           renderNextProductBatch();
@@ -1813,8 +1815,9 @@ function renderHomeScreen(forceReRender = false) {
 
             const weightHtml = `<span style="font-size: 10px; color: var(--text-muted); font-weight: 600; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 6px; display: inline-block; white-space: nowrap;">${weightText}</span>`;
 
+            const cardDelay = Math.min((i - startIdx) * 35, 280);
             const cardHtml = `
-              <div class="product-grid-card" id="card-prod-${pidStr}" data-image-url="${imgUrl}" onclick="openProductModalDetail('${pidStr}')">
+              <div class="product-grid-card product-grid-card-entrance" id="card-prod-${pidStr}" data-image-url="${imgUrl}" style="animation-delay: ${cardDelay}ms;" onclick="openProductModalDetail('${pidStr}')">
                 ${overlayHtml}
                 ${imgHtml}
                 <div class="product-card-details" style="display: flex !important; flex-direction: column !important; justify-content: center !important; gap: 2px !important; flex-grow: 1 !important; min-width: 0 !important; min-height: 90px !important; height: auto !important; padding: 0 !important;">
@@ -1833,7 +1836,7 @@ function renderHomeScreen(forceReRender = false) {
                   <span class="fav-heart-btn" data-id="${pidStr}" onclick="event.stopPropagation(); toggleFavoriteProduct('${pidStr}', event)" style="cursor: pointer; font-size: 15px; padding: 4px; display: inline-flex; align-items: center; justify-content: center; height: 26px; width: 26px; border-radius: 50%; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-right: 4px; z-index: 10;" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}">
                     ${isFav ? '❤️' : '🤍'}
                   </span>
-                  <button class="btn-add-orange" ${isOutOfStock ? 'disabled' : ''} onclick="event.stopPropagation(); openProductModalDetail('${pidStr}')">
+                  <button class="btn-add-orange" ${isOutOfStock ? 'disabled' : ''} onclick="event.stopPropagation(); if (this.classList) { this.classList.remove('btn-bounce-active'); void this.offsetWidth; this.classList.add('btn-bounce-active'); setTimeout(() => this.classList.remove('btn-bounce-active'), 300); } openProductModalDetail('${pidStr}')">
                     <span>+ ADD</span>
                   </button>
                 </div>
@@ -1995,9 +1998,9 @@ function renderHomeScreen(forceReRender = false) {
       }
 
       if (pickerLeafletMap && pickerTileLayer) {
-        let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        let tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         if (theme === 'satellite') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+          tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
         }
         pickerTileLayer.setUrl(tileUrl);
       }
@@ -2056,7 +2059,7 @@ function renderHomeScreen(forceReRender = false) {
           </div>
           <div id="map-search-results" style="display: none; background: #141416; border: 1.5px solid #2d2d2d; border-radius: 12px; max-height: 120px; overflow-y: auto; padding: 6px; font-size: 11.5px; color: #fff; flex-direction: column; gap: 4px; box-sizing: border-box; z-index: 10001;"></div>
 
-          <div style="position: relative; width: 100%; height: 280px; border-radius: 14px; overflow: hidden; border: 1.5px solid #222;">
+          <div style="position: relative; width: 100%; height: 70vh; min-height: 350px; max-height: 600px; border-radius: 14px; overflow: hidden; border: 1.5px solid #222;">
             <div id="picker-map" style="width: 100%; height: 100%; background: #141414; border: none; position: relative; z-index: 100;"></div>
             <!-- Standard / Satellite selector overlay style -->
             <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; z-index: 10001; background: rgba(12,12,14,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding: 4px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 10px rgba(0,0,0,0.4); contain: layout style paint;">
@@ -2116,9 +2119,9 @@ function renderHomeScreen(forceReRender = false) {
             preferCanvas: true
           }).setView([currentLat, currentLng], 15);
 
-          let initialTileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+          let initialTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
           if (pickerMapTheme === 'satellite') {
-            initialTileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+            initialTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
           }
 
           pickerTileLayer = L.tileLayer(initialTileUrl, {
@@ -2126,6 +2129,10 @@ function renderHomeScreen(forceReRender = false) {
             updateWhenIdle: true,
             keepBuffer: 2
           }).addTo(pickerLeafletMap);
+
+          pickerTileLayer.on('tileerror', function(error, tile) {
+            console.warn("[Map Picker] Tile load error:", error);
+          });
 
           setTimeout(() => {
             setPickerMapTheme(pickerMapTheme);
@@ -2564,9 +2571,6 @@ function renderHomeScreen(forceReRender = false) {
       let products = (typeof getDataCached === 'function' ? getDataCached('ek_products', []) : []) || [];
       if (!products || products.length === 0) products = (typeof getData === 'function' ? getData('ek_products', []) : []);
       let prod = products.find(p => p && String(p.id) === String(productId));
-      if (!prod && typeof DEMO_PRODUCTS !== 'undefined' && Array.isArray(DEMO_PRODUCTS)) {
-        prod = DEMO_PRODUCTS.find(p => p && String(p.id) === String(productId));
-      }
       if (!prod && window._currentFilteredProducts && Array.isArray(window._currentFilteredProducts)) {
         prod = window._currentFilteredProducts.find(p => p && String(p.id) === String(productId));
       }
@@ -2928,6 +2932,10 @@ function renderHomeScreen(forceReRender = false) {
 
       if (qtyEl) {
         qtyEl.innerText = getFormattedItemQty({ sellingUnit: unit, weightGrams: selectedWeight }, currentLang);
+        qtyEl.classList.remove('qty-animate');
+        void qtyEl.offsetWidth; // Force reflow to restart animation
+        qtyEl.classList.add('qty-animate');
+        setTimeout(() => qtyEl.classList.remove('qty-animate'), 200);
       }
 
       if (priceKgEl) {
@@ -2964,9 +2972,9 @@ function renderHomeScreen(forceReRender = false) {
         const pid = String(item.productId);
         const cut = String(item.cutStyle || 'Small Pieces');
         const note = String(item.specialNote || '').trim();
-        const key = `${pid}___${cut}___${note}`;
-
+        const variant = String(item.variant || (item.englishName ? item.englishName.toLowerCase() : '')).trim();
         const unitPrice = parseFloat(item.pricePerKg || item.price) || 0;
+        const key = `${pid}___${variant}___${unitPrice}___${cut}___${note}`;
         const unitStr = item.sellingUnit || item.unit || 'kg';
         const isWeight = isUnitWeight ? isUnitWeight(unitStr) : !(unitStr === 'piece' || unitStr === 'packet' || unitStr === 'unit' || unitStr === 'box' || unitStr === 'bunch');
         const grams = Math.max(1, parseFloat(item.weightGrams) || 1);
@@ -2986,6 +2994,7 @@ function renderHomeScreen(forceReRender = false) {
           const cleanItem = {
             ...item,
             productId: pid,
+            variant: variant,
             pricePerKg: unitPrice,
             weightGrams: grams,
             unit: unitStr,
@@ -3030,11 +3039,15 @@ function renderHomeScreen(forceReRender = false) {
         const unit = activeProduct.sellingUnit || activeProduct.unit || 'kg';
         const note = document.getElementById('modal-special-notes')?.value?.trim() || '';
         const cut = selectedCutStyle || 'Small Pieces';
+        const prodVariant = String(activeProduct.variant || (activeProduct.englishName ? activeProduct.englishName.toLowerCase() : '')).trim();
+        const prodPrice = parseFloat(activeProduct.pricePerKg || activeProduct.price) || 0;
 
         if (typeof cart === 'undefined') window.cart = [];
 
         const existingIdx = cart.findIndex(c => 
           String(c.productId) === String(activeProduct.id) && 
+          String(c.variant || (c.englishName ? c.englishName.toLowerCase() : '')).trim() === prodVariant &&
+          (parseFloat(c.pricePerKg || c.price) || 0) === prodPrice &&
           String(c.cutStyle || 'Small Pieces') === String(cut) && 
           String(c.specialNote || '').trim() === String(note)
         );
@@ -3045,6 +3058,7 @@ function renderHomeScreen(forceReRender = false) {
         } else {
           const cartItem = {
             productId: activeProduct.id,
+            variant: prodVariant,
             tamilName: activeProduct.tamilName || activeProduct.englishName,
             englishName: activeProduct.englishName || activeProduct.tamilName,
             weightGrams: selectedWeight,
@@ -3059,6 +3073,8 @@ function renderHomeScreen(forceReRender = false) {
           };
           cart.push(cartItem);
         }
+
+        if (navigator.vibrate) navigator.vibrate(10);
 
         saveCart();
 
@@ -3195,18 +3211,21 @@ function renderHomeScreen(forceReRender = false) {
         elNavBtn.classList.remove('cart-pulse-active');
         void elNavBtn.offsetWidth; // Force CSS reflow
         elNavBtn.classList.add('cart-pulse-active');
+        setTimeout(() => elNavBtn.classList.remove('cart-pulse-active'), 350);
       }
       const elWrapper = document.getElementById('nav-cart-icon-wrapper');
       if (elWrapper) {
         elWrapper.classList.remove('cart-pulse-active');
         void elWrapper.offsetWidth; // Force CSS reflow
         elWrapper.classList.add('cart-pulse-active');
+        setTimeout(() => elWrapper.classList.remove('cart-pulse-active'), 350);
       }
       const badge = document.getElementById('tab-cart-badge');
       if (badge && cart.length > 0) {
         badge.classList.remove('badge-spring-active');
         void badge.offsetWidth; // Force CSS reflow
         badge.classList.add('badge-spring-active');
+        setTimeout(() => badge.classList.remove('badge-spring-active'), 350);
       }
     }
 
@@ -3448,6 +3467,12 @@ function renderHomeScreen(forceReRender = false) {
         item.totalPrice = Math.round(item.pricePerKg * nextQty);
       }
 
+      if (direction < 0) {
+        if (navigator.vibrate) navigator.vibrate(8);
+      } else if (direction > 0) {
+        if (navigator.vibrate) navigator.vibrate(8);
+      }
+
       saveCart();
       renderCartScreen();
     }
@@ -3499,7 +3524,8 @@ function renderHomeScreen(forceReRender = false) {
       let distance = null;
       let zoneName = 'Flat Rate';
 
-      if (typeof getDynamicDeliveryCharge === 'function') {
+      const useDynamic = settings.useDynamicDistancePricing !== false;
+      if (useDynamic && typeof getDynamicDeliveryCharge === 'function') {
         const dynFee = getDynamicDeliveryCharge(numericSubtotal, user);
         deliveryFee = parseFloat(dynFee.charge) || deliveryFee;
         distance = dynFee.distance;
@@ -3514,25 +3540,17 @@ function renderHomeScreen(forceReRender = false) {
         loyaltyDiscount = Math.min(maxPointsDiscount, numericSubtotal);
       }
 
-      // 3. Coupon Discount:
+      // 3. Coupon Discount: ONLY apply server-returned discount (reject client-only calculation)
       let couponDiscount = 0;
       if (appliedCouponCode) {
-        const coupons = getCoupons();
-        const c = coupons.find(x => x.code === appliedCouponCode);
-        if (c) {
-          const minAmt = parseFloat(c.minAmount) || 0;
-          if (numericSubtotal >= minAmt) {
-            const couponRate = parseFloat(c.rate) || 0;
-            if (c.type === 'percentage') {
-              couponDiscount = Math.round((numericSubtotal * couponRate) / 100);
-            } else if (c.type === 'fixed' || c.type === 'freeship') {
-              couponDiscount = couponRate || 20;
-            }
-
-            const maxRemainingSubtotal = Math.max(0, numericSubtotal - loyaltyDiscount);
-            couponDiscount = Math.min(maxRemainingSubtotal, couponDiscount);
-            couponDiscount = Math.max(0, couponDiscount);
-          }
+        if (typeof window.appliedCouponServerDiscount === 'number' && window.appliedCouponServerDiscount > 0 && window.appliedCouponServerCode === appliedCouponCode) {
+          couponDiscount = window.appliedCouponServerDiscount;
+          const maxRemainingSubtotal = Math.max(0, numericSubtotal - loyaltyDiscount);
+          couponDiscount = Math.min(maxRemainingSubtotal, couponDiscount);
+          couponDiscount = Math.max(0, couponDiscount);
+        } else {
+          // Reject client-only coupon calculation
+          couponDiscount = 0;
         }
       }
 
@@ -3558,10 +3576,15 @@ function renderHomeScreen(forceReRender = false) {
       const user = getActiveUser();
 
       if (appliedCouponCode) {
-        const coupons = getCoupons();
-        const activeCoupon = coupons.find(x => x.code === appliedCouponCode);
-        if (activeCoupon && subtotal < parseFloat(activeCoupon.minAmount || 0)) {
+        const minReq = (window.appliedCouponData && (window.appliedCouponData.minOrderAmount || window.appliedCouponData.minAmount))
+          ? parseFloat(window.appliedCouponData.minOrderAmount || window.appliedCouponData.minAmount)
+          : (parseFloat(getCoupons().find(x => x.code === appliedCouponCode)?.minAmount || 0));
+
+        if (minReq > 0 && subtotal < minReq) {
           appliedCouponCode = null;
+          window.appliedCouponServerDiscount = 0;
+          window.appliedCouponServerCode = null;
+          window.appliedCouponData = null;
           showToast(currentLang === 'ta'
             ? "கூப்பன் குறைந்தபட்ச ஆர்டர் தேவை பூர்த்தி செய்யப்படாததால் நீக்கப்பட்டது."
             : "Coupon removed as subtotal falls below minimum requirement.",
@@ -3715,3 +3738,47 @@ function renderHomeScreen(forceReRender = false) {
         }
       }
     }
+
+    function updateEmailVerificationBanner() {
+      const banner = document.getElementById('home-email-unverified-banner');
+      if (!banner) return;
+      try {
+        const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+        const session = typeof getActiveSession === 'function' ? getActiveSession() : null;
+        if (user && !user.isAnonymous && user.email && user.emailVerified === false && session && session.loggedIn) {
+          banner.style.display = 'block';
+        } else {
+          banner.style.display = 'none';
+        }
+      } catch (e) {
+        banner.style.display = 'none';
+      }
+    }
+    window.updateEmailVerificationBanner = updateEmailVerificationBanner;
+
+    async function resendVerificationEmail() {
+      try {
+        const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+        if (user && typeof user.sendEmailVerification === 'function') {
+          await user.sendEmailVerification();
+          if (typeof showToast === 'function') {
+            showToast(
+              typeof currentLang !== 'undefined' && currentLang === 'ta'
+                ? "சரிபார்ப்பு மின்னஞ்சல் மீண்டும் அனுப்பப்பட்டது!"
+                : "Verification email resent — please check your inbox.",
+              "success"
+            );
+          }
+        } else {
+          if (typeof showToast === 'function') {
+            showToast("Unable to send verification email.", "warning");
+          }
+        }
+      } catch (err) {
+        console.error("[Email Verification] Resend error:", err);
+        if (typeof showToast === 'function') {
+          showToast(err.message || "Failed to resend verification email.", "error");
+        }
+      }
+    }
+    window.resendVerificationEmail = resendVerificationEmail;

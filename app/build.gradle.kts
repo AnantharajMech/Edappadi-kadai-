@@ -90,8 +90,8 @@ android {
     applicationId = "com.edappadikadai.app"
     minSdk = 23
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 3
+    versionName = "1.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -128,6 +128,22 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+  packaging {
+    resources {
+      excludes += listOf(
+        "META-INF/INDEX.LIST",
+        "META-INF/DEPENDENCIES",
+        "**/*.py",
+        "**/*.sh",
+        "**/test_*.js"
+      )
+    }
+  }
+
+  androidResources {
+    ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:*.py:*.sh"
+  }
+
   buildFeatures {
     compose = true
     buildConfig = true

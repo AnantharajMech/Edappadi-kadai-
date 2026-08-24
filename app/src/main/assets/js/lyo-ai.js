@@ -375,15 +375,20 @@
       window._aiOrderParseCache = new Map();
     }
 
-    // 1. Synonym Dictionary & Language Mappings (Tamil, English, Tanglish, Misspellings)
-    const LYO_SYNONYMS = {
-      'head_curry': ['head curry', 'goat head', 'thalaikkari', 'ஆட்டுத்தலை', 'தலைக்கறி', 'ஆட்டு தலைக்கறி', 'தலை கறி', 'thalaikari', 'goat head curry', 'head meat', 'ஆட்டுத் தலைக்கறி', 'ஆட்டுத்தலை கறி', 'ஆட்டுத்தலைக்கறி'],
-      'potato': ['potato', 'potatoes', 'உருளைக்கிழங்கு', 'உருளை கிழங்கு', 'உருளை', 'urulaikilangu', 'urulai', 'potatos'],
-      'mutton': ['mutton', 'ஆட்டுக்கறி', 'மட்டன்', 'muttan', 'goat', 'goat mutton', 'lamb', 'ஆட்டு'],
-      'chicken': ['chicken', 'சிக்கன்', 'கோழி', 'koli', 'broiler', 'nattu koli', 'country chicken', 'chiken', 'chickn', 'கோழிக்கறி'],
+    // 1. Synonym Dictionary & Language Mappings (Unified NLU Dictionary)
+    const LYO_SYNONYMS = (typeof window.EK_BASE_SYNONYMS !== 'undefined') ? window.EK_BASE_SYNONYMS : {
+      'head_curry': ['head curry', 'goat head', 'thalaikkari', 'ஆட்டுத்தலை', 'தலைக்கறி', 'ஆட்டு தலைக்கறி', 'goat head curry', 'head meat'],
+      'mutton_liver': ['mutton liver', 'eeral', 'liver', 'ஈரல்', 'மட்டன் ஈரல்', 'suvarotti', 'சுவரொட்டி'],
+      'mutton': ['mutton', 'ஆட்டுக்கறி', 'மட்டன்', 'muttan', 'goat', 'goat mutton', 'lamb', 'ஆட்டு', 'aattu', 'ஆடு'],
+      'country_chicken': ['country chicken', 'nattu koli', 'nattu kozhi', 'naattu kozhi', 'naattu koli', 'nattukoli', 'nattu chicken', 'நாட்டுக்கோழி', 'நாட்டு கோழி', 'நாட்டுக்கறி', 'நாட்டு கோழிக்கறி'],
+      'broiler_chicken': ['broiler chicken', 'broiler', 'farm chicken', 'பிராய்லர்', 'பிராய்லர் சிக்கன்', 'பிறாய்லர்', 'பிராய்லர் கோழி'],
+      'chicken': ['chicken', 'சிக்கன்', 'கோழி', 'koli', 'chiken', 'chickn', 'கோழிக்கறி'],
+      'country_egg': ['country egg', 'country chicken egg', 'nattu muttai', 'naattu muttai', 'நாட்டுக்கோழி முட்டை', 'நாட்டு முட்டை'],
       'egg': ['egg', 'eggs', 'முட்டை', 'muttai', 'egg packet', 'muttai tray'],
       'milk': ['milk', 'பால்', 'paal', 'milk packet', 'pal', 'paal packet'],
       'onion': ['onion', 'onions', 'வெங்காயம்', 'vengayam', 'chinnavengayam', 'periyavengayam', 'vengaiyam', 'சின்ன வெங்காயம்', 'பெரிய வெங்காயம்'],
+      'small_onion': ['small onion', 'chinna vengayam', 'shallots', 'சின்ன வெங்காயம்', 'சாம்பார் வெங்காயம்'],
+      'potato': ['potato', 'potatoes', 'உருளைக்கிழங்கு', 'உருளை கிழங்கு', 'உருளை', 'urulaikilangu', 'urulai', 'potatos'],
       'chilli': ['chilli', 'chili', 'மிளகாய்', 'milagai', 'green chilli', 'red chilli', 'பச்சை மிளகாய்'],
       'coriander': ['coriander', 'கொத்தமல்லி', 'kothamalli', 'malli', 'koththamalli', 'coriander leaves'],
       'oil': ['oil', 'எண்ணெய்', 'ennai', 'sunflower oil', 'gingelly oil', 'groundnut oil', 'coconut oil', 'தேங்காய் எண்ணெய்'],
@@ -405,11 +410,22 @@
 
         const productDict = {};
         const categoryDict = {};
-        const unitDict = {
-          weight: ['kg', 'kilo', 'kilos', 'கிலோ', 'g', 'gm', 'gram', 'grams', 'கிராம்', '250g', '500g', '750g', '1.5kg'],
-          volume: ['l', 'litre', 'litres', 'liter', 'liters', 'லிட்டர்', 'ltr', 'ml', 'milli', 'millilitre', 'மில்லி'],
-          count: ['pcs', 'piece', 'pieces', 'பீஸ்', 'பீசு', 'பீஸ்கள்', 'nos', 'no', 'packet', 'packets', 'pkt', 'doz', 'dozen', 'டஜன்', 'bundle', 'box', 'bottle']
-        };
+        let unitDict;
+        if (typeof window !== 'undefined' && window.UNIT_REGISTRY) {
+          const reg = window.UNIT_REGISTRY;
+          const regKeys = Object.keys(reg);
+          unitDict = {
+            weight: regKeys.filter(k => reg[k] && reg[k].isWeight && !reg[k].isLiquid),
+            volume: regKeys.filter(k => reg[k] && reg[k].isLiquid),
+            count: regKeys.filter(k => reg[k] && !reg[k].isWeight)
+          };
+        } else {
+          unitDict = {
+            weight: ['kg', 'kilo', 'kilos', 'கிலோ', 'g', 'gm', 'gram', 'grams', 'கிராம்', '250g', '500g', '750g', '1.5kg'],
+            volume: ['l', 'litre', 'litres', 'liter', 'liters', 'லிட்டர்', 'ltr', 'ml', 'milli', 'millilitre', 'மில்லி'],
+            count: ['pcs', 'piece', 'pieces', 'பீஸ்', 'பீசு', 'பீஸ்கள்', 'nos', 'no', 'packet', 'packets', 'pkt', 'doz', 'dozen', 'டஜன்', 'bundle', 'box', 'bottle']
+          };
+        }
 
         (products || []).forEach(p => {
           if (!p) return;
@@ -555,13 +571,17 @@
         });
       }
 
-      // 5. Common Tamil/Tanglish Transliteration aliases
+      // 5. Common Tamil/Tanglish Transliteration aliases (Strict variant scoping)
       const engNorm = eng.toLowerCase();
       if (engNorm.includes('head curry') || engNorm.includes('goat head') || tam.includes('தலைகறி') || tam.includes('தலைக்கறி')) {
         ['thalaikkari', 'thalaikari', 'thala karii', 'head curry', 'goat head', 'head', 'தலைகறி', 'தலைக்கறி', 'ஆட்டுத்தலை'].forEach(a => aliases.add(a));
       }
       if (engNorm.includes('egg') || tam.includes('முட்டை')) {
-        ['egg', 'eggs', 'muttai', 'muttas', 'முட்டை', 'முட்டைகள்', 'white egg', 'white eggs'].forEach(a => aliases.add(a));
+        if (engNorm.includes('country') || tam.includes('நாட்டு') || engNorm.includes('nattu')) {
+          ['country egg', 'country chicken egg', 'nattu muttai', 'naattu muttai', 'நாட்டுக்கோழி முட்டை', 'நாட்டு முட்டை'].forEach(a => aliases.add(a));
+        } else {
+          ['egg', 'eggs', 'muttai', 'muttas', 'முட்டை', 'முட்டைகள்', 'white egg', 'white eggs', 'farm egg'].forEach(a => aliases.add(a));
+        }
       }
       if (engNorm.includes('potato') || tam.includes('உருளை')) {
         ['potato', 'potatoes', 'urulai', 'urulaikilangu', 'உருளை', 'உருளைக்கிழங்கு'].forEach(a => aliases.add(a));
@@ -573,10 +593,16 @@
         ['onion', 'onions', 'vengayam', 'vengaym', 'வெங்காயம்', 'சின்ன வெங்காயம்', 'பெரிய வெங்காயம்'].forEach(a => aliases.add(a));
       }
       if (engNorm.includes('chicken') || tam.includes('சிக்கன்') || tam.includes('கோழி')) {
-        ['chicken', 'chickens', 'koli', 'kozhi', 'சிக்கன்', 'நாட்டுக்கோழி', 'பிராய்லர்'].forEach(a => aliases.add(a));
+        if (engNorm.includes('country') || tam.includes('நாட்டு') || engNorm.includes('nattu')) {
+          ['country chicken', 'nattu koli', 'naattu kozhi', 'nattukoli', 'nattu chicken', 'நாட்டுக்கோழி', 'நாட்டு கோழி', 'நாட்டுக்கறி', 'நாட்டு கோழிக்கறி'].forEach(a => aliases.add(a));
+        } else if (engNorm.includes('broiler') || tam.includes('பிராய்லர்') || tam.includes('பிறாய்லர்')) {
+          ['broiler chicken', 'broiler', 'farm chicken', 'பிராய்லர்', 'பிராய்லர் சிக்கன்', 'பிறாய்லர்', 'பிராய்லர் கோழி'].forEach(a => aliases.add(a));
+        } else {
+          ['chicken', 'chickens', 'koli', 'kozhi', 'சிக்கன்', 'கோழி', 'கோழிக்கறி'].forEach(a => aliases.add(a));
+        }
       }
-      if (engNorm.includes('mutton') || tam.includes('மட்டன்') || tam.includes('ஆட்டு')) {
-        ['mutton', 'kari', 'karii', 'aattu kari', 'மட்டன்', 'ஆட்டுக்கறி'].forEach(a => aliases.add(a));
+      if (engNorm.includes('mutton') || tam.includes('மட்டன்') || tam.includes('ஆட்டு') || engNorm.includes('goat') || engNorm.includes('lamb')) {
+        ['mutton', 'kari', 'karii', 'aattu kari', 'மட்டன்', 'ஆட்டுக்கறி', 'goat', 'lamb', 'ஆடு', 'aattu', 'aattukari', 'aattukkari'].forEach(a => aliases.add(a));
       }
       if (engNorm.includes('milk') || tam.includes('பால்')) {
         ['milk', 'paal', 'pal', 'பால்', 'பசும்பால்'].forEach(a => aliases.add(a));
@@ -585,7 +611,15 @@
         ['ghee', 'nei', 'neyy', 'நெய்', 'பசு நெய்'].forEach(a => aliases.add(a));
       }
       if (engNorm.includes('oil') || tam.includes('எண்ணெய்')) {
-        ['oil', 'ennai', 'ennay', 'எண்ணெய்', 'தேங்காய் எண்ணெய்'].forEach(a => aliases.add(a));
+        if (engNorm.includes('coconut') || tam.includes('தேங்காய்')) {
+          ['coconut oil', 'theangai ennai', 'theangai enney', 'தேங்காய் எண்ணெய்'].forEach(a => aliases.add(a));
+        } else if (engNorm.includes('gingelly') || engNorm.includes('sesame') || tam.includes('நல்லெண்ணெய்')) {
+          ['gingelly oil', 'sesame oil', 'nallennai', 'nallenney', 'நல்லெண்ணெய்'].forEach(a => aliases.add(a));
+        } else if (engNorm.includes('sunflower') || tam.includes('சூரியகாந்தி')) {
+          ['sunflower oil', 'சூரியகாந்தி எண்ணெய்'].forEach(a => aliases.add(a));
+        } else {
+          ['oil', 'ennai', 'ennay', 'எண்ணெய்'].forEach(a => aliases.add(a));
+        }
       }
       if (engNorm.includes('fish') || tam.includes('மீன்')) {
         ['fish', 'meen', 'மீன்', 'வஞ்சரம்'].forEach(a => aliases.add(a));
@@ -665,22 +699,29 @@
           }
         }
 
-          // Synonym match with strict word boundary safety
+          // Synonym match with strict word boundary safety & variant isolation
           let synonymMatched = false;
-          for (const key in LYO_SYNONYMS) {
-            const list = LYO_SYNONYMS[key];
+          const activeSynonyms = (typeof window.getActiveNluDictionary === 'function') ? window.getActiveNluDictionary(activeProducts) : LYO_SYNONYMS;
+          for (const key in activeSynonyms) {
+            const list = activeSynonyms[key];
             const qHasSyn = list.some(syn => {
               const sn = normalizeLyoText(syn);
-              return sn && (qNorm === sn || new RegExp('\\b' + sn + '\\b', 'i').test(qNorm) || qNorm.includes(sn));
+              return sn && (qNorm === sn || new RegExp('\\b' + sn + '\\b', 'i').test(qNorm) || (sn.length >= 4 && qNorm.includes(sn)));
             });
-            const pHasSyn = list.some(syn => {
-              const sn = normalizeLyoText(syn);
-              return sn && (nameEnNorm.includes(sn) || nameTaNorm.includes(sn) || new RegExp('\\b' + sn + '\\b', 'i').test(nameEnNorm + ' ' + nameTaNorm));
-            });
-            if (qHasSyn && pHasSyn) {
-              currentScore = Math.max(currentScore, 0.98);
-              synonymMatched = true;
-              break;
+            if (qHasSyn) {
+              const pHasSyn = list.some(syn => {
+                const sn = normalizeLyoText(syn);
+                return sn && (nameEnNorm.includes(sn) || nameTaNorm.includes(sn) || new RegExp('\\b' + sn + '\\b', 'i').test(nameEnNorm + ' ' + nameTaNorm));
+              }) || aliases.some(al => {
+                const alNorm = normalizeLyoText(al);
+                return alNorm && (list.includes(al.toLowerCase()) || list.some(syn => syn === al.toLowerCase() || normalizeLyoText(syn) === alNorm));
+              });
+
+              if (pHasSyn) {
+                currentScore = Math.max(currentScore, 0.98);
+                synonymMatched = true;
+                break;
+              }
             }
           }
 
@@ -961,7 +1002,7 @@
           selectorQty = `${count} ${dbSellingUnit || baseUnit}`;
         }
         itemTotal = rupeeAmount;
-      } else if (effectiveAmountType === 'WEIGHT_GRAMS' || effectiveUnit === 'g') {
+      } else if (effectiveAmountType === 'WEIGHT_GRAMS' || effectiveUnit === 'g' || effectiveUnit === 'gm') {
         rawQty = parsedItem.rawQtyVal || 500;
         const qtyInKg = rawQty / 1000;
         displayQty = `${rawQty}g (${qtyInKg.toFixed(2)} Kg)`;
@@ -978,18 +1019,24 @@
         displayQty = `${rawQty} ml (${qtyInL.toFixed(2)} L)`;
         selectorQty = `${rawQty} ml`;
         itemTotal = Math.round(qtyInL * unitPrice);
-      } else if (effectiveAmountType === 'LIQUID_LITRE' || effectiveUnit === 'l') {
+      } else if (effectiveAmountType === 'LIQUID_LITRE' || effectiveUnit === 'l' || effectiveUnit === 'litre') {
         rawQty = parsedItem.rawQtyVal || 1;
         displayQty = `${rawQty} Litre`;
         selectorQty = `${rawQty} L`;
         itemTotal = Math.round(rawQty * unitPrice);
-      } else if (effectiveAmountType === 'COUNT_DOZEN' || effectiveUnit === 'doz') {
+      } else if (effectiveAmountType === 'COUNT_DOZEN' || effectiveUnit === 'doz' || effectiveUnit === 'dozen') {
         const dozens = parsedItem.rawQtyVal || 1;
         rawQty = dozens;
         const uLabel = getUnitDisplay('dozen', isTaLang, dozens);
         displayQty = `${dozens} ${uLabel}`;
         selectorQty = `${dozens} doz`;
         itemTotal = Math.round(dozens * unitPrice);
+      } else if (['box', 'bunch', 'bundle', 'tray', 'can', 'tin', 'cup', 'loaf', 'roll', 'set', 'packet', 'piece', 'bottle'].includes(effectiveUnit)) {
+        rawQty = Math.max(1, Math.round(parsedItem.rawQtyVal || 1));
+        const uLabel = getUnitDisplay(effectiveUnit, isTaLang, rawQty);
+        displayQty = `${rawQty} ${uLabel}`;
+        selectorQty = `${rawQty} ${effectiveUnit}`;
+        itemTotal = Math.round(rawQty * unitPrice);
       } else {
         rawQty = Math.max(1, Math.round(parsedItem.rawQtyVal || 1));
         const uLabel = getUnitDisplay(dbSellingUnit || baseUnit, isTaLang, rawQty);
@@ -2262,9 +2309,6 @@ function getActiveLyoProposalMsg() {
         ? getDataCached("ek_products", []) 
         : ((typeof getData === "function") ? getData("ek_products", []) : []);
       let prod = products.find(p => String(p.id) === String(productId));
-      if (!prod && typeof DEMO_PRODUCTS !== "undefined" && Array.isArray(DEMO_PRODUCTS)) {
-        prod = DEMO_PRODUCTS.find(p => String(p.id) === String(productId));
-      }
       if (!prod) {
         if (typeof showToast === "function") showToast("Product not found!", "error");
         return;
@@ -2466,7 +2510,7 @@ function getActiveLyoProposalMsg() {
     }
     window.speakLyoMessage = speakLyoMessage;
 
-    function selectLyoProductCandidate(proposalId, productId, rawQtyVal, amountType) {
+    function selectLyoProductCandidate(proposalId, productId, rawQtyVal, unitOrAmountType) {
       let msg = (typeof _lyoChatMessages !== "undefined") ? _lyoChatMessages.find(m => m.proposalId === proposalId || m.id === proposalId) : null;
       if (!msg) msg = (typeof getActiveLyoProposalMsg === "function") ? getActiveLyoProposalMsg() : null;
       if (!msg) return;
@@ -2475,8 +2519,16 @@ function getActiveLyoProposalMsg() {
       const prod = products.find(p => p.id === productId);
       if (!prod) return;
 
+      const isWeight = isUnitWeight(prod.sellingUnit || prod.unit || 'kg');
+      const effUnit = (unitOrAmountType === 'g' || unitOrAmountType === 'gm' || unitOrAmountType === 'kg' || unitOrAmountType === 'piece' || unitOrAmountType === 'ml' || unitOrAmountType === 'l')
+        ? unitOrAmountType
+        : (prod.sellingUnit || prod.unit || 'kg');
+      const effAmountType = (unitOrAmountType === 'WEIGHT_GRAMS' || unitOrAmountType === 'WEIGHT_KG' || unitOrAmountType === 'COUNT_PIECES' || unitOrAmountType === 'LIQUID_ML' || unitOrAmountType === 'LIQUID_LITRE')
+        ? unitOrAmountType
+        : (effUnit === 'g' || effUnit === 'gm' || (isWeight && rawQtyVal > 50) ? 'WEIGHT_GRAMS' : (isWeight ? 'WEIGHT_KG' : 'COUNT_PIECES'));
+
       const details = (typeof calculateLyoItemDetails === "function")
-        ? calculateLyoItemDetails(prod, { rawQtyVal: rawQtyVal || 1, amountType: amountType || "WEIGHT_GRAMS" })
+        ? calculateLyoItemDetails(prod, { rawQtyVal: rawQtyVal || 1, unit: effUnit, amountType: effAmountType, hasExplicitUserUnit: true })
         : { displayQty: `${rawQtyVal}g`, selectorQty: `${rawQtyVal} g`, rawQty: rawQtyVal, itemTotal: 40 };
 
       const newItem = {
@@ -2487,7 +2539,7 @@ function getActiveLyoProposalMsg() {
         displayQty: details.displayQty,
         selectorQty: details.selectorQty,
         rawQty: details.rawQty,
-        unit: prod.unit || "kg",
+        unit: prod.unit || prod.sellingUnit || effUnit || "kg",
         price: prod.pricePerKg || prod.price || 40,
         itemTotal: details.itemTotal,
         img: prod.imageUrl || "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&auto=format&fit=crop"
@@ -2528,6 +2580,245 @@ function getActiveLyoProposalMsg() {
       }
     }
 
+    // Global Pending Clarification State (Generic for all products/variants)
+    window._lyoPendingClarification = null;
+
+    // Helper: Find ambiguous candidates generically for ANY product in catalog
+    function findGenericAmbiguousCandidates(searchTerm, activeProducts) {
+      if (!activeProducts || activeProducts.length < 2) return null;
+      const qClean = (searchTerm || '').toLowerCase().trim();
+      const qNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(qClean) : qClean;
+      if (!qNorm || qNorm.length < 2) return null;
+
+      // Filter to available in-stock products
+      const availableProds = activeProducts.filter(p => {
+        if (!p || p.isActive === false || p.isDeleted === true || p.isOutOfStock === true) return false;
+        if (p.stockKg !== undefined && p.stockKg <= 0) return false;
+        return true;
+      });
+      if (availableProds.length < 2) return null;
+
+      // 1. If there's an exact full match to one product name/alias, it's NOT ambiguous
+      for (const p of availableProds) {
+        const en = (p.englishName || '').toLowerCase().trim();
+        const ta = (p.tamilName || '').toLowerCase().trim();
+        const enNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(en) : en;
+        const taNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(ta) : ta;
+        if (qClean === en || qClean === ta || qNorm === enNorm || qNorm === taNorm) {
+          return null; // Exact full match
+        }
+      }
+
+      // 2. Find all products that match this search term
+      const matched = availableProds.filter(p => {
+        const en = (p.englishName || '').toLowerCase();
+        const ta = (p.tamilName || '').toLowerCase();
+        const enNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(en) : en;
+        const taNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(ta) : ta;
+        const aliases = getAutoGeneratedProductAliases(p);
+
+        if (enNorm.includes(qNorm) || taNorm.includes(qNorm)) return true;
+        return aliases.some(al => {
+          const alNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(al) : al.toLowerCase();
+          return alNorm === qNorm || (qNorm.length >= 3 && alNorm.includes(qNorm));
+        });
+      });
+
+      if (matched.length >= 2) {
+        // Check if query contains unique distinguishing qualifier for one candidate
+        let uniquelyQualified = null;
+        matched.forEach(cand => {
+          const candEn = (cand.englishName || '').toLowerCase();
+          const candTa = (cand.tamilName || '').toLowerCase();
+          const allCandWords = `${candEn} ${candTa}`.split(/\s+/).filter(w => w.length > 2);
+          const uniqueWords = allCandWords.filter(w => {
+            return !matched.some(other => {
+              if (other.id === cand.id) return false;
+              const otherStr = `${other.englishName || ''} ${other.tamilName || ''}`.toLowerCase();
+              return otherStr.includes(w);
+            });
+          });
+          if (uniqueWords.some(uw => qNorm.includes(uw))) {
+            uniquelyQualified = cand;
+          }
+        });
+
+        if (uniquelyQualified) {
+          return null; // Distinct winner identified by qualifier
+        }
+        return matched;
+      }
+      return null;
+    }
+
+    // Direct Product Clarification Selector (Instantly updates cart, eliminates loops)
+    window.selectLyoResolvedProduct = function(productId, rawQtyVal, unit, amountType) {
+      try {
+        console.log(`[Lyo AI Direct Resolution] Selecting Product ID: ${productId}, Qty: ${rawQtyVal} ${unit}`);
+        const products = (typeof getData === 'function') ? getData('ek_products', []) : [];
+        const matchedProd = products.find(p => p.id === productId);
+        if (!matchedProd) {
+          console.warn("[Lyo AI Direct Resolution] Product not found in catalog for ID:", productId);
+          return;
+        }
+
+        if (matchedProd.isActive === false || matchedProd.isDeleted === true || matchedProd.isOutOfStock === true || (matchedProd.stockKg !== undefined && matchedProd.stockKg <= 0)) {
+          const outMsg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+            ? `மன்னிக்கவும்! ${matchedProd.tamilName || matchedProd.englishName} தற்போது கடையில் கையிருப்பில் இல்லை.`
+            : `Sorry, ${matchedProd.englishName || matchedProd.tamilName} is currently out of stock.`;
+          if (typeof showToast === 'function') showToast(outMsg, 'warning');
+          return;
+        }
+
+        const realSellingUnit = String(matchedProd.sellingUnit || matchedProd.unit || 'kg').toLowerCase().trim();
+        const isPieceProduct = !isUnitWeight(realSellingUnit);
+
+        let parsedQty = parseFloat(rawQtyVal);
+        if (isNaN(parsedQty) || parsedQty <= 0) {
+          parsedQty = isPieceProduct ? 1 : 0.5;
+        }
+
+        let effAmountType = amountType || (isPieceProduct ? 'COUNT_PIECES' : (unit === 'g' || unit === 'gm' || parsedQty > 50 ? 'WEIGHT_GRAMS' : 'WEIGHT_KG'));
+        let effUnit = isPieceProduct ? (matchedProd.sellingUnit || matchedProd.unit || 'piece') : (unit || realSellingUnit || 'kg');
+
+        const calcInput = {
+          rawQtyVal: parsedQty,
+          amountType: effAmountType,
+          unit: effUnit,
+          hasExplicitUserUnit: true
+        };
+        const details = calculateLyoItemDetails(matchedProd, calcInput);
+
+        const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        let activeProposalMsg = getActiveLyoProposalMsg();
+        if (!activeProposalMsg) {
+          const proposalId = 'prop_' + Date.now();
+          activeProposalMsg = {
+            id: 'msg_a_' + Date.now(),
+            role: 'assistant',
+            isProposal: true,
+            text: '',
+            time: nowStr,
+            proposalId: proposalId,
+            items: [],
+            deliveryCharge: computeLyoDeliveryCharge(0, []),
+            deliveryZone: 'Edappadi Mini Ward (Town Core)',
+            isTyping: false
+          };
+          _lyoChatMessages.push(activeProposalMsg);
+        } else {
+          _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== activeProposalMsg.id);
+          activeProposalMsg.time = nowStr;
+          activeProposalMsg.isProposal = true;
+          activeProposalMsg.isTyping = false;
+          _lyoChatMessages.push(activeProposalMsg);
+        }
+
+        const existingItem = activeProposalMsg.items.find(it => it.productId === matchedProd.id);
+        if (existingItem) {
+          if (isUnitWeight(realSellingUnit)) {
+            let currentGrams = (existingItem.unit === 'g' || existingItem.unit === 'gm' || existingItem.unit === 'gram')
+              ? (existingItem.rawQty || 0)
+              : ((existingItem.rawQty && existingItem.rawQty <= 50) ? existingItem.rawQty * 1000 : (existingItem.rawQty || 0));
+            
+            let addedGrams = (calcInput.unit === 'g' || calcInput.unit === 'gm' || calcInput.unit === 'gram')
+              ? (calcInput.rawQtyVal || 0)
+              : ((calcInput.rawQtyVal && calcInput.rawQtyVal <= 50) ? calcInput.rawQtyVal * 1000 : (calcInput.rawQtyVal || 0));
+
+            const combinedGrams = currentGrams + addedGrams;
+            let updatedDetails;
+            if (combinedGrams >= 1000) {
+              updatedDetails = calculateLyoItemDetails(matchedProd, { rawQtyVal: combinedGrams / 1000, amountType: 'WEIGHT_KG', unit: 'kg' });
+              existingItem.unit = 'kg';
+            } else {
+              updatedDetails = calculateLyoItemDetails(matchedProd, { rawQtyVal: combinedGrams, amountType: 'WEIGHT_GRAMS', unit: 'g' });
+              existingItem.unit = 'g';
+            }
+            existingItem.displayQty = updatedDetails.displayQty;
+            existingItem.selectorQty = updatedDetails.selectorQty;
+            existingItem.rawQty = updatedDetails.rawQty;
+            existingItem.itemTotal = updatedDetails.itemTotal;
+          } else {
+            const newCount = (existingItem.rawQty || 1) + (calcInput.rawQtyVal || 1);
+            const updatedDetails = calculateLyoItemDetails(matchedProd, { rawQtyVal: newCount, amountType: 'COUNT_PIECES', unit: matchedProd.sellingUnit || matchedProd.unit || 'pcs' });
+            existingItem.displayQty = updatedDetails.displayQty;
+            existingItem.selectorQty = updatedDetails.selectorQty;
+            existingItem.rawQty = updatedDetails.rawQty;
+            existingItem.itemTotal = updatedDetails.itemTotal;
+          }
+        } else {
+          const prodPriceVal = Number(matchedProd.pricePerKg || matchedProd.sellingPrice || matchedProd.price || 40);
+          const prodUnitVal = String(matchedProd.sellingUnit || matchedProd.unit || calcInput.unit || 'kg');
+          const newCardItemId = 'it_' + matchedProd.id + '_' + Date.now();
+          activeProposalMsg.items.push({
+            id: newCardItemId,
+            productId: matchedProd.id,
+            name: matchedProd.englishName || matchedProd.name,
+            tamilName: matchedProd.tamilName || '',
+            displayQty: details.displayQty,
+            selectorQty: details.selectorQty,
+            rawQty: details.rawQty,
+            unit: prodUnitVal,
+            itemTotal: details.itemTotal,
+            unitPrice: prodPriceVal,
+            price: prodPriceVal,
+            imageUrl: matchedProd.imageUrl || matchedProd.image || '',
+            isFreeDeliveryEligible: matchedProd.isFreeDeliveryEligible === true
+          });
+        }
+
+        // Clear pending clarification completely to prevent any loop
+        window._lyoPendingClarification = null;
+
+        let proposalSubtotal = 0;
+        activeProposalMsg.items.forEach(it => proposalSubtotal += (it.itemTotal || 0));
+        activeProposalMsg.deliveryCharge = computeLyoDeliveryCharge(proposalSubtotal, activeProposalMsg.items);
+
+        const prodDisplayName = matchedProd.tamilName || matchedProd.englishName;
+        const itemSummaryList = activeProposalMsg.items.map(it => `• **${it.tamilName || it.name}** (${it.displayQty} - ₹${it.itemTotal})`).join('\n');
+        activeProposalMsg.text = `நன்றி! உங்கள் விருப்பப்படி **${prodDisplayName}** (${details.displayQty} - ₹${details.itemTotal}) கார்ட்டில் சேர்க்கப்பட்டது! 🥩🛒\n\n**கார்ட்டில் உள்ள பொருட்கள்:**\n${itemSummaryList}`;
+
+        syncLyoToManualCart();
+        persistLyoChatMessages();
+        renderLyoAiChat();
+        updateLyoDraftCartBar();
+
+        const chatContainer = document.getElementById('lyo-ai-messages');
+        if (chatContainer) {
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+      } catch (e) {
+        console.error("[Lyo AI Direct Resolution Error]", e);
+      }
+    };
+
+    window.resolveLyoAmbiguity = function(productId, rawQtyVal, unit) {
+      const activeMsg = getActiveLyoProposalMsg();
+      if (activeMsg) {
+        selectLyoProductCandidate(activeMsg.proposalId || activeMsg.id, productId, rawQtyVal, unit);
+        renderLyoAiChat();
+        updateLyoDraftCartBar();
+        updateCartBadge();
+        updateCartUI();
+      }
+
+      // Invalidate the AI parse cache for the original ambiguous query
+      const originalQueryKey = (window._lyoPendingClarification ? (window._lyoPendingClarification.originalQuery || window._lyoPendingClarification.searchTerm) : null);
+      if (window._aiOrderParseCache) {
+        if (originalQueryKey) {
+          _aiOrderParseCache.delete(originalQueryKey);
+          _aiOrderParseCache.delete(String(originalQueryKey).toLowerCase().trim());
+        }
+      }
+      if (window._lyoPendingClarification) {
+        window._lyoPendingClarification = null;
+      }
+    };
+
+    window.resolveChickenVariant = function(productId, rawQtyVal, unit, amountType) {
+      window.resolveLyoAmbiguity(productId, rawQtyVal, unit);
+    };
+
     window.sendLyoAiDirectChoice = function(text) {
       const inputEl = document.getElementById('lyo-ai-input');
       if (inputEl) {
@@ -2566,6 +2857,53 @@ async function onLyoSendBtnClick() {
       composeBox.style.transform = 'translateY(0)';
     }
     if (typeof autoGrowLyoInput === 'function') autoGrowLyoInput(inputEl);
+
+    // CHECK FOR PENDING CLARIFICATION RESOLUTION FIRST (Bypasses AI loop completely)
+    if (window._lyoPendingClarification && window._lyoPendingClarification.candidates && window._lyoPendingClarification.candidates.length > 0) {
+      const pending = window._lyoPendingClarification;
+      const qNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(queryText.toLowerCase()) : queryText.toLowerCase();
+
+      let matchedCand = null;
+      for (const cand of pending.candidates) {
+        const en = (cand.englishName || '').toLowerCase();
+        const ta = (cand.tamilName || '').toLowerCase();
+        const enNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(en) : en;
+        const taNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(ta) : ta;
+        const aliases = getAutoGeneratedProductAliases(cand);
+
+        if (qNorm === enNorm || qNorm === taNorm || enNorm.includes(qNorm) || taNorm.includes(qNorm) ||
+            aliases.some(al => {
+              const alNorm = (typeof normalizeLyoText === 'function') ? normalizeLyoText(al) : al.toLowerCase();
+              return alNorm === qNorm || (qNorm.length >= 3 && alNorm.includes(qNorm));
+            })) {
+          matchedCand = cand;
+          break;
+        }
+      }
+
+      // Check for numeric index choice ("1", "2")
+      if (!matchedCand) {
+        const numChoice = parseInt(queryText.trim(), 10);
+        if (!isNaN(numChoice) && numChoice >= 1 && numChoice <= pending.candidates.length) {
+          matchedCand = pending.candidates[numChoice - 1];
+        }
+      }
+
+      if (matchedCand) {
+        console.log(`[Lyo AI Pipeline] Pending Clarification Resolved Directly: "${matchedCand.englishName}"`);
+        const parsedNew = parseSingleItemText(queryText);
+        const resolvedQty = (parsedNew && parsedNew.hasExplicitUserUnit) ? parsedNew.rawQtyVal : pending.rawQtyVal;
+        const resolvedUnit = (parsedNew && parsedNew.hasExplicitUserUnit) ? parsedNew.unit : pending.unit;
+        const resolvedAmountType = (parsedNew && parsedNew.hasExplicitUserUnit) ? parsedNew.amountType : pending.amountType;
+
+        window._lyoPendingClarification = null;
+        selectLyoResolvedProduct(matchedCand.id, resolvedQty, resolvedUnit, resolvedAmountType);
+        return;
+      } else {
+        // User changed topic or asked a new product; reset pending clarification
+        window._lyoPendingClarification = null;
+      }
+    }
 
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -2674,33 +3012,28 @@ async function onLyoSendBtnClick() {
         const searchTerm = parsed.product_name || parsed.productSearchTerm || queryText;
         const cleanSearch = (searchTerm || '').toLowerCase().trim();
 
-        // Check for ambiguous generic term (e.g. "சிக்கன்" / "chicken" without specifying Broiler vs Country)
-        const isGenericChicken = (cleanSearch === 'chicken' || cleanSearch === 'சிக்கன்' || cleanSearch === 'கோழி') &&
-                                 !cleanSearch.includes('broiler') && !cleanSearch.includes('country') && !cleanSearch.includes('nattu') && !cleanSearch.includes('பிராய்லர்') && !cleanSearch.includes('நாட்டு');
+        // 1. Generic Ambiguity Check across entire catalog
+        const ambiguousCandidates = findGenericAmbiguousCandidates(cleanSearch, activeProducts);
 
-        if (isGenericChicken && activeProducts.length > 0) {
-          const chickenCandidates = activeProducts.filter(p => {
-            const fullN = ((p.englishName || '') + ' ' + (p.tamilName || '')).toLowerCase();
-            return fullN.includes('chicken') || fullN.includes('சிக்கன்') || fullN.includes('கோழி');
+        if (ambiguousCandidates && ambiguousCandidates.length >= 2) {
+          const rawQ = parsed.raw_quantity_val || parsed.rawQtyVal || (isUnitWeight(parsed.unit || 'kg') ? 0.5 : 1);
+          const uLabel = parsed.unit || (isUnitWeight(parsed.unit || 'kg') ? (rawQ <= 50 ? 'kg' : 'g') : 'piece');
+          let qtyDisplay = `${rawQ} ${uLabel}`;
+          if (rawQ === 0.5 || (rawQ === 500 && (uLabel === 'g' || uLabel === 'gm'))) qtyDisplay = "500g (அரை கிலோ)";
+          else if (rawQ === 0.25 || (rawQ === 250 && (uLabel === 'g' || uLabel === 'gm'))) qtyDisplay = "250g (கால் கிலோ)";
+          else if (rawQ === 0.75 || (rawQ === 750 && (uLabel === 'g' || uLabel === 'gm'))) qtyDisplay = "750g (முக்கால் கிலோ)";
+          else if (rawQ === 1 && (uLabel === 'kg' || uLabel === 'kilo')) qtyDisplay = "1 Kg (ஒரு கிலோ)";
+
+          ambiguousItems.push({
+            searchTerm: searchTerm,
+            qtyDisplay: qtyDisplay,
+            candidates: ambiguousCandidates,
+            rawQtyVal: rawQ,
+            unit: uLabel,
+            amountType: parsed.amount_type || parsed.amountType,
+            hasExplicitUserUnit: parsed.hasExplicitUserUnit
           });
-
-          if (chickenCandidates.length >= 2) {
-            const rawQ = parsed.raw_quantity_val || parsed.rawQtyVal || 1;
-            const uLabel = parsed.unit || 'kg';
-            let qtyDisplay = `${rawQ} ${uLabel}`;
-            if (rawQ === 0.5 || rawQ === 500) qtyDisplay = "அரை கிலோ (500g)";
-            else if (rawQ === 0.25 || rawQ === 250) qtyDisplay = "கால் கிலோ (250g)";
-            else if (rawQ === 0.75 || rawQ === 750) qtyDisplay = "முக்கால் கிலோ (750g)";
-
-            ambiguousItems.push({
-              searchTerm: searchTerm,
-              qtyDisplay: qtyDisplay,
-              candidates: chickenCandidates,
-              rawQtyVal: rawQ,
-              unit: uLabel
-            });
-            return;
-          }
+          return;
         }
 
         const matchResult = matchProductWithConfidence(searchTerm, activeProducts);
@@ -2814,12 +3147,48 @@ async function onLyoSendBtnClick() {
       if (ambiguousItems.length > 0 && !itemsChangedThisTurn) {
         _lyoChatMessages = _lyoChatMessages.filter(m => m.id !== activeProposalMsg.id);
         const amb = ambiguousItems[0];
+
+        // Store pending clarification state so user button click or text choice directly resolves
+        window._lyoPendingClarification = {
+          rawQtyVal: amb.rawQtyVal,
+          unit: amb.unit,
+          amountType: amb.amountType,
+          hasExplicitUserUnit: amb.hasExplicitUserUnit,
+          candidates: amb.candidates,
+          searchTerm: amb.searchTerm
+        };
+
         const candidateButtons = amb.candidates.map(p => {
-          const pName = p.englishName || p.tamilName;
-          const icon = pName.toLowerCase().includes('country') || pName.toLowerCase().includes('nattu') ? '🐓' : '🐔';
-          return `<button type="button" onclick="sendLyoAiDirectChoice('${amb.rawQtyVal}${amb.unit === 'g'?'g':amb.unit} ${pName}')" style="background: rgba(16,185,129,0.15); border: 1.5px solid #10b981; color: #a7f3d0; padding: 10px 14px; border-radius: 12px; font-weight: 700; font-size: 12.5px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); transition: transform 0.15s;">
-            <span>${icon}</span>
-            <span>${pName} (${amb.qtyDisplay})</span>
+          const pNameEng = p.englishName || p.name || '';
+          const pNameTa = p.tamilName || p.englishName || '';
+          const pNameDisplay = pNameTa ? `${pNameTa} (${pNameEng})` : pNameEng;
+          
+          let icon = '🛒';
+          const cat = (p.category || '').toLowerCase();
+          const pNorm = (pNameEng + ' ' + pNameTa).toLowerCase();
+          if (pNorm.includes('country') || pNorm.includes('nattu') || pNorm.includes('நாட்டு')) icon = '🐓';
+          else if (pNorm.includes('chicken') || pNorm.includes('broiler') || pNorm.includes('கோழி') || pNorm.includes('சிக்கன்')) icon = '🐔';
+          else if (pNorm.includes('mutton') || pNorm.includes('ஆட்டு') || pNorm.includes('தலை')) icon = '🥩';
+          else if (pNorm.includes('egg') || pNorm.includes('முட்டை')) icon = '🥚';
+          else if (pNorm.includes('fish') || pNorm.includes('மீன்')) icon = '🐟';
+          else if (pNorm.includes('oil') || pNorm.includes('எண்ணெய்')) icon = '🧴';
+          else if (pNorm.includes('rice') || pNorm.includes('அரிசி')) icon = '🌾';
+
+          const pPrice = Number(p.pricePerKg || p.sellingPrice || p.price || 0);
+          const pUnit = p.sellingUnit || p.unit || 'kg';
+          const isWeight = isUnitWeight(pUnit);
+          const calcQty = amb.rawQtyVal || (isWeight ? 0.5 : 1);
+          const calcUnit = amb.unit || (isWeight ? (calcQty <= 50 ? 'kg' : 'g') : pUnit);
+          const itemTotal = isWeight
+            ? Math.round((pPrice / (calcUnit === 'g' || calcUnit === 'gm' ? 1000 : 1)) * calcQty)
+            : Math.round(pPrice * calcQty);
+
+          const safeUnit = (calcUnit || 'kg').replace(/'/g, "\\'");
+          const safeAmountType = (amb.amountType || (isWeight ? 'WEIGHT_GRAMS' : 'COUNT_PIECES')).replace(/'/g, "\\'");
+
+          return `<button type="button" class="btn-ripple" onclick="resolveLyoAmbiguity('${p.id}', ${amb.rawQtyVal}, '${amb.unit}')" style="background: rgba(16,185,129,0.18); border: 1.5px solid #10b981; color: #ffffff; padding: 10px 14px; border-radius: 12px; font-weight: 700; font-size: 12.5px; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.35); transition: transform 0.15s, background 0.2s;">
+            <span style="font-size: 16px;">${icon}</span>
+            <span>${pNameDisplay} <strong style="color: #6ee7b7;">(${amb.qtyDisplay} - ₹${itemTotal})</strong></span>
           </button>`;
         }).join('');
 
@@ -2827,12 +3196,12 @@ async function onLyoSendBtnClick() {
           id: 'msg_a_' + Date.now(),
           role: 'assistant',
           isProposal: false,
-          text: `நீங்கள் **${amb.qtyDisplay} சிக்கன்** கேட்டுள்ளீர்கள். இது **Broiler Chicken** அல்லது **Country Chicken (நாட்டுக்கோழி)**?\n\nதயவுசெய்து கீழே உள்ள விருப்பத்தைத் தேர்ந்தெடுக்கவும்:`,
+          text: `நீங்கள் **${amb.qtyDisplay} ${amb.searchTerm}** கேட்டுள்ளீர்கள்.\n\nதயவுசெய்து நீங்கள் விரும்பும் வகையைத் தேர்ந்தெடுக்கவும்:`,
           actionHtml: `<div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">${candidateButtons}</div>`,
           time: nowStr,
           items: []
         });
-        console.log(`[Lyo AI Pipeline] Proposal Generated: Intelligent Ambiguous Clarification Prompt`);
+        console.log(`[Lyo AI Pipeline] Proposal Generated: Intelligent Ambiguous Clarification Prompt with Direct Resolution Buttons`);
       } else if (activeProposalMsg.items.length > 0 && itemsChangedThisTurn) {
         const itemSummaryList = activeProposalMsg.items.map(it => `• **${it.tamilName || it.name}** (${it.displayQty} - ₹${it.itemTotal})`).join('\n');
         let headerText = "நன்றி! உங்கள் கட்டளைப்படி பொருட்கள் கார்ட்டில் சேர்க்கப்பட்டன! 🥩🛒\n\n";

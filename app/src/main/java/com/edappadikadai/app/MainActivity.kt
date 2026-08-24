@@ -394,30 +394,48 @@ class MainActivity : ComponentActivity() {
                 android.util.Log.e("CRASHLYTICS", "Failed to configure Firebase Crashlytics: ${crashEx.message}", crashEx)
             }
 
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all_customers")
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all_users")
-
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    val token = task.result
-                    android.util.Log.d("FCM_INIT", "FCM Registration Token: $token")
-                    runOnUiThread {
-                        webView?.evaluateJavascript(
-                            "javascript:(function() { " +
-                            "  if (typeof onAndroidFcmTokenReceived === 'function') { " +
-                            "    onAndroidFcmTokenReceived('$token'); " +
-                            "  } " +
-                            "})()", null
-                        )
+            try {
+                val gmsAvailability = com.google.android.gms.common.GoogleApiAvailability.getInstance()
+                val gmsResult = gmsAvailability.isGooglePlayServicesAvailable(this)
+                if (gmsResult == com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            val token = task.result
+                            if (!token.isNullOrEmpty()) {
+                                android.util.Log.d("FCM_INIT", "FCM Registration Token: $token")
+                                runOnUiThread {
+                                    webView?.evaluateJavascript(
+                                        "javascript:(function() { " +
+                                        "  if (typeof onAndroidFcmTokenReceived === 'function') { " +
+                                        "    onAndroidFcmTokenReceived('$token'); " +
+                                        "  } " +
+                                        "})()", null
+                                    )
+                                }
+                                val sharedPrefs = getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
+                                sharedPrefs.edit()
+                                    .putString("fcm_token", token)
+                                    .putString("real_fcm_token", token)
+                                    .apply()
+                            }
+                        } else {
+                            val ex = task.exception
+                            android.util.Log.i("FCM_INIT", "FCM token registration deferred: ${ex?.message}")
+                            val sharedPrefs = getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
+                            if (sharedPrefs.getString("fcm_token", "").isNullOrEmpty()) {
+                                val fallbackToken = "fcm_fallback_" + java.util.UUID.randomUUID().toString().take(12)
+                                sharedPrefs.edit()
+                                    .putString("fcm_token", fallbackToken)
+                                    .putString("real_fcm_token", fallbackToken)
+                                    .apply()
+                            }
+                        }
                     }
-                    val sharedPrefs = getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
-                    sharedPrefs.edit()
-                        .putString("fcm_token", token)
-                        .putString("real_fcm_token", token)
-                        .apply()
                 } else {
-                    android.util.Log.w("FCM_INIT", "FCM token registration deferred: running in simulated mode", task.exception)
+                    android.util.Log.i("FCM_INIT", "Google Play Services not available (code $gmsResult). FCM token fetch deferred gracefully.")
                 }
+            } catch (e: Exception) {
+                android.util.Log.i("FCM_INIT", "Firebase Messaging initialization skipped or deferred gracefully: ${e.message}")
             }
         } catch (e: Exception) {
             android.util.Log.i("FCM_INIT", "Firebase Messaging initialization skipped or deferred gracefully: ${e.message}")
@@ -755,6 +773,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        webView?.evaluateJavascript("if (typeof window.onAndroidAppResume === 'function') { window.onAndroidAppResume(); }", null)
         isActivityInForeground = true
         webView?.requestFocus()
         if (hasLocationPermission()) {
@@ -774,6 +793,7 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         isActivityInForeground = false
+        webView?.evaluateJavascript("if (typeof window.onAndroidAppPause === 'function') { window.onAndroidAppPause(); }", null)
         activeLocationListener?.let { listener ->
             try {
                 if (isActiveLocationListenerRegistered) {
@@ -1194,21 +1214,27 @@ class MainActivity : ComponentActivity() {
             }
 
             try {
-                com.google.firebase.messaging.FirebaseMessaging.getInstance().token
-                    .addOnSuccessListener { token ->
-                        if (!token.isNullOrEmpty()) {
-                            sharedPreferences.edit()
-                                .putString("real_fcm_token", token)
-                                .putString("fcm_token", token)
-                                .apply()
-                            try {
-                                com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all_customers")
-                            } catch (e: Exception) {}
+                val gmsAvailability = com.google.android.gms.common.GoogleApiAvailability.getInstance()
+                val gmsResult = gmsAvailability.isGooglePlayServicesAvailable(context)
+                if (gmsResult == com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                        .addOnSuccessListener { token ->
+                            if (!token.isNullOrEmpty()) {
+                                sharedPreferences.edit()
+                                    .putString("real_fcm_token", token)
+                                    .putString("fcm_token", token)
+                                    .apply()
+                            }
                         }
-                    }
-                    .addOnFailureListener { e ->
-                        android.util.Log.d("FCM", "Async token fetch status: ${e.message}")
-                    }
+                        .addOnFailureListener { e ->
+                            android.util.Log.d("FCM", "Async token fetch status: ${e.message}")
+                            if (e.message?.contains("TOO_MANY_REGISTRATIONS", ignoreCase = true) == true) {
+                                try {
+                                    com.google.firebase.messaging.FirebaseMessaging.getInstance().deleteToken()
+                                } catch (delEx: Exception) {}
+                            }
+                        }
+                }
             } catch (e: Exception) {
                 android.util.Log.d("FCM", "FirebaseMessaging token fetch skipped: ${e.message}")
             }

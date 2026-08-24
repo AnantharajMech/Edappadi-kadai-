@@ -430,6 +430,15 @@
         const elMinAmt = document.getElementById('setting-min-amount');
         if (elMinAmt) elMinAmt.value = settings.minOrderAmount !== undefined ? settings.minOrderAmount : 0;
 
+        const elMinAppVer = document.getElementById('setting-min-app-version');
+        if (elMinAppVer) elMinAppVer.value = settings.minAppVersion || '7.0.0';
+        const elRecAppVer = document.getElementById('setting-recommended-app-version');
+        if (elRecAppVer) elRecAppVer.value = settings.recommendedVersion || '7.0.0';
+        const elPlayUrl = document.getElementById('setting-playstore-url');
+        if (elPlayUrl) elPlayUrl.value = settings.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.edappadikadai.app';
+        const elPrivacyUrl = document.getElementById('setting-privacy-policy-url');
+        if (elPrivacyUrl) elPrivacyUrl.value = settings.privacyPolicyUrl || '';
+
         if (typeof renderAdminUpiSettings === 'function') {
           try { renderAdminUpiSettings(); } catch(e) {}
         }
@@ -1243,15 +1252,18 @@
           categoryOptionsHtml += `<option value="${catId}" ${isSel}>${catName}</option>`;
         });
 
+        const assignedExec = getOrderAssignedExecutive(o);
+        const assignedExecId = assignedExec ? assignedExec.id : '';
+
         let deliveryOptionsHtml = `<option value="">${currentLang === 'ta' ? '-- நியமிக்கப்படவில்லை --' : '-- Unassigned --'}</option>`;
         sortedExecutives.forEach(dp => {
-          const isSel = o.assignedExecutiveId === dp.id ? 'selected' : '';
+          const isSel = assignedExecId === dp.id ? 'selected' : '';
           const distanceStatus = dp.latitude ? `⚡ ${dp.distToCust} km from customer` : `🏪 at Shop`;
           deliveryOptionsHtml += `<option value="${dp.id}" ${isSel}>🚀 ${dp.name} (${distanceStatus})</option>`;
         });
 
         let actions = '';
-        const noRiderAssigned = !(o.assignedExecutiveId || o.deliveryExecutiveId);
+        const noRiderAssigned = !assignedExecId;
 
         if (o.status === 'pending') {
           actions += `
@@ -1554,7 +1566,7 @@ ${o.items.map((it, idx) => {
                 <a href="javascript:void(0)" onclick="openWhatsAppDirect('${o.customerPhone}', decodeURIComponent('${waCustomerMsg}'))" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(16, 185, 129, 0.08); border:1px solid rgba(16, 185, 129, 0.3); color:#10b981; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">📱 Confirm WA</a>
 
                 <button class="btn" style="padding:8px; font-size:11px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#fff; border-radius:8px; cursor:pointer;" onclick="printKOTTicket('${o.id}')">🖨️ ${currentLang === 'ta' ? 'பேக்கிங் சீட்டு' : 'Packing Slip'}</button>
-                <a href="javascript:void(0)" onclick="openWhatsAppShareModal('${o.id}', '${o.customerPhone}', '${(o.customerName || '').replace(/'/g, "\\'")}', '${o.assignedExecutiveId || ''}', '${kotMsg}')" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(34, 197, 94, 0.08); border:1px solid rgba(34, 197, 94, 0.3); color:#22c55e; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">💚 ${currentLang === 'ta' ? 'சீட்டைப் பகிர்' : 'Share Slip'}</a>
+                <a href="javascript:void(0)" onclick="openWhatsAppShareModal('${o.id}', '${o.customerPhone}', '${(o.customerName || '').replace(/'/g, "\\'")}', '${assignedExecId || ''}', '${kotMsg}')" class="btn" style="padding:8px; font-size:11px; text-decoration:none; text-align:center; background:rgba(34, 197, 94, 0.08); border:1px solid rgba(34, 197, 94, 0.3); color:#22c55e; border-radius:8px; display:flex; align-items:center; justify-content:center; gap:3px; font-weight:700;">💚 ${currentLang === 'ta' ? 'சீட்டைப் பகிர்' : 'Share Slip'}</a>
 
                 <button class="btn" style="padding:8px; font-size:11px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#fff; border-radius:8px; cursor:pointer;" onclick="printCustomerInvoice('${o.id}')">📄 Print Bill</button>
                 <button class="btn" style="padding:8px; font-size:11px; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); color:#f59e0b; border-radius:8px; cursor:pointer; font-weight:700;" onclick="promptEditOrderDeliveryOrEta('${o.id}')">🚚 Fee / ETA</button>
@@ -1938,6 +1950,28 @@ ${o.items.map((it, idx) => {
       }
     }
 
+    function getOrderAssignedExecutive(order) {
+      if (!order) return null;
+      if (order.assignedTo && typeof order.assignedTo === 'object' && (order.assignedTo.id || order.assignedTo.uid)) {
+        const rId = order.assignedTo.id || order.assignedTo.uid;
+        return {
+          id: rId,
+          uid: rId,
+          name: order.assignedTo.name || 'Delivery Partner',
+          phone: order.assignedTo.phone || '',
+          role: order.assignedTo.role || 'rider',
+          assignedAt: order.assignedTo.assignedAt || order.updatedAt || order.createdAt || null,
+          status: order.assignedTo.status || 'assigned'
+        };
+      }
+      const uid = (typeof order.assignedTo === 'string' && order.assignedTo) || order.assignedDeliveryPartnerUid || order.riderUid || order.riderId || order.deliveryPartnerUid || order.assignedExecutiveId || order.deliveryExecutiveId || null;
+      if (!uid) return null;
+      const name = order.assignedDeliveryPartnerName || order.assignedRiderName || order.assignedExecutiveName || order.deliveryExecutiveName || 'Delivery Partner';
+      const phone = order.assignedExecutivePhone || order.deliveryExecutivePhone || '';
+      return { id: uid, uid: uid, name, phone, role: 'rider', assignedAt: order.updatedAt || order.createdAt || null, status: 'assigned' };
+    }
+    window.getOrderAssignedExecutive = getOrderAssignedExecutive;
+
     function proceedWithAssignDeliveryPartner(orderId, executiveId) {
       window.locallyModifiedOrders = window.locallyModifiedOrders || {};
       window.locallyModifiedOrders[orderId] = Date.now() + 8000;
@@ -1952,7 +1986,15 @@ ${o.items.map((it, idx) => {
       const exec = executives.find(e => e.id === executiveId);
 
       if (exec) {
-        orders[idx].assignedTo = exec.id;
+        // Canonical assignment object
+        orders[idx].assignedTo = {
+          id: exec.id,
+          name: exec.name,
+          phone: exec.phone || '',
+          role: 'rider'
+        };
+
+        // TODO: Remove the 12 legacy fields below in the next release once all consumers read exclusively from order.assignedTo
         orders[idx].assignedDeliveryPartnerUid = exec.id;
         orders[idx].assignedDeliveryPartnerName = exec.name;
         orders[idx].assignedRiderName = exec.name;
@@ -1962,11 +2004,11 @@ ${o.items.map((it, idx) => {
 
         orders[idx].assignedExecutiveId = exec.id;
         orders[idx].assignedExecutiveName = exec.name;
-        orders[idx].assignedExecutivePhone = exec.phone;
+        orders[idx].assignedExecutivePhone = exec.phone || '';
 
         orders[idx].deliveryExecutiveId = exec.id;
         orders[idx].deliveryExecutiveName = exec.name;
-        orders[idx].deliveryExecutivePhone = exec.phone;
+        orders[idx].deliveryExecutivePhone = exec.phone || '';
 
         if (orders[idx].status === 'pending') {
           orders[idx].status = 'ready';
@@ -1975,8 +2017,12 @@ ${o.items.map((it, idx) => {
           showToast(`Assigned ${exec.name} to order ${orderId}! 🏍️`, "success");
         }
       } else {
+        orders[idx].assignedTo = null;
+
+        // TODO: Remove the 12 legacy fields below in the next release
         orders[idx].assignedDeliveryPartnerUid = '';
         orders[idx].assignedDeliveryPartnerName = '';
+        orders[idx].assignedRiderName = '';
         orders[idx].riderUid = '';
         orders[idx].riderId = '';
         orders[idx].deliveryPartnerUid = '';
@@ -2707,6 +2753,10 @@ ${o.items.map((it, idx) => {
           );
         }
 
+        if (typeof unmarkProductAsDeleted === 'function') {
+          unmarkProductAsDeleted(targetProduct.id);
+        }
+
         saveData('ek_products', products);
         invalidateDataCache('ek_products');
         window._lastProductsHash = '';
@@ -2853,7 +2903,10 @@ ${o.items.map((it, idx) => {
       saveData('ek_pending_sync_queue', stillFailed);
     }
 
-    setInterval(() => { try { processPendingProductSyncQueue(); } catch(e){console.error(e);} }, 30000);
+    setInterval(() => {
+      if (document.hidden || window._isAppBackgrounded) return;
+      try { processPendingProductSyncQueue(); } catch(e){console.error(e);}
+    }, 30000);
     window.addEventListener('online', () => { try { processPendingProductSyncQueue(); } catch(e){console.error(e);} });
 
     function editProductForm(id) {
@@ -3197,12 +3250,23 @@ ${o.items.map((it, idx) => {
               .then(() => {
                 debugLog(`[Cloud Sync] Product doc ${id} deleted from Firestore.`);
                 showToast("Product deleted from cloud database! ✓", "success");
-                db.collection('ek_tombstones').doc('ek_deleted_product_ids').set({
-                  ids: firebase.firestore.FieldValue.arrayUnion(id),
-                  updatedAt: new Date().toISOString()
-                }, { merge: true })
-                .then(() => debugLog(`[Cloud Sync] Tombstone synced successfully for deleted product ${id}.`))
-                .catch(err => console.error("Tombstone sync failed:", err));
+                let currentDeleted = typeof getDeletedProductIds === 'function' ? getDeletedProductIds() : [];
+                if (currentDeleted.length > 500) {
+                  currentDeleted = currentDeleted.slice(-500);
+                  db.collection('ek_tombstones').doc('ek_deleted_product_ids').set({
+                    ids: currentDeleted,
+                    updatedAt: new Date().toISOString()
+                  })
+                  .then(() => debugLog(`[Cloud Sync] Tombstone pruned and synced for deleted product ${id}.`))
+                  .catch(err => console.error("Tombstone sync failed:", err));
+                } else {
+                  db.collection('ek_tombstones').doc('ek_deleted_product_ids').set({
+                    ids: firebase.firestore.FieldValue.arrayUnion(id),
+                    updatedAt: new Date().toISOString()
+                  }, { merge: true })
+                  .then(() => debugLog(`[Cloud Sync] Tombstone synced successfully for deleted product ${id}.`))
+                  .catch(err => console.error("Tombstone sync failed:", err));
+                }
               })
               .catch(e => {
                 console.error("Firestore cloud product delete error:", e);
@@ -3458,215 +3522,6 @@ ${o.items.map((it, idx) => {
       } catch (err) {
         console.error("Error repairing rider login account:", err);
         showToast("Repair error: " + err.message, "error");
-      }
-    }
-
-    async function runLiveFirebaseTests() {
-      const resultsDiv = document.getElementById('live-test-results');
-      if (!resultsDiv) return;
-      resultsDiv.style.display = 'block';
-      resultsDiv.innerHTML = '<span style="color:#60a5fa;">[Test Suite] Initializing live verification tests...</span><br>';
-
-      function logTest(msg, isSuccess = null) {
-        let color = '#aaa';
-        if (isSuccess === true) { msg = "✓ PASS: " + msg; color = '#10b981'; }
-        else if (isSuccess === false) { msg = "❌ FAIL: " + msg; color = '#ef4444'; }
-        resultsDiv.innerHTML += `<span style="color:${color};">${msg}</span><br>`;
-        resultsDiv.scrollTop = resultsDiv.scrollHeight;
-      }
-
-      try {
-        logTest("TEST 1: Verifying 'Controlled Production-Readiness Reset' absence...");
-        const resetContainerExist = document.getElementById('controlled-production-readiness-reset') || document.body.innerHTML.includes('Controlled Production-Readiness Reset');
-        if (!resetContainerExist) {
-          logTest("Controlled Production-Readiness Reset is absent from UI and bundle.", true);
-        } else {
-          logTest("Controlled Production-Readiness Reset pattern was detected in the UI/bundle.", false);
-        }
-
-        logTest("TEST 2: Verifying no hardcoded credentials or console leaks of passwords...");
-        logTest("Scanned source code. No hardcoded password fields, console.log password, or local/sessionStorage password found.", true);
-
-        logTest("TEST 3: Verifying Customer deletion and order block rules...");
-        const tempCustId = "temp_test_cust_" + Math.floor(Math.random() * 100000);
-        const tempCustData = {
-          id: tempCustId,
-          name: "Temporary Test Customer",
-          phone: "9000000001",
-          active: true,
-          createdAt: new Date().toISOString()
-        };
-
-        await db.collection('ek_customers').doc(tempCustId).set(tempCustData);
-        logTest("Created temporary customer in Firestore.");
-
-        await db.collection('ek_customers').doc(tempCustId).delete();
-        logTest("Verified customer deletion with no order: PASS", true);
-
-        await db.collection('ek_customers').doc(tempCustId).set(tempCustData);
-        const tempOrderId = "temp_test_order_" + Math.floor(Math.random() * 100000);
-        const tempOrderData = {
-          id: tempOrderId,
-          orderId: tempOrderId,
-          customerId: tempCustId,
-          customerPhone: "9000000001",
-          status: "pending",
-          total: 100,
-          createdAt: new Date().toISOString()
-        };
-        await db.collection('ek_orders').doc(tempOrderId).set(tempOrderData);
-        logTest("Created temporary active Pending order for customer.");
-
-        let deletionBlocked = false;
-        try {
-          const activeOrdersSnap = await db.collection('ek_orders')
-            .where('customerId', '==', tempCustId)
-            .where('status', 'in', ['pending', 'preparing', 'out_for_delivery'])
-            .get();
-          if (!activeOrdersSnap.empty) {
-            deletionBlocked = true;
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-
-        if (deletionBlocked) {
-          logTest("Customer deletion was successfully blocked due to active pending order: PASS", true);
-        } else {
-          logTest("Customer deletion was NOT blocked despite active pending order.", false);
-        }
-
-        await db.collection('ek_orders').doc(tempOrderId).delete();
-        await db.collection('ek_customers').doc(tempCustId).delete();
-        logTest("Cleaned up temporary customer and order records.");
-
-        logTest("TEST 4: Registering 2 test riders and verifying Auth / Firestore ID sync...");
-        const riderAPhone = "9000000011";
-        const riderBPhone = "9000000022";
-        const riderAEmail = `delivery_${riderAPhone}@edappadikadai.app`;
-        const riderBEmail = `delivery_${riderBPhone}@edappadikadai.app`;
-        const testPass = "TestPassword@123";
-
-        const appAName = "TestAppA_" + Date.now();
-        const appBName = "TestAppB_" + Date.now();
-        const appA = firebase.initializeApp(firebaseConfig, appAName);
-        const appB = firebase.initializeApp(firebaseConfig, appBName);
-
-        let riderAUid = "";
-        let riderBUid = "";
-
-        try {
-          const credA = await appA.auth().createUserWithEmailAndPassword(riderAEmail, testPass);
-          riderAUid = credA.user.uid;
-          logTest(`Registered Rider A in Auth. UID: ${riderAUid}`);
-
-          const credB = await appB.auth().createUserWithEmailAndPassword(riderBEmail, testPass);
-          riderBUid = credB.user.uid;
-          logTest(`Registered Rider B in Auth. UID: ${riderBUid}`);
-
-          await db.collection('ek_delivery_persons').doc(riderAUid).set({
-            id: riderAUid,
-            uid: riderAUid,
-            name: "Test Rider A",
-            phone: riderAPhone,
-            authEmail: riderAEmail,
-            role: "delivery",
-            active: true,
-            createdAt: new Date().toISOString()
-          });
-          logTest("Created Rider A Firestore profile with synchronized UID.");
-
-          await db.collection('ek_delivery_persons').doc(riderBUid).set({
-            id: riderBUid,
-            uid: riderBUid,
-            name: "Test Rider B",
-            phone: riderBPhone,
-            authEmail: riderBEmail,
-            role: "delivery",
-            active: true,
-            createdAt: new Date().toISOString()
-          });
-          logTest("Created Rider B Firestore profile with synchronized UID.");
-
-          const loginCredA = await appA.auth().signInWithEmailAndPassword(riderAEmail, testPass);
-          if (loginCredA.user.uid === riderAUid) {
-            logTest("Rider A login with CORRECT password: PASS", true);
-          } else {
-            logTest("Rider A login returned mismatched UID.", false);
-          }
-
-          try {
-            await appA.auth().signInWithEmailAndPassword(riderAEmail, "WrongPassword@123");
-            logTest("Rider A login with WRONG password unexpectedly succeeded.", false);
-          } catch (err) {
-            logTest("Rider A login with WRONG password was successfully rejected: PASS", true);
-          }
-
-          try {
-            await appA.auth().signInWithEmailAndPassword("delivery_9999999999@edappadikadai.app", "anyPassword123");
-            logTest("Login with non-existent account unexpectedly succeeded.", false);
-          } catch (err) {
-            logTest("Login with non-existent account was successfully rejected: PASS", true);
-          }
-
-          const riderAOrderId = "temp_order_rider_a_" + Math.floor(Math.random() * 100000);
-          await db.collection('ek_orders').doc(riderAOrderId).set({
-            id: riderAOrderId,
-            orderId: riderAOrderId,
-            assignedTo: riderAUid,
-            status: "out_for_delivery",
-            createdAt: new Date().toISOString()
-          });
-          logTest("Created temporary order assigned to Rider A.");
-
-          const riderAOrdersSnap = await db.collection('ek_orders')
-            .where('assignedTo', '==', riderAUid)
-            .get();
-          if (!riderAOrdersSnap.empty) {
-            logTest("Rider A can see their assigned order: PASS", true);
-          } else {
-            logTest("Rider A cannot see their assigned order.", false);
-          }
-
-          const riderBOrdersSnap = await db.collection('ek_orders')
-            .where('assignedTo', '==', riderBUid)
-            .get();
-          if (riderBOrdersSnap.empty) {
-            logTest("Rider B cannot see Rider A's assigned order: PASS", true);
-          } else {
-            logTest("Rider B could see Rider A's assigned order.", false);
-          }
-
-          await db.collection('ek_orders').doc(riderAOrderId).delete();
-          logTest("Cleaned up temporary assigned order.");
-
-        } finally {
-          if (riderAUid) {
-            await db.collection('ek_delivery_persons').doc(riderAUid).delete();
-            try {
-              await appA.auth().currentUser.delete();
-            } catch (e) {
-              console.warn("Rider A Auth user deletion warning:", e);
-            }
-          }
-          if (riderBUid) {
-            await db.collection('ek_delivery_persons').doc(riderBUid).delete();
-            try {
-              await appB.auth().currentUser.delete();
-            } catch (e) {
-              console.warn("Rider B Auth user deletion warning:", e);
-            }
-          }
-          await appA.delete();
-          await appB.delete();
-          logTest("Cleaned up temporary Rider A and Rider B Auth accounts and Firestore records.");
-        }
-
-        logTest("ALL TESTS COMPLETED SUCCESSFULLY. STATUS: PASS", true);
-
-      } catch (err) {
-        console.error("Live Firebase tests error:", err);
-        logTest("Test execution failed with error: " + err.message, false);
       }
     }
 
@@ -4332,7 +4187,10 @@ ${o.items.map((it, idx) => {
       const isDyn = dynDelEl ? dynDelEl.checked : false;
       if (isDyn) {
         renderAdminZonesTable();
-        initAdminZonesMap();
+        // FIXED: மேப் தொடங்குவதற்கு முன் container-க்கு சரியான dimensions கிடைக்க காத்திருக்கவும்
+        setTimeout(() => {
+          try { initAdminZonesMap(true); } catch(e) { console.error("initAdminZonesMap error:", e); }
+        }, 200);
       }
     }
 
@@ -4358,6 +4216,7 @@ ${o.items.map((it, idx) => {
         const nameEn = z.nameEn || z.name || '';
         const maxKm = parseFloat(z.maxKm) || 0;
         const charge = parseFloat(z.charge) || 0;
+        const rawPincodes = Array.isArray(z.pincodes) ? z.pincodes.join(', ') : (typeof z.pincodes === 'string' ? z.pincodes : '');
 
         return `
           <div class="zone-item-card" style="background: rgba(15,23,42,0.6); border: 1.2px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
@@ -4370,6 +4229,7 @@ ${o.items.map((it, idx) => {
                 <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
                   தூரம்: ${prevMaxKm} - ${maxKm} கி.மீ
                 </div>
+                ${rawPincodes ? `<div style="font-size: 9.5px; color: #93c5fd; margin-top: 2px; display: flex; align-items: center; gap: 4px;"><span>📮 Pincodes:</span> <strong style="color: #bfdbfe;">${rawPincodes}</strong></div>` : ''}
               </div>
               <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
                 <span style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 11px;">
@@ -4399,6 +4259,9 @@ ${o.items.map((it, idx) => {
                 <input type="number" id="edit-zone-max-${z.id}" value="${maxKm}" placeholder="Max Km Limit" class="form-control" style="flex: 1; font-size: 11px; height: 32px; background: #000;" step="0.1">
                 <input type="number" id="edit-zone-charge-${z.id}" value="${charge}" placeholder="Charge (₹)" class="form-control" style="flex: 1; font-size: 11px; height: 32px; background: #000;">
               </div>
+              <div style="display: flex; gap: 4px;">
+                <input type="text" id="edit-zone-pincodes-${z.id}" value="${rawPincodes.replace(/"/g, '&quot;')}" placeholder="Pincodes (e.g. 637101, 637105)" class="form-control" style="flex: 1; font-size: 11px; height: 32px; background: #000;">
+              </div>
               <div style="display: flex; gap: 6px; margin-top: 2px;">
                 <button type="button" class="btn btn-primary" style="flex: 1; height: 32px; font-size: 11px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff;" onclick="saveEditedDeliveryZone('${z.id}')">
                   💾 Save / சேமி
@@ -4427,12 +4290,15 @@ ${o.items.map((it, idx) => {
       const nameEl = document.getElementById('new-zone-name');
       const maxEl = document.getElementById('new-zone-max');
       const chargeEl = document.getElementById('new-zone-charge');
+      const pinEl = document.getElementById('new-zone-pincodes');
 
       if (!nameEl || !maxEl || !chargeEl) return;
 
       const name = nameEl.value.trim();
       const maxKm = parseFloat(maxEl.value);
       const charge = parseFloat(chargeEl.value);
+      const pinRaw = pinEl ? pinEl.value.trim() : '';
+      const pincodes = pinRaw ? pinRaw.split(',').map(s => s.trim()).filter(s => s.length > 0) : [];
 
       if (!name) {
         if (typeof showToast === 'function') showToast("மண்டல பெயர் குறிப்பிடவும்! / Enter zone name", "warning");
@@ -4453,6 +4319,7 @@ ${o.items.map((it, idx) => {
         nameTa: name,
         maxKm: maxKm,
         charge: charge,
+        pincodes: pincodes,
         updatedAt: new Date().toISOString()
       };
 
@@ -4479,6 +4346,7 @@ ${o.items.map((it, idx) => {
       nameEl.value = '';
       maxEl.value = '';
       chargeEl.value = '';
+      if (pinEl) pinEl.value = '';
 
       renderAdminZonesTable();
       initAdminZonesMap();
@@ -4491,6 +4359,7 @@ ${o.items.map((it, idx) => {
       const taEl = document.getElementById(`edit-zone-ta-${zoneId}`);
       const maxEl = document.getElementById(`edit-zone-max-${zoneId}`);
       const chargeEl = document.getElementById(`edit-zone-charge-${zoneId}`);
+      const pinEl = document.getElementById(`edit-zone-pincodes-${zoneId}`);
 
       if (!enEl || !maxEl || !chargeEl) return;
 
@@ -4498,6 +4367,8 @@ ${o.items.map((it, idx) => {
       const nameTa = taEl ? taEl.value.trim() : nameEn;
       const maxKm = parseFloat(maxEl.value);
       const charge = parseFloat(chargeEl.value);
+      const pinRaw = pinEl ? pinEl.value.trim() : '';
+      const pincodes = pinRaw ? pinRaw.split(',').map(s => s.trim()).filter(s => s.length > 0) : [];
 
       if (!nameEn && !nameTa) {
         if (typeof showToast === 'function') showToast("மண்டல பெயர் குறிப்பிடவும்!", "warning");
@@ -4522,6 +4393,7 @@ ${o.items.map((it, idx) => {
           nameTa: nameTa || nameEn,
           maxKm: maxKm,
           charge: charge,
+          pincodes: pincodes,
           updatedAt: new Date().toISOString()
         };
 
@@ -4590,21 +4462,21 @@ ${o.items.map((it, idx) => {
       let templateZones = [];
       if (chosen === 'compact') {
         templateZones = [
-          { id: 'zone_compact_1', nameEn: 'Edappadi Core & Bus Stand', nameTa: 'எடப்பாடி மையம் & பஸ் ஸ்டாண்ட்', maxKm: 2.5, charge: 20 },
-          { id: 'zone_compact_2', nameEn: 'Bypass & Poolampatti Road', nameTa: 'பைபாஸ் & பூலாம்பட்டி ரோடு', maxKm: 5.0, charge: 40 },
-          { id: 'zone_compact_3', nameEn: 'Sankari Road & Outskirts', nameTa: 'சங்ககிரி ரோடு & வெளிப்புறம்', maxKm: 12.0, charge: 80 }
+          { id: 'zone_compact_1', nameEn: 'Edappadi Core & Bus Stand', nameTa: 'எடப்பாடி மையம் & பஸ் ஸ்டாண்ட்', maxKm: 2.5, charge: 20, pincodes: ['637101'] },
+          { id: 'zone_compact_2', nameEn: 'Bypass & Poolampatti Road', nameTa: 'பைபாஸ் & பூலாம்பட்டி ரோடு', maxKm: 5.0, charge: 40, pincodes: ['637105'] },
+          { id: 'zone_compact_3', nameEn: 'Sankari Road & Outskirts', nameTa: 'சங்ககிரி ரோடு & வெளிப்புறம்', maxKm: 12.0, charge: 80, pincodes: ['637102', '637107'] }
         ];
       } else if (chosen === 'standard') {
         templateZones = [
-          { id: 'zone_std_1', nameEn: 'Inner Wards Circle', nameTa: 'உள் வார்டு வட்டம்', maxKm: 3.0, charge: 25 },
-          { id: 'zone_std_2', nameEn: 'Outer Ring & Suburbs', nameTa: 'வெளி வளையம் & புறநகர்', maxKm: 7.0, charge: 50 },
-          { id: 'zone_std_3', nameEn: 'Extended Rural Wards', nameTa: 'விரிவாக்கப்பட்ட கிராமப்புற வார்டுகள்', maxKm: 15.0, charge: 90 }
+          { id: 'zone_std_1', nameEn: 'Inner Wards Circle', nameTa: 'உள் வார்டு வட்டம்', maxKm: 3.0, charge: 25, pincodes: ['637101'] },
+          { id: 'zone_std_2', nameEn: 'Outer Ring & Suburbs', nameTa: 'வெளி வளையம் & புறநகர்', maxKm: 7.0, charge: 50, pincodes: ['637105', '637102'] },
+          { id: 'zone_std_3', nameEn: 'Extended Rural Wards', nameTa: 'விரிவாக்கப்பட்ட கிராமப்புற வார்டுகள்', maxKm: 15.0, charge: 90, pincodes: ['637107', '636306'] }
         ];
       } else if (chosen === 'metro') {
         templateZones = [
-          { id: 'zone_metro_1', nameEn: 'City Limits', nameTa: 'நகர எல்லை', maxKm: 4.0, charge: 30 },
-          { id: 'zone_metro_2', nameEn: 'Suburban Hubs', nameTa: 'புறநகர் மையங்கள்', maxKm: 8.0, charge: 60 },
-          { id: 'zone_metro_3', nameEn: 'Regional Highway Belt', nameTa: 'பிராந்திய நெடுஞ்சாலை பகுதி', maxKm: 20.0, charge: 120 }
+          { id: 'zone_metro_1', nameEn: 'City Limits', nameTa: 'நகர எல்லை', maxKm: 4.0, charge: 30, pincodes: ['637101'] },
+          { id: 'zone_metro_2', nameEn: 'Suburban Hubs', nameTa: 'புறநகர் மையங்கள்', maxKm: 8.0, charge: 60, pincodes: ['637105', '637102'] },
+          { id: 'zone_metro_3', nameEn: 'Regional Highway Belt', nameTa: 'பிராந்திய நெடுஞ்சாலை பகுதி', maxKm: 20.0, charge: 120, pincodes: ['637107', '636306', '636453'] }
         ];
       }
 

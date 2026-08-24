@@ -28,6 +28,25 @@ service cloud.firestore {
         );
     }
 
+    function isCustomerOrderUpdate(currentData, nextData) {
+      return currentData.id == nextData.id &&
+             (currentData.customerId == request.auth.uid || currentData.userId == request.auth.uid) &&
+             currentData.userId == nextData.userId &&
+             currentData.customerId == nextData.customerId &&
+             currentData.totalAmount == nextData.totalAmount &&
+             currentData.subtotalAmount == nextData.subtotalAmount &&
+             currentData.items == nextData.items &&
+             currentData.get('deliveryFee', 0) == nextData.get('deliveryFee', 0) &&
+             currentData.get('discount', 0) == nextData.get('discount', 0) &&
+             currentData.get('assignedTo', null) == nextData.get('assignedTo', null) &&
+             currentData.get('riderUid', null) == nextData.get('riderUid', null) &&
+             currentData.get('paymentStatus', '') == nextData.get('paymentStatus', '') &&
+             (
+               currentData.status == nextData.status ||
+               (currentData.status == 'pending' && (nextData.status == 'cancelled' || nextData.status == 'CANCELLED'))
+             );
+    }
+
     function isRiderUpdate(currentData, nextData) {
       return currentData.id == nextData.id &&
              (currentData.customerId == nextData.customerId || currentData.userId == nextData.userId) &&
@@ -39,6 +58,7 @@ service cloud.firestore {
              currentData.items == nextData.items &&
              currentData.createdAt == nextData.createdAt &&
              (
+               (nextData.get('assignedTo', {}) != null && nextData.get('assignedTo', {}).get('id', '') == request.auth.uid) ||
                nextData.get('riderUid', '') == request.auth.uid || 
                nextData.get('assignedExecutiveId', '') == request.auth.uid || 
                nextData.get('deliveryExecutiveId', '') == request.auth.uid ||
@@ -47,6 +67,7 @@ service cloud.firestore {
                nextData.get('deliveryPartnerUid', '') == request.auth.uid
              ) &&
              (
+               (currentData.get('assignedTo', {}) != null && currentData.get('assignedTo', {}).get('id', '') == request.auth.uid) ||
                currentData.get('riderUid', '') == request.auth.uid || 
                currentData.get('assignedExecutiveId', '') == request.auth.uid || 
                currentData.get('deliveryExecutiveId', '') == request.auth.uid ||
@@ -63,7 +84,7 @@ service cloud.firestore {
              );
     }
 
-    // Orders: customers can create and read/update own, admin can do everything, riders can read and operational update
+    // Orders: customers can create and read/update own (safe fields only), admin can do everything, riders can read and operational update
     match /ek_orders/{orderId} {
       allow get: if isAdmin() || isRider() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.customerId == request.auth.uid || resource.data.userId == 'guest_user'));
       allow list: if isAdmin() || isRider() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.customerId == request.auth.uid));
@@ -74,7 +95,7 @@ service cloud.firestore {
         isAdmin()
       );
       allow update: if isAdmin() || 
-                    (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.customerId == request.auth.uid)) || 
+                    (isAuthenticated() && isCustomerOrderUpdate(resource.data, request.resource.data)) || 
                     (isRider() && isRiderUpdate(resource.data, request.resource.data));
       allow delete: if isAdmin();
     }
@@ -120,7 +141,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Coupons: anyone can read, only admin writes
+    // Coupons: anyone can read, only Cloud Function (Admin SDK) & Admins write. Regular clients cannot write to ek_coupons.
     match /ek_coupons/{couponId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -153,15 +174,13 @@ service cloud.firestore {
       );
     }
 
-    // FCM queue: authenticated write only, admin can manage
+    // FCM queue: only admin can manage/dispatch directly from client (Cloud Functions with Admin SDK handle server dispatch)
     match /ek_fcm_queue/{docId} {
-      allow create: if isAuthenticated();
-      allow read, update, delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     match /ek_topic_broadcast_requests/{docId} {
-      allow create: if isAuthenticated();
-      allow read, update, delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     match /ek_push_notifications/{docId} {
@@ -169,26 +188,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /ek_broadcast_requests/{docId} {
-      allow create: if isAuthenticated();
-      allow read, write: if isAdmin();
-    }
-
-    match /ek_customer_broadcasts/{docId} {
-      allow create: if isAuthenticated();
-      allow read, write: if isAdmin();
-    }
-
-    // Admin accounts: only self or admin read, only admin write, but allow authenticated users to read active approved admins
+    // Admin accounts: admin can read all, user can get their own doc, prevent general listing by customers
     match /ek_admin_accounts/{docId} {
-      allow read: if isAuthenticated();
+      allow get: if isAdmin() || (isAuthenticated() && request.auth.uid == docId);
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
 
     // Delivery persons: admin has full writes, rider can update operational status/location fields, but allow authenticated users to read active approved riders
     match /ek_delivery_persons/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == docId);
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == docId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['latitude','longitude','lastSeen','availabilityStatus','isOnline','currentLocation','updatedAt']));
     }
 
     // Email OTP Config settings: ADMIN-ONLY read/write (contains Gmail SMTP credentials)

@@ -1128,7 +1128,8 @@
           if (celebrationContainer) {
             celebrationContainer.style.display = 'block';
 
-            const rName = latestTrackable.assignedExecutiveName || latestTrackable.deliveryExecutiveName || "";
+            const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(latestTrackable) : null;
+            const rName = (exec && exec.name) || latestTrackable.assignedExecutiveName || latestTrackable.deliveryExecutiveName || "";
             const currentRating = latestTrackable.riderRating || 0;
             const currentFeedback = latestTrackable.riderFeedback || "";
 
@@ -1275,16 +1276,17 @@
           }
 
           if (riderContainer) {
-            const riderId = latestTrackable.assignedExecutiveId || latestTrackable.deliveryExecutiveId;
+            const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(latestTrackable) : null;
+            const riderId = (exec && exec.id) || latestTrackable.assignedExecutiveId || latestTrackable.deliveryExecutiveId;
             if (riderId && ['ready', 'delivering', 'delivered'].includes(latestTrackable.status)) {
               riderContainer.style.display = 'block';
 
               const rawRiders = getData('ek_delivery_persons', []) || [];
               const riderObj = rawRiders.find(r => r.uid === riderId || r.id === riderId);
 
-              const rName = riderObj ? riderObj.name : (latestTrackable.assignedExecutiveName || latestTrackable.deliveryExecutiveName || "Delivery Partner");
+              const rName = riderObj ? riderObj.name : ((exec && exec.name) || latestTrackable.assignedExecutiveName || latestTrackable.deliveryExecutiveName || "Delivery Partner");
               const vehicleNo = (riderObj && riderObj.vehicleNo) ? riderObj.vehicleNo : "";
-              const rPhone = riderObj ? riderObj.phone : (latestTrackable.assignedExecutivePhone || "9042681532");
+              const rPhone = riderObj ? riderObj.phone : ((exec && exec.phone) || latestTrackable.assignedExecutivePhone || "9042681532");
               const cleanPhone = rPhone.replace(/\D/g, '').slice(-10);
 
               const photoUrl = (riderObj && riderObj.photoUrl) ? riderObj.photoUrl : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
@@ -1781,10 +1783,12 @@
     function triggerSuccessCheckmarkReplay() {
       const container = document.getElementById('success-icon-container');
       if (container) {
+        container.classList.remove('order-success-icon-wrap');
         const originalHtml = container.innerHTML;
         container.innerHTML = '';
         void container.offsetWidth;
         container.innerHTML = originalHtml;
+        container.classList.add('order-success-icon-wrap');
       }
     }
 
@@ -2821,7 +2825,7 @@
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 13px;">
               <span style="color: var(--text-muted);">Rider Executive:</span>
-              <strong style="color: #fff;">${order.assignedExecutiveName || "Delivery Partner"} 🏍️</strong>
+              <strong style="color: #fff;">${(typeof getOrderAssignedExecutive === 'function' && getOrderAssignedExecutive(order) ? getOrderAssignedExecutive(order).name : null) || order.assignedExecutiveName || "Delivery Partner"} 🏍️</strong>
             </div>
           </div>
 
@@ -2902,7 +2906,8 @@
             .catch(err => console.error("Could not sync rating to Firestore:", err));
         }
 
-        const assignedRiderId = orders[oIdx].assignedExecutiveId;
+        const execObj = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(orders[oIdx]) : null;
+        const assignedRiderId = (execObj && execObj.id) || orders[oIdx].assignedExecutiveId;
         if (assignedRiderId) {
           const executives = getData('ek_delivery_persons', []);
           const eIdx = executives.findIndex(e => e.id === assignedRiderId);
@@ -3643,23 +3648,25 @@ function saveProfileChanges() {
       const contentTa = document.getElementById('privacy-content-ta');
 
       if (lang === 'en') {
-        contentEn.style.display = 'block';
-        contentTa.style.display = 'none';
-        tabEn.style.background = '#e63946';
-        tabEn.style.color = '#fff';
-        tabTa.style.background = 'transparent';
-        tabTa.style.color = '#9ca3af';
+        if (contentEn) contentEn.style.display = 'block';
+        if (contentTa) contentTa.style.display = 'none';
+        if (tabEn) { tabEn.style.background = '#f59e0b'; tabEn.style.color = '#000'; }
+        if (tabTa) { tabTa.style.background = 'transparent'; tabTa.style.color = '#9ca3af'; }
       } else {
-        contentEn.style.display = 'none';
-        contentTa.style.display = 'block';
-        tabEn.style.background = 'transparent';
-        tabEn.style.color = '#9ca3af';
-        tabTa.style.background = '#e63946';
-        tabTa.style.color = '#fff';
+        if (contentEn) contentEn.style.display = 'none';
+        if (contentTa) contentTa.style.display = 'block';
+        if (tabEn) { tabEn.style.background = 'transparent'; tabEn.style.color = '#9ca3af'; }
+        if (tabTa) { tabTa.style.background = '#f59e0b'; tabTa.style.color = '#000'; }
       }
 
-      document.getElementById('privacy-scroll-container').scrollTop = 0;
+      const scrollBox = document.getElementById('privacy-scroll-container');
+      if (scrollBox) scrollBox.scrollTop = 0;
     }
+
+    window.showPrivacyPolicy = showPrivacyPolicy;
+    window.closePrivacyPolicyModal = closePrivacyPolicyModal;
+    window.closePrivacyPolicyDetail = closePrivacyPolicyDetail;
+    window.setPrivacyLang = setPrivacyLang;
 
     function closePrintPreviewModal(event) {
       if (event.target === document.getElementById('print-preview-modal')) {

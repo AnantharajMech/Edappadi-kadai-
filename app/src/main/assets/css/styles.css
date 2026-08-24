@@ -978,6 +978,8 @@
       background-size: 100% 200%;
       z-index: 2;
       border-radius: 99px;
+      transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      will-change: height;
     }
 
     .tracker-timeline-step {
@@ -988,6 +990,8 @@
       align-items: center;
       opacity: 0.45;
       border: 1px solid transparent;
+      transition: opacity 0.25s ease, background-color 0.25s ease, border-color 0.25s ease, transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+      will-change: transform, opacity;
     }
     .tracker-timeline-step.active {
       opacity: 1;
@@ -999,6 +1003,7 @@
       margin-right: -12px;
       box-shadow: inset 0 0 12px rgba(245, 158, 11, 0.05), 0 4px 15px rgba(0, 0, 0, 0.2);
       border-color: rgba(245, 158, 11, 0.15);
+      transform: translateX(2px);
     }
     .tracker-timeline-step.completed {
       opacity: 0.95;
@@ -1017,6 +1022,12 @@
       color: var(--text-muted);
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
       position: relative;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease !important;
+      will-change: transform;
+    }
+
+    .tracker-timeline-step.active .tracker-step-circle {
+      transform: scale(1.06);
     }
 
     /* Double glowing ripple rings for active progress marker */
@@ -1688,19 +1699,104 @@
       }
     }
 
-    /* CART USER EXPERIENCE ADDITIONS */
+    /* CART USER EXPERIENCE ADDITIONS - SUBTLE BUMP & PULSE */
+    @keyframes navCartBump {
+      0% { transform: scale(1); }
+      35% { transform: scale(1.22) translateY(-2px); }
+      70% { transform: scale(0.95) translateY(0); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes badgeSpring {
+      0% { transform: scale(0.5); opacity: 0.6; }
+      60% { transform: scale(1.28); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    @keyframes btnScaleBounce {
+      0% { transform: scale(1); }
+      35% { transform: scale(0.92); }
+      70% { transform: scale(1.06); }
+      100% { transform: scale(1); }
+    }
+
     .cart-pulse-active {
+      animation: navCartBump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+      will-change: transform;
     }
 
     .badge-spring-active {
+      animation: badgeSpring 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+      will-change: transform, opacity;
+    }
+
+    .btn-bounce-active {
+      animation: btnScaleBounce 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+      will-change: transform;
     }
 
     /* CART ITEM ADDITION ENTRANCE ANIMATION */
     .cart-item-entrance {
+      animation: fadeInSlide 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
     }
     .suggestion-row:hover {
       background: rgba(255, 255, 255, 0.06);
       border-color: rgba(245, 158, 11, 0.15) !important;
+    }
+
+    /* ORDER SUCCESS MODAL ANIMATIONS */
+    @keyframes successIconPop {
+      0% {
+        transform: scale(0.5);
+        opacity: 0;
+      }
+      65% {
+        transform: scale(1.12);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes successCircleDraw {
+      0% {
+        stroke-dashoffset: 150;
+        opacity: 0;
+      }
+      100% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+    }
+
+    @keyframes successCheckDraw {
+      0% {
+        stroke-dashoffset: 40;
+        opacity: 0;
+      }
+      100% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+    }
+
+    .order-success-icon-wrap {
+      animation: successIconPop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      will-change: transform, opacity;
+    }
+
+    .success-checkmark-svg .success-circle {
+      stroke-dasharray: 150;
+      stroke-dashoffset: 0;
+      animation: successCircleDraw 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    .success-checkmark-svg .success-check {
+      stroke-dasharray: 40;
+      stroke-dashoffset: 0;
+      animation: successCheckDraw 0.24s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
     }
 
     /* LAZY-LOADING WITH BLUR-UP SUPPORT */
@@ -1740,7 +1836,8 @@
       z-index: 1;
       filter: blur(8px);
       transform: scale(1.04); /* Hide blurred outer edges */
-      transition: opacity 0.4s ease-out;
+      transition: opacity 0.28s ease-out;
+      will-change: opacity;
     }
 
     .lazy-image-main {
@@ -1752,7 +1849,8 @@
       object-fit: cover;
       opacity: 0;
       z-index: 2;
-      transition: opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+      transition: opacity 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+      will-change: opacity;
     }
 
     .lazy-image-main.loaded {
@@ -1767,6 +1865,17 @@
 
     /* PREMIUM 3D GLASSMORPHIC CAROUSEL & GLOBAL ADDITIONS */
     .carousel-slide {
+      transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      will-change: transform;
+    }
+    .carousel-slide img {
+      opacity: 0;
+      transition: opacity 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+      will-change: opacity;
+    }
+    .carousel-slide img.loaded,
+    .carousel-slide img[complete] {
+      opacity: 1;
     }
 
     /* Floating premium 3D header bar glass */
@@ -2066,6 +2175,22 @@
         transform: translateY(0);
       }
     }
+
+    @keyframes productGridEntrance {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .product-grid-card-entrance {
+      animation: productGridEntrance 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      will-change: transform, opacity;
+    }
     .category-item-card {
       display: flex;
       flex-direction: column;
@@ -2247,18 +2372,23 @@
       align-items: center !important;
       gap: 6px !important;
       cursor: pointer !important;
-      transition: all 0.15s ease !important;
+      transition: background-color 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s cubic-bezier(0.4, 0, 0.2, 1), color 0.22s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.22s ease !important;
       white-space: nowrap !important;
       box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
       margin: 0 !important;
       min-height: 28px !important;
       box-sizing: border-box !important;
+      will-change: transform, background-color;
+    }
+    #screen-home .filter-pills .pill:active {
+      transform: scale(0.95) !important;
     }
     #screen-home .filter-pills .pill.active {
       background: var(--category-accent-color) !important;
       color: #ffffff !important;
       border-color: var(--category-accent-color) !important;
       box-shadow: 0 4px 10px rgba(0,0,0,0.12) !important;
+      transform: scale(1.02) !important;
     }
     #screen-home .filter-pills .pill .pill-text {
       max-width: 120px !important;
@@ -2752,5 +2882,102 @@
       image-rendering: -webkit-optimize-contrast;
     }
 
+    /* Accessibility: Respect OS prefers-reduced-motion setting */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+      .product-grid-card-entrance,
+      .cart-pulse-active,
+      .badge-spring-active,
+      .btn-bounce-active,
+      .order-success-icon-wrap,
+      .success-checkmark-svg .success-circle,
+      .success-checkmark-svg .success-check,
+      .tracker-timeline-progress,
+      .tracker-timeline-step,
+      .tracker-step-circle {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+        stroke-dashoffset: 0 !important;
+      }
+    }
 
-  
+/* ==========================================================================
+   PREMIUM UI ANIMATIONS & TRANSITIONS
+   ========================================================================== */
+
+/* 1. Screen transition — smooth slide+fade */
+.screen.active.screen-transitioning {
+  animation: screenEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+@keyframes screenEnter {
+  from { opacity: 0; transform: translateX(12px) translateZ(0); }
+  to { opacity: 1; transform: translateX(0) translateZ(0); }
+}
+
+/* 2. Modal open/close animation */
+.modal-content {
+  animation: modalEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+@keyframes modalEnter {
+  from { opacity: 0; transform: scale(0.92) translateY(8px) translateZ(0); }
+  to { opacity: 1; transform: scale(1) translateY(0) translateZ(0); }
+}
+
+/* 3. Cart item slide-in */
+@keyframes cartItemSlideIn {
+  from { opacity: 0; transform: translateX(30px) translateZ(0); }
+  to { opacity: 1; transform: translateX(0) translateZ(0); }
+}
+.cart-item {
+  animation: cartItemSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 4. Quantity stepper number flip */
+@keyframes qtyFlip {
+  0% { transform: scale(1) translateZ(0); }
+  50% { transform: scale(1.25) translateZ(0); }
+  100% { transform: scale(1) translateZ(0); }
+}
+.qty-animate {
+  animation: qtyFlip 0.2s ease-out;
+}
+
+/* 5. Category pill indicator slide */
+.category-pill.active {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* 6. Order status timeline progress */
+@keyframes timelineProgress {
+  from { width: 0%; }
+  to { width: var(--progress-width, 100%); }
+}
+.order-timeline-bar {
+  animation: timelineProgress 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* === BATTERY SAVING: Pause all infinite animations when app is backgrounded === */
+body.app-backgrounded * {
+  animation-play-state: paused !important;
+}
+
+body.app-backgrounded .shimmer,
+body.app-backgrounded .spinner,
+body.app-backgrounded .loading-overlay {
+  animation-play-state: paused !important;
+  opacity: 0.3 !important;
+}
+
+/* Resume animations when app returns to foreground */
+body:not(.app-backgrounded) .shimmer,
+body:not(.app-backgrounded) .spinner {
+  animation-play-state: running !important;
+}
