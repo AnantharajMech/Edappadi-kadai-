@@ -1130,6 +1130,89 @@ class MainActivity : ComponentActivity() {
         }
 
         @JavascriptInterface
+        fun nativeReverseGeocode(lat: Double, lng: Double): String {
+            return try {
+                if (!android.location.Geocoder.isPresent()) {
+                    return ""
+                }
+                val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocation(lat, lng, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val addr = addresses[0]
+                    val sb = StringBuilder()
+                    for (i in 0..addr.maxAddressLineIndex) {
+                        if (i > 0) sb.append(", ")
+                        sb.append(addr.getAddressLine(i))
+                    }
+                    val fullAddress = sb.toString().ifEmpty {
+                        listOfNotNull(addr.featureName, addr.thoroughfare, addr.subLocality, addr.locality, addr.adminArea, addr.postalCode)
+                            .filter { it.isNotBlank() }
+                            .joinToString(", ")
+                    }
+                    val json = org.json.JSONObject().apply {
+                        put("displayName", fullAddress)
+                        put("street", addr.thoroughfare ?: "")
+                        put("area", addr.subLocality ?: addr.locality ?: "")
+                        put("city", addr.locality ?: addr.subAdminArea ?: "")
+                        put("postalCode", addr.postalCode ?: "")
+                        put("lat", lat)
+                        put("lng", lng)
+                        put("latitude", lat)
+                        put("longitude", lng)
+                    }
+                    json.toString()
+                } else {
+                    ""
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("GEOCODER", "Native reverse geocoding failed: ${e.message}")
+                ""
+            }
+        }
+
+        @JavascriptInterface
+        fun nativeForwardGeocode(addressQuery: String): String {
+            return try {
+                if (!android.location.Geocoder.isPresent() || addressQuery.isBlank()) {
+                    return ""
+                }
+                val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocationName(addressQuery, 5)
+                if (!addresses.isNullOrEmpty()) {
+                    val arr = org.json.JSONArray()
+                    for (addr in addresses) {
+                        val sb = StringBuilder()
+                        for (i in 0..addr.maxAddressLineIndex) {
+                            if (i > 0) sb.append(", ")
+                            sb.append(addr.getAddressLine(i))
+                        }
+                        val fullAddress = sb.toString().ifEmpty {
+                            listOfNotNull(addr.featureName, addr.thoroughfare, addr.subLocality, addr.locality, addr.adminArea, addr.postalCode)
+                                .filter { it.isNotBlank() }
+                                .joinToString(", ")
+                        }
+                        val item = org.json.JSONObject().apply {
+                            put("displayName", fullAddress)
+                            put("lat", addr.latitude)
+                            put("lng", addr.longitude)
+                            put("latitude", addr.latitude)
+                            put("longitude", addr.longitude)
+                        }
+                        arr.put(item)
+                    }
+                    arr.toString()
+                } else {
+                    ""
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("GEOCODER", "Native forward geocoding failed: ${e.message}")
+                ""
+            }
+        }
+
+        @JavascriptInterface
         fun printHtml(htmlContent: String, jobName: String) {
             (context as? Activity)?.runOnUiThread {
                 try {

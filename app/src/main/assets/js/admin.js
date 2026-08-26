@@ -446,7 +446,7 @@
         const elBdTxt = document.getElementById('admin-broadcast-text');
         if (elBdTxt) elBdTxt.value = settings.announcement || '';
 
-        try { renderAdminBannerSettings(); } catch(e) {}
+        try { if (typeof renderAdminBannerSettings === "function") renderAdminBannerSettings(); } catch(e) {}
 
         if (typeof loadAdminSmsSettingsUI === 'function') {
           try { loadAdminSmsSettingsUI(settings); } catch(e) {}
@@ -1317,70 +1317,83 @@
           const deliveryFeeVal = o.deliveryFee !== undefined ? o.deliveryFee : (o.deliveryCharge !== undefined ? o.deliveryCharge : 0);
 
           waCustomerMsg = encodeURIComponent(
-`🥩 *எடப்பாடி கடை / EDAPPADI KADAI* 🥩
-━━━━━━━━━━━━━━━━━━━━━━━━
-வணக்கம் *${o.customerName}*! உங்களுடைய ஆர்டர் வெற்றிகரமாக உறுதி செய்யப்பட்டுள்ளது.
+`🟥 *EDAPPADI KADAI* 🟥
+━━━━━━━━━━━━━━━━━━━━━━━━━
+┏━━━━━━━━━━━━━━━━━━━━━┓
+┃  *DIGITAL TAX INVOICE*  ┃
+┗━━━━━━━━━━━━━━━━━━━━━┛
 
-📋 *ஆர்டர் எண் (Order ID):* ${o.id}
-⏱️ *டெலிவரி நேரம்:* ${o.deliveryTimeSlot}
-📍 *விநியோக முகவரி (Address):* ${o.deliveryAddress}
-${o.orderSource === 'AI_ASSISTANT' ? '🤖 இந்த ஆர்டர் Edappadi Kadai AI Assistant மூலம் Professional-ஆ தயார் செய்யப்பட்டது.\n' : ''}
-🛒 *ஆர்டர் செய்த பொருட்கள் (Items):*
-━━━━━━━━━━━━━━━━━━━━━━━━
+👤 *To:* ${o.customerName}
+📋 *Order ID:* ${o.id}
+⏱️ *Delivery Slot:* ${o.deliveryTimeSlot}
+📍 *Address:* ${o.deliveryAddress}
+${o.orderSource === 'AI_ASSISTANT' ? '🤖 _Order placed via Edappadi Kadai AI Assistant_\n' : ''}
+┌─────────────────────────┐
+│  *ITEMS ORDERED*        │
+└─────────────────────────┘
 ${o.items.map((it, idx) => {
   const prep = getLocalizedPrepareText(it.cutStyle, it.category);
-  const prepStr = prep ? `\n   ✂️ *தயாரிப்பு முறை:* ${prep}` : '';
-  const itemNote = it.specialNote ? `\n   📝 *குறிப்பு:* ${it.specialNote}` : '';
+  const prepStr = prep ? `\n   ✂️ _${prep}_` : '';
+  const itemNote = it.specialNote ? `\n   📝 _${it.specialNote}_` : '';
   const itemPriceVal = it.totalPrice || it.itemTotalPrice || ((it.pricePerUnit || it.price || 0) * (it.weightGrams ? (isUnitWeight(it.sellingUnit || it.unit || 'kg') ? it.weightGrams/1000 : it.weightGrams) : 1));
-  return `🔹 ${idx + 1}. *${it.tamilName}* (${it.englishName})
-   ⚡ *அளவு:* ${getFormattedItemQty(it, currentLang)}${prepStr}${itemNote}
-   💵 *விலை:* ₹${itemPriceVal}`;
-}).join('\n─────\n')}
-━━━━━━━━━━━━━━━━━━━━━━━━
+  return `┌─ *${idx + 1}. ${it.tamilName}* ───────┐\n│ 📦 ${it.englishName}\n│ ⚖️ ${getFormattedItemQty(it, currentLang)}${prepStr}${itemNote}\n│ 💰 ₹${itemPriceVal}\n└─────────────────────┘`;
+}).join('\n')}
 
-💰 பொருட்கள் தொகை: ₹${subtotalVal}
-🚚 டெலிவரி கட்டணம்: ₹${deliveryFeeVal}
-━━━━━━━━━━━━━━━━━━━━━━━━
-💵 *மொத்த தொகை: ₹${o.totalAmount}*
+╔═════════════════════════╗
+║ 💰 Subtotal:     ₹${subtotalVal}
+║ 🚚 Delivery:     ₹${deliveryFeeVal}
+╠═════════════════════════╣
+║ 💵 *TOTAL: ₹${o.totalAmount}*
+╚═════════════════════════╝
 
-நன்றி! உங்களது ஆர்டர் விரைவில் உங்களது இல்லம் தேடி வரும்! 🛵✨
-━━━━━━━━━━━━━━━━━━━━━━━━`
+🛵 *Your order is on the way!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Thank you for choosing us! 🙏_
+*Edappadi Kadai — Fresh. Fast. Local.* ✨`
           );
 
           waReadyMsg = encodeURIComponent(
-`🛵 *எடப்பாடி கடை / EDAPPADI KADAI* 🛵
-━━━━━━━━━━━━━━━━━━━━━━━━
-அன்பான *${o.customerName}* அவர்களுக்கு, உங்களுடைய ஆர்டர் (${o.id}) தற்போது டெலிவரிக்கு தயாராகிவிட்டது!
+`🟧 *EDAPPADI KADAI* 🟧
+━━━━━━━━━━━━━━━━━━━━━━━━━
+┏━━━━━━━━━━━━━━━━━━━━━┓
+┃  *ORDER READY FOR DELIVERY*  ┃
+┗━━━━━━━━━━━━━━━━━━━━━┛
 
-🚴 *விநியோக நபர் (Rider):* ${riderNameText}
-💵 *தயார் செய்ய வேண்டிய தொகை:* ₹${o.totalAmount}
-📍 *டெலிவரி முகவரி:* ${o.deliveryAddress}
+👋 Hi *${o.customerName}*!
+Your order is now ready and out for delivery!
 
-எங்களது டெலிவரி பார்ட்னர் இன்னும் சில நிமிடங்களில் உங்களை வந்தடைவார். தயவுசெய்து மொபைலை ஆன் செய்து வைத்திருக்கவும்! 📱✨
-━━━━━━━━━━━━━━━━━━━━━━━━`
+📋 *Order ID:* ${o.id}
+🚴 *Delivery Rider:* ${riderNameText}
+💵 *Amount to Pay:* ₹${o.totalAmount}
+📍 *Delivery Address:* ${o.deliveryAddress}
+
+┌─────────────────────────┐
+│  📱 Please keep your phone   │
+│  switched on. Our rider    │
+│  will arrive shortly! 🛵💨  │
+└─────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Edappadi Kadai* — Fresh. Fast. Local. ✨`
           );
 
           kotMsg = encodeURIComponent(
-`📦 *புதிய பேக்கிங் சீட்டு (NEW PACKING SLIP)* 📦
-━━━━━━━━━━━━━━━━━━━━━━━━
-📋 *ஆர்டர் எண் (ID):* ${o.id}
-👤 *வாடிக்கையாளர்:* ${o.customerName}
-📞 *தொடர்பு எண்:* ${o.customerPhone}
-⏱️ *டெலிவரி ஸ்லாட்:* ${o.deliveryTimeSlot}
-${o.orderSource === 'AI_ASSISTANT' ? '🤖 இந்த ஆர்டர் Edappadi Kadai AI Assistant மூலம் Professional-ஆ தயார் செய்யப்பட்டது.\n' : ''}
-📦 *பேக் செய்ய வேண்டிய பொருட்கள் (Items):*
-━━━━━━━━━━━━━━━━━━━━━━━━
+`📦 *பேக்கிங் சீட்டு / PACKING SLIP* 📦
+━━━━━━━━━━━━━━━━━━━━━━━
+📋 *ஆர்டர் எண்:* ${o.id}
+━━━━━━━━━━━━━━━━━━━━━━━
+
 ${o.items.map((it, idx) => {
   const prep = getLocalizedPrepareText(it.cutStyle, it.category);
-  const prepStr = prep ? `\n   ✂️ *தயாரிப்பு முறை:* ${prep}` : '';
+  const prepStr = prep ? `\n   ✂️ *தயாரிப்பு:* ${prep}` : '';
   const itemNote = it.specialNote ? `\n   📝 *குறிப்பு:* ${it.specialNote}` : '';
   return `🔹 ${idx + 1}. *${it.tamilName}* (${it.englishName})
    ⚡ *அளவு:* ${getFormattedItemQty(it, currentLang)}${prepStr}${itemNote}`;
 }).join('\n─────\n')}
-━━━━━━━━━━━━━━━━━━━━━━━━
 
-உடனே பேக் செய்து தயாராக வைக்கவும்! 📦🚀
-━━━━━━━━━━━━━━━━━━━━━━━━`
+━━━━━━━━━━━━━━━━━━━━━━━
+📦 மொத்த பொருட்கள்: ${o.items.length}
+━━━━━━━━━━━━━━━━━━━━━━━`
           );
         }
 
@@ -3423,13 +3436,21 @@ ${o.items.map((it, idx) => {
       const rateInput = document.getElementById('add-exec-salary-rate');
 
       if (type === 'per_order') {
-        rateLabel.innerHTML = currentLang === 'ta' ? 'கமிஷன் தொகை (₹)' : 'Commission per Delivery (₹)';
+        rateLabel.innerHTML = currentLang === 'ta' ? 'ஒரு ஆர்டருக்கான தொகை (₹)' : 'Amount per Order (₹)';
         rateInput.placeholder = 'e.g. 35';
-        helpText.innerHTML = 'Rider is paid directly for <strong>every completed delivery order</strong> ticket.';
+        helpText.innerHTML = 'Rider is paid directly for <strong>every completed delivery order</strong>.';
       } else if (type === 'fixed') {
         rateLabel.innerHTML = currentLang === 'ta' ? 'மாதச் சம்பளம் (₹)' : 'Fixed Monthly Salary (₹)';
         rateInput.placeholder = 'e.g. 15000';
         helpText.innerHTML = 'Rider is configured on a <strong>fixed monthly salary</strong> model.';
+      } else if (type === 'commission') {
+        rateLabel.innerHTML = currentLang === 'ta' ? 'கமிஷன் சதவீதம் (%)' : 'Commission Percentage (%)';
+        rateInput.placeholder = 'e.g. 10';
+        helpText.innerHTML = 'Rider earns <strong>a percentage of each order value</strong> delivered.';
+      } else if (type === 'per_km') {
+        rateLabel.innerHTML = currentLang === 'ta' ? 'ஒரு கிலோமீட்டருக்கான தொகை (₹)' : 'Rate per KM (₹)';
+        rateInput.placeholder = 'e.g. 8';
+        helpText.innerHTML = 'Rider is paid <strong>based on delivery distance in kilometers</strong>.';
       }
     }
 
@@ -4520,40 +4541,62 @@ ${o.items.map((it, idx) => {
     }
     window.refreshAdminZonesMapSize = refreshAdminZonesMapSize;
 
+    function createAdminZonesTileLayer(type) {
+      let tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+      let layerOptions = {
+        maxZoom: 19,
+        subdomains: ['a', 'b', 'c'],
+        updateWhenIdle: true,
+        keepBuffer: 2,
+        attribution: '© OpenStreetMap © Google © CARTO'
+      };
+
+      if (type === 'carto') {
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        layerOptions.subdomains = ['a', 'b', 'c', 'd'];
+      } else if (type === 'satellite') {
+        tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+        layerOptions.subdomains = ['1', '2', '3', '4'];
+      } else if (type === 'google') {
+        tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+        layerOptions.subdomains = ['1', '2', '3', '4'];
+      } else if (type === 'dark') {
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        layerOptions.subdomains = ['a', 'b', 'c', 'd'];
+      }
+
+      const layer = L.tileLayer(tileUrl, layerOptions);
+
+      layer.on('tileerror', function(errorEvent) {
+        const tile = errorEvent.tile;
+        if (tile && !tile._fallbackAttempted) {
+          tile._fallbackAttempted = true;
+          const coords = errorEvent.coords;
+          if (coords) {
+            const z = coords.z;
+            const x = coords.x;
+            const y = coords.y;
+            if (type === 'satellite') {
+              tile.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+            } else {
+              const sub = ['a', 'b', 'c'][Math.abs(x + y) % 3];
+              tile.src = `https://${sub}.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+            }
+          }
+        }
+      });
+
+      return layer;
+    }
+
     function changeAdminZonesMapLayer(type) {
       window._adminZonesMapType = type;
       if (window._adminZonesMapInstance) {
-        let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        let subdomains = ['a', 'b', 'c', 'd'];
-        if (type === 'satellite') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-          subdomains = ['1', '2', '3', '4'];
-        } else if (type === 'google') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-          subdomains = ['1', '2', '3', '4'];
-        } else if (type === 'dark') {
-          tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-          subdomains = ['a', 'b', 'c', 'd'];
-        }
-
         try {
           if (window._adminZonesActiveTileLayer) {
             window._adminZonesMapInstance.removeLayer(window._adminZonesActiveTileLayer);
           }
-          const newTiles = L.tileLayer(tileUrl, {
-            maxZoom: 19,
-            subdomains: subdomains,
-            attribution: '© OpenStreetMap © Google © CARTO'
-          });
-          newTiles.on('tileerror', function() {
-            try {
-              window._adminZonesMapInstance.removeLayer(newTiles);
-              L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
-              }).addTo(window._adminZonesMapInstance);
-            } catch(e) {}
-          });
+          const newTiles = createAdminZonesTileLayer(type);
           newTiles.addTo(window._adminZonesMapInstance);
           window._adminZonesActiveTileLayer = newTiles;
           refreshAdminZonesMapSize();
@@ -4616,41 +4659,7 @@ ${o.items.map((it, idx) => {
         window._adminZonesMapInstance = map;
 
         const layerType = window._adminZonesMapType || 'street';
-        let tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-        let subdomains = ['a', 'b', 'c'];
-        if (layerType === 'carto') {
-          tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-          subdomains = ['a', 'b', 'c', 'd'];
-        } else if (layerType === 'satellite') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-          subdomains = ['1', '2', '3', '4'];
-        } else if (layerType === 'google') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-          subdomains = ['1', '2', '3', '4'];
-        } else if (layerType === 'dark') {
-          tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-          subdomains = ['a', 'b', 'c', 'd'];
-        }
-
-        const primaryTiles = L.tileLayer(tileUrl, {
-          maxZoom: 19,
-          subdomains: subdomains,
-          attribution: '© OpenStreetMap contributors'
-        });
-
-        primaryTiles.on('tileerror', function() {
-          console.warn("[Leaflet Admin Map] Tile load error, switching to OpenStreetMap standard tiles...");
-          try {
-            map.removeLayer(primaryTiles);
-            const fallbackTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              maxZoom: 19,
-              attribution: '© OpenStreetMap contributors'
-            });
-            fallbackTiles.addTo(map);
-            window._adminZonesActiveTileLayer = fallbackTiles;
-          } catch(err) {}
-        });
-
+        const primaryTiles = createAdminZonesTileLayer(layerType);
         primaryTiles.addTo(map);
         window._adminZonesActiveTileLayer = primaryTiles;
 

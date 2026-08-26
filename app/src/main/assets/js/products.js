@@ -1959,6 +1959,118 @@ function renderHomeScreen(forceReRender = false) {
     let pickerMapTheme = 'standard';
     let pickerMarker = null;
 
+    function triggerPinDropAnimation() {
+      if (!pickerMarker) return;
+      try {
+        const el = pickerMarker.getElement();
+        if (el) {
+          const pinInner = el.querySelector('.map-pin-marker-inner') || el;
+          pinInner.classList.remove('map-pin-animate-drop');
+          void pinInner.offsetWidth; // Force DOM reflow to restart animation
+          pinInner.classList.add('map-pin-animate-drop');
+        }
+      } catch (e) {}
+    }
+
+    function showGpsPulseRipple(lat, lng) {
+      if (!pickerLeafletMap) return;
+      if (window._pickerGpsRippleMarker) {
+        try { pickerLeafletMap.removeLayer(window._pickerGpsRippleMarker); } catch(e) {}
+        window._pickerGpsRippleMarker = null;
+      }
+      try {
+        const rippleIcon = L.divIcon({
+          html: `
+            <div class="gps-radar-ripple-container">
+              <div class="gps-radar-ring ring-1"></div>
+              <div class="gps-radar-ring ring-2"></div>
+              <div class="gps-radar-ring ring-3"></div>
+            </div>
+          `,
+          className: 'gps-ripple-div-icon',
+          iconSize: [120, 120],
+          iconAnchor: [60, 60]
+        });
+
+        const rippleMarker = L.marker([lat, lng], {
+          icon: rippleIcon,
+          interactive: false,
+          zIndexOffset: -100
+        }).addTo(pickerLeafletMap);
+
+        window._pickerGpsRippleMarker = rippleMarker;
+
+        setTimeout(() => {
+          if (window._pickerGpsRippleMarker === rippleMarker) {
+            try { pickerLeafletMap.removeLayer(rippleMarker); } catch(e) {}
+            window._pickerGpsRippleMarker = null;
+          }
+        }, 2200);
+      } catch (err) {
+        console.warn("GPS ripple render notice:", err);
+      }
+    }
+
+    function animateConfirmButtonReady() {
+      const btn = document.getElementById('picker-confirm-btn');
+      if (!btn) return;
+      btn.classList.remove('btn-location-ready');
+      void btn.offsetWidth; // Force DOM reflow
+      btn.classList.add('btn-location-ready');
+    }
+
+    function createPickerTileLayer(theme) {
+      let tileUrl = '';
+      let layerOptions = {
+        maxZoom: 20,
+        updateWhenIdle: true,
+        keepBuffer: 2
+      };
+
+      if (theme === 'satellite') {
+        // High-res ArcGIS World Imagery with maxNativeZoom 18 (smoothly resampled up to zoom 20 in Leaflet)
+        tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+        layerOptions.maxNativeZoom = 18;
+        layerOptions.subdomains = ['server', 'services'];
+      } else {
+        // High-speed OSM standard tiles
+        tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        layerOptions.maxNativeZoom = 19;
+        layerOptions.subdomains = ['a', 'b', 'c'];
+      }
+
+      const layer = L.tileLayer(tileUrl, layerOptions);
+
+      layer.on('load', function() {
+        const mapEl = document.getElementById('picker-map');
+        if (mapEl) mapEl.classList.add('tiles-loaded');
+      });
+
+      // Resilient Tile Fallback for load errors (e.g. rate-limiting, server downtime, rural tile gaps)
+      layer.on('tileerror', function(errorEvent) {
+        const tile = errorEvent.tile;
+        if (tile && !tile._fallbackAttempted) {
+          tile._fallbackAttempted = true;
+          const coords = errorEvent.coords;
+          if (coords) {
+            const z = coords.z;
+            const x = coords.x;
+            const y = coords.y;
+            if (theme === 'satellite') {
+              // Alternate high-res hybrid satellite tile provider (Google Hybrid with street/landmark overlays)
+              tile.src = `https://mt1.google.com/vt/lyrs=y&x=${x}&y=${y}&z=${z}`;
+            } else {
+              // Alternate free vector-raster tile provider (CartoDB Voyager)
+              const sub = ['a', 'b', 'c', 'd'][Math.abs(x + y) % 4];
+              tile.src = `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`;
+            }
+          }
+        }
+      });
+
+      return layer;
+    }
+
     function setPickerMapTheme(theme) {
       pickerMapTheme = theme;
 
@@ -1997,12 +2109,36 @@ function renderHomeScreen(forceReRender = false) {
         }
       }
 
-      if (pickerLeafletMap && pickerTileLayer) {
-        let tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        if (theme === 'satellite') {
-          tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      if (pickerLeafletMap) {
+        const oldLayer = pickerTileLayer;
+        const newLayer = createPickerTileLayer(theme);
+
+        const mapEl = document.getElementById('picker-map');
+        if (mapEl) mapEl.classList.remove('tiles-loaded');
+
+        newLayer.setOpacity(0);
+        newLayer.addTo(pickerLeafletMap);
+        pickerTileLayer = newLayer;
+
+        let startTime = performance.now();
+        const duration = 220;
+        function stepFade(t) {
+          const elapsed = t - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          newLayer.setOpacity(progress);
+          if (oldLayer) {
+            oldLayer.setOpacity(1 - progress);
+          }
+          if (progress < 1) {
+            requestAnimationFrame(stepFade);
+          } else {
+            if (oldLayer && oldLayer !== newLayer) {
+              try { pickerLeafletMap.removeLayer(oldLayer); } catch(e) {}
+            }
+            newLayer.setOpacity(1);
+          }
         }
-        pickerTileLayer.setUrl(tileUrl);
+        requestAnimationFrame(stepFade);
       }
     }
 
@@ -2020,7 +2156,7 @@ function renderHomeScreen(forceReRender = false) {
       modal.style.display = 'flex';
       modal.style.justifyContent = 'center';
       modal.style.alignItems = 'center';
-      modal.style.padding = '15px';
+      modal.style.padding = '8px 6px';
 
       let currentLat = parseFloat(targetInput.getAttribute('data-lat')) || 11.5815;
       let currentLng = parseFloat(targetInput.getAttribute('data-lng')) || 77.8488;
@@ -2029,7 +2165,7 @@ function renderHomeScreen(forceReRender = false) {
       let adminWarningHtml = "";
       if (isAdminActive) {
         adminWarningHtml = `
-          <div style="background: rgba(239, 68, 68, 0.15); border: 1.5px solid rgba(239, 68, 68, 0.45); padding: 8px 12px; border-radius: 12px; font-size: 11px; color: #f87171; line-height: 1.45; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 10px rgba(239,68,68,0.15); margin-bottom: 2px;">
+          <div style="background: rgba(239, 68, 68, 0.15); border: 1.5px solid rgba(239, 68, 68, 0.45); padding: 6px 10px; border-radius: 10px; font-size: 10.5px; color: #f87171; line-height: 1.4; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 4px 10px rgba(239,68,68,0.15); margin-bottom: 2px;">
             <span style="font-weight: 850; display: flex; align-items: center; gap: 4px; color: #ef4444;">🚨 கஸ்டமர் கேர் எச்சரிக்கை / ADMIN GUARD MODE</span>
             <span>நீங்கள் அட்மின்/ஸ்டாஃப் கணக்கில் உள்ளீர்கள். <b>"என் இருப்பிடம் / Locate Me"</b> பட்டனை அழுத்தினால் அது கடையின் (உங்களது) கைபேசி இருப்பிடத்தை எடுக்கும், வாடிக்கையாளரின் முகவரியை அல்ல! எனவே, மேலே உள்ள தேடுதல் பெட்டியைப் பயன்படுத்திக் கஸ்டமர் ஏரியாவை தேடிக் கண்டறியவும்.</span>
           </div>
@@ -2037,51 +2173,51 @@ function renderHomeScreen(forceReRender = false) {
       }
 
       modal.innerHTML = `
-        <div class="bottom-sheet" style="width: 95%; max-width: 600px; border-radius: 24px; border: 1.5px solid #2d2d2d; background: #0c0c0e; padding: 22px; box-shadow: 0 12px 35px rgba(0,0,0,0.85); transform: scale(0.9); transition: all 0.22s cubic-bezier(0.18, 0.89, 0.32, 1.28); display: flex; flex-direction: column; gap: 14px; max-height: 95vh; box-sizing: border-box;">
+        <div class="bottom-sheet map-picker-sheet" style="width: 98%; max-width: 660px; height: 95vh; max-height: 860px; border-radius: 20px; border: 1.5px solid #2d2d2d; background: #0c0c0e; padding: 12px 14px; box-shadow: 0 12px 35px rgba(0,0,0,0.85); display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; overflow: hidden;">
 
-          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1a1a1a; padding-bottom: 10px; margin-bottom: 4px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1a1a1a; padding-bottom: 6px; margin-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 20px;">🗺️</span>
+              <span style="font-size: 18px;">🗺️</span>
               <div>
-                <h4 style="color: #ffffff; font-size: 13px; font-weight: 800; margin: 0; text-transform: uppercase;">SELECT LOCATION / வரைபடம்</h4>
-                <p style="font-size: 10px; color: var(--text-muted); margin: 0;">Search area, drag pin, or tap directly</p>
+                <h4 style="color: #ffffff; font-size: 12.5px; font-weight: 800; margin: 0; text-transform: uppercase;">SELECT LOCATION / வரைபடம்</h4>
+                <p style="font-size: 9.5px; color: var(--text-muted); margin: 0;">Search area, drag pin, or tap directly</p>
               </div>
             </div>
-            <button onclick="closeMapAddressPicker()" style="background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px;">✕</button>
+            <button onclick="closeMapAddressPicker()" style="background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 2px 6px;">✕</button>
           </div>
 
           ${adminWarningHtml}
 
           <!-- Interactive Search Container -->
-          <div style="position: relative; display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
-            <input type="text" id="map-search-input" enterkeyhint="search" onkeydown="if(event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); searchMapAddress(); }" placeholder="${currentLang === 'ta' ? '🔍 தெரு அல்லது பகுதி பெயரைத் தேடுங்கள்...' : '🔍 Search street, village, or area name...'}" style="flex: 1; min-width: 0; height: 42px; background: #141416; border: 1.5px solid #2d2d2d; border-radius: 12px; padding: 0 12px; color: #fff; font-size: 13px; font-weight: 600; box-sizing: border-box;" />
-            <button onclick="searchMapAddress()" style="background: linear-gradient(135deg, rgba(245,158,11,0.85) 0%, rgba(232,113,10,0.95) 100%); color: #fff; text-shadow:0 1px 1px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); font-weight: 900; border-radius: 12px; width: auto; min-width: 82px; height: 42px; padding: 0 12px; font-size: 11.5px; cursor: pointer; flex-shrink: 0; box-shadow: 0 3px 8px rgba(245,158,11,0.2); transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.96)'" onmouseup="this.style.transform='none'">SEARCH</button>
+          <div style="position: relative; display: flex; gap: 6px; width: 100%; box-sizing: border-box;">
+            <input type="text" id="map-search-input" enterkeyhint="search" onkeydown="if(event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); searchMapAddress(); }" placeholder="${currentLang === 'ta' ? '🔍 தெரு அல்லது பகுதி பெயரைத் தேடுங்கள்...' : '🔍 Search street, village, or area name...'}" style="flex: 1; min-width: 0; height: 38px; background: #141416; border: 1.5px solid #2d2d2d; border-radius: 10px; padding: 0 10px; color: #fff; font-size: 12px; font-weight: 600; box-sizing: border-box;" />
+            <button onclick="searchMapAddress()" style="background: linear-gradient(135deg, rgba(245,158,11,0.85) 0%, rgba(232,113,10,0.95) 100%); color: #fff; text-shadow:0 1px 1px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); font-weight: 900; border-radius: 10px; width: auto; min-width: 76px; height: 38px; padding: 0 10px; font-size: 11px; cursor: pointer; flex-shrink: 0; box-shadow: 0 3px 8px rgba(245,158,11,0.2); transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.96)'" onmouseup="this.style.transform='none'">SEARCH</button>
           </div>
-          <div id="map-search-results" style="display: none; background: #141416; border: 1.5px solid #2d2d2d; border-radius: 12px; max-height: 120px; overflow-y: auto; padding: 6px; font-size: 11.5px; color: #fff; flex-direction: column; gap: 4px; box-sizing: border-box; z-index: 10001;"></div>
+          <div id="map-search-results" style="display: none; background: #141416; border: 1.5px solid #2d2d2d; border-radius: 10px; max-height: 110px; overflow-y: auto; padding: 6px; font-size: 11px; color: #fff; flex-direction: column; gap: 4px; box-sizing: border-box; z-index: 10001;"></div>
 
-          <div style="position: relative; width: 100%; height: 70vh; min-height: 350px; max-height: 600px; border-radius: 14px; overflow: hidden; border: 1.5px solid #222;">
+          <div style="position: relative; width: 100%; height: 85vh; min-height: 400px; max-height: 780px; flex: 1; border-radius: 14px; overflow: hidden; border: 1.5px solid #222;">
             <div id="picker-map" style="width: 100%; height: 100%; background: #141414; border: none; position: relative; z-index: 100;"></div>
             <!-- Standard / Satellite selector overlay style -->
-            <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; z-index: 10001; background: rgba(12,12,14,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding: 4px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 10px rgba(0,0,0,0.4); contain: layout style paint;">
-              <button id="picker-map-theme-standard" onclick="setPickerMapTheme('standard')" style="background: var(--accent-orange); color: #000; border: none; padding: 4px 10.5px; font-size: 9.5px; font-weight: 750; border-radius: 6px; cursor: pointer; transition: all 0.2s;">🗺️ standard</button>
-              <button id="picker-map-theme-satellite" onclick="setPickerMapTheme('satellite')" style="background: #141416; color: #fff; border: none; padding: 4px 10.5px; font-size: 9.5px; font-weight: 500; border-radius: 6px; cursor: pointer; transition: all 0.2s;">🌍 satellite</button>
+            <div style="position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 10001; background: rgba(12,12,14,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding: 3px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 10px rgba(0,0,0,0.4); contain: layout style paint;">
+              <button id="picker-map-theme-standard" onclick="setPickerMapTheme('standard')" style="background: var(--accent-orange); color: #000; border: none; padding: 4px 9px; font-size: 9px; font-weight: 750; border-radius: 5px; cursor: pointer; transition: all 0.2s;">🗺️ standard</button>
+              <button id="picker-map-theme-satellite" onclick="setPickerMapTheme('satellite')" style="background: #141416; color: #fff; border: none; padding: 4px 9px; font-size: 9px; font-weight: 500; border-radius: 5px; cursor: pointer; transition: all 0.2s;">🌍 satellite</button>
             </div>
             <!-- Satellite GPS Target accuracy locating crosshair button -->
-            <button type="button" onclick="locateUserInPickerMap()" style="position: absolute; bottom: 12px; right: 12px; z-index: 10001; background: linear-gradient(135deg, rgba(16, 185, 129, 0.85) 0%, rgba(5, 150, 105, 0.95) 100%); color: white; border: 1px solid rgba(255,255,255,0.25); padding: 5px 12px; font-size: 9.5px; font-weight: 800; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 4px 12px rgba(16,185,129,0.35); text-shadow: 0 1px 1px rgba(0,0,0,0.4); transition: transform 0.15s ease;" onmousedown="this.style.transform='scale(0.96)'" onmouseup="this.style.transform='none'">
+            <button type="button" onclick="locateUserInPickerMap()" style="position: absolute; bottom: 10px; right: 10px; z-index: 10001; background: linear-gradient(135deg, rgba(16, 185, 129, 0.85) 0%, rgba(5, 150, 105, 0.95) 100%); color: white; border: 1px solid rgba(255,255,255,0.25); padding: 5px 11px; font-size: 9.5px; font-weight: 800; border-radius: 18px; cursor: pointer; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 4px 12px rgba(16,185,129,0.35); text-shadow: 0 1px 1px rgba(0,0,0,0.4); transition: transform 0.15s ease;" onmousedown="this.style.transform='scale(0.96)'" onmouseup="this.style.transform='none'">
               <span>🎯 GPS LOCATE ME / என் இருப்பிடம்</span>
             </button>
           </div>
 
-          <div style="background: #121214; border: 1px solid #222; border-radius: 12px; padding: 10px 14px; text-align: left;">
+          <div style="background: #121214; border: 1px solid #222; border-radius: 10px; padding: 6px 12px; text-align: left;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">📍 PINPOINT SATELLITE ADDRESS</span>
-              <div id="picker-accuracy-badge" style="font-size: 8.5px; font-weight: 800; padding: 2px 7px; border-radius: 4px; background: rgba(245,158,11,0.15); color: var(--accent-orange); transition: all 0.2s; text-transform: uppercase;">📡 GPS SIGNAL WAITING</div>
+              <span style="font-size: 8.5px; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">📍 PINPOINT SATELLITE ADDRESS</span>
+              <div id="picker-accuracy-badge" style="font-size: 8px; font-weight: 800; padding: 1.5px 6px; border-radius: 4px; background: rgba(245,158,11,0.15); color: var(--accent-orange); transition: all 0.2s; text-transform: uppercase;">📡 GPS SIGNAL WAITING</div>
             </div>
-            <div id="picker-address-text" style="color: #fff; font-size: 12.5px; margin-top: 4px; line-height:1.45; font-weight: 600;">Searching satellite coordinates...</div>
-            <div id="picker-coords-text" style="color: var(--accent-orange); font-size: 10px; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">11.58150, 77.84880</div>
+            <div id="picker-address-text" style="color: #fff; font-size: 11.5px; margin-top: 2px; line-height: 1.35; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Searching satellite coordinates...</div>
+            <div id="picker-coords-text" style="color: var(--accent-orange); font-size: 9.5px; font-family: 'JetBrains Mono', monospace; margin-top: 2px;">11.58150, 77.84880</div>
           </div>
 
-          <button class="btn btn-primary" style="background: linear-gradient(135deg, rgba(249, 115, 22, 0.9) 0%, rgba(220, 38, 38, 0.95) 100%); border: 1px solid rgba(255, 255, 255, 0.25); height: 38px; border-radius: 20px; font-weight: 800; font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; margin: 0; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(249,115,22,0.3); text-shadow: 0 1px 1px rgba(0,0,0,0.4); transition: transform 0.15s ease;" onclick="confirmMapAddress('${targetId}')" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='none'">
+          <button id="picker-confirm-btn" class="btn btn-primary picker-confirm-btn" style="background: linear-gradient(135deg, rgba(249, 115, 22, 0.9) 0%, rgba(220, 38, 38, 0.95) 100%); border: 1px solid rgba(255, 255, 255, 0.25); height: 38px; border-radius: 18px; font-weight: 800; font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; margin: 0; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(249,115,22,0.3); text-shadow: 0 1px 1px rgba(0,0,0,0.4);" onclick="confirmMapAddress('${targetId}')" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='none'">
             CONFIRM THIS LOCATION / இருப்பிடத்தை உறுதிசெய் ✅
           </button>
 
@@ -2090,11 +2226,8 @@ function renderHomeScreen(forceReRender = false) {
 
       document.body.appendChild(modal);
 
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         modal.classList.add('active');
-        const sheet = modal.querySelector('.bottom-sheet');
-        if (sheet) sheet.style.transform = 'scale(1)';
-
         const searchInp = document.getElementById('map-search-input');
         if (searchInp) {
           searchInp.addEventListener('keypress', function(e) {
@@ -2103,7 +2236,7 @@ function renderHomeScreen(forceReRender = false) {
             }
           });
         }
-      }, 10);
+      });
 
       setTimeout(() => {
         try {
@@ -2119,20 +2252,8 @@ function renderHomeScreen(forceReRender = false) {
             preferCanvas: true
           }).setView([currentLat, currentLng], 15);
 
-          let initialTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-          if (pickerMapTheme === 'satellite') {
-            initialTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-          }
-
-          pickerTileLayer = L.tileLayer(initialTileUrl, {
-            maxZoom: 20,
-            updateWhenIdle: true,
-            keepBuffer: 2
-          }).addTo(pickerLeafletMap);
-
-          pickerTileLayer.on('tileerror', function(error, tile) {
-            console.warn("[Map Picker] Tile load error:", error);
-          });
+          pickerTileLayer = createPickerTileLayer(pickerMapTheme);
+          pickerTileLayer.addTo(pickerLeafletMap);
 
           setTimeout(() => {
             setPickerMapTheme(pickerMapTheme);
@@ -2151,7 +2272,7 @@ function renderHomeScreen(forceReRender = false) {
           storeMarker.bindPopup(`<strong>நம்ம கடை / Edappadi Kadai (Base Store)</strong><br><span style="font-size:11px; color:#aaa;">எடப்பாடி காவண்டம்பட்டி கடை மெயின் லொகேஷன்</span>`);
 
           const customMarkerIcon = L.divIcon({
-            html: `<div style="background: #f97316; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff; box-shadow: 0 4px 12px rgba(249,115,22,0.6); font-size: 18px; line-height: 1;">📍</div>`,
+            html: `<div class="map-pin-marker-inner" style="background: #f97316; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff; box-shadow: 0 4px 12px rgba(249,115,22,0.6); font-size: 18px; line-height: 1;">📍</div>`,
             className: 'custom-map-icon',
             iconSize: [34, 34],
             iconAnchor: [17, 17]
@@ -2162,22 +2283,41 @@ function renderHomeScreen(forceReRender = false) {
             icon: customMarkerIcon
           }).addTo(pickerLeafletMap);
 
+          setTimeout(() => {
+            triggerPinDropAnimation();
+          }, 60);
+
           updateAddressText(currentLat, currentLng);
 
           pickerMarker.on('dragend', function (e) {
             const pt = pickerMarker.getLatLng();
+            triggerPinDropAnimation();
             updateAddressText(pt.lat, pt.lng);
           });
 
           pickerLeafletMap.on('click', function(e) {
             const pt = e.latlng;
             pickerMarker.setLatLng(pt);
+            triggerPinDropAnimation();
             updateAddressText(pt.lat, pt.lng);
           });
 
-          setTimeout(() => {
-            if (pickerLeafletMap) pickerLeafletMap.invalidateSize();
-          }, 400);
+          [50, 150, 300, 600, 1000].forEach(d => {
+            setTimeout(() => {
+              if (pickerLeafletMap) pickerLeafletMap.invalidateSize();
+            }, d);
+          });
+
+          const pickerMapEl = document.getElementById('picker-map');
+          if (pickerMapEl && window.ResizeObserver && !pickerMapEl._hasResizeObserver) {
+            pickerMapEl._hasResizeObserver = true;
+            const ro = new ResizeObserver(() => {
+              if (pickerLeafletMap) {
+                try { pickerLeafletMap.invalidateSize(); } catch(e) {}
+              }
+            });
+            ro.observe(pickerMapEl);
+          }
 
           if (!targetInput.getAttribute('data-lat') && !targetInput.getAttribute('data-lng')) {
             const isAdminActive = getAdminSession() ? true : false;
@@ -2235,6 +2375,8 @@ function renderHomeScreen(forceReRender = false) {
             if (pickerLeafletMap && pickerMarker) {
               pickerLeafletMap.setView([lat, lng], 17, { animate: false });
               pickerMarker.setLatLng([lat, lng]);
+              triggerPinDropAnimation();
+              showGpsPulseRipple(lat, lng);
               if (window.pickerAccuracyCircle) {
                 pickerLeafletMap.removeLayer(window.pickerAccuracyCircle);
               }
@@ -2299,6 +2441,8 @@ function renderHomeScreen(forceReRender = false) {
           if (pickerLeafletMap && pickerMarker) {
             pickerLeafletMap.setView([lat, lng], 17, { animate: false });
             pickerMarker.setLatLng([lat, lng]);
+            triggerPinDropAnimation();
+            showGpsPulseRipple(lat, lng);
 
             if (window.pickerAccuracyCircle) {
               pickerLeafletMap.removeLayer(window.pickerAccuracyCircle);
@@ -2315,8 +2459,8 @@ function renderHomeScreen(forceReRender = false) {
             updateAddressText(lat, lng);
             showToast(
               currentLang === 'ta'
-                ? `✅ இருப்பிடம் அக்குரேசியாக கண்டறியப்பட்டது (துல்லியம்: ±\s*${Math.round(accuracy)}m)`
-                : `✅ Pinpoint location loaded (Accuracy: ±\s*${Math.round(accuracy)}m)`,
+                ? `✅ இருப்பிடம் அக்குரேசியாக கண்டறியப்பட்டது (துல்லியம்: ±${Math.round(accuracy)}m)`
+                : `✅ Pinpoint location loaded (Accuracy: ±${Math.round(accuracy)}m)`,
               "success"
             );
           }
@@ -2346,7 +2490,7 @@ function renderHomeScreen(forceReRender = false) {
     async function updateAddressText(lat, lng) {
       const coordsDiv = document.getElementById('picker-coords-text');
       const addressDiv = document.getElementById('picker-address-text');
-      if (coordsDiv) coordsDiv.innerText = "Satellite GPS Lock Active ✓";
+      if (coordsDiv) coordsDiv.innerText = `${lat.toFixed(5)}, ${lng.toFixed(5)} ✓`;
       if (addressDiv) addressDiv.innerText = "🌀 Fetching satellite address details...";
 
       try {
@@ -2363,6 +2507,8 @@ function renderHomeScreen(forceReRender = false) {
       } catch (e) {
         if (addressDiv) addressDiv.innerText = "Selected Location, Edappadi, Salem, Tamil Nadu";
       }
+
+      animateConfirmButtonReady();
     }
 
     async function searchMapAddress() {
@@ -2377,46 +2523,39 @@ function renderHomeScreen(forceReRender = false) {
       resultsDiv.style.display = 'flex';
 
       try {
-        const searchQuery = query.toLowerCase().includes('salem') || query.toLowerCase().includes('edappadi') ? query : `${query}, Edappadi, Salem, Tamil Nadu`;
-        const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
-        if (!geocodeFn) {
-          resultsDiv.innerHTML = `<span style="color:var(--accent-red); padding:4px;">${currentLang === 'ta' ? "சர்வர் சேவை இன்னும் செயல்படுத்தப்படவில்லை. தயவுசெய்து பின்னர் முயற்சிக்கவும்." : "Server service is not deployed yet. Please try again later."}</span>`;
-          return;
-        }
-        const res = await geocodeFn({ address: searchQuery });
+        const list = await searchAddressGeocode(query);
 
         resultsDiv.innerHTML = '';
-        if (res && res.data && res.data.latitude) {
-          const item = res.data;
-          const row = document.createElement('div');
-          row.style.padding = '8px 10px';
-          row.style.cursor = 'pointer';
-          row.style.borderBottom = '1px solid #222';
-          row.style.borderRadius = '6px';
-          row.innerHTML = `<strong style="color:var(--accent-orange);">Located Area</strong> - <span style="font-size:10.5px; color:#aaa;">${item.displayName}</span>`;
-          row.onmouseover = () => row.style.background = '#222';
-          row.onmouseout = () => row.style.background = 'transparent';
-          row.onclick = () => {
-            const lat = parseFloat(item.latitude);
-            const lon = parseFloat(item.longitude);
-            if (pickerLeafletMap && pickerMarker) {
-              pickerLeafletMap.setView([lat, lon], 16);
-              pickerMarker.setLatLng([lat, lon]);
-              updateAddressText(lat, lon);
-            }
-            resultsDiv.style.display = 'none';
-          };
-          resultsDiv.appendChild(row);
+        if (Array.isArray(list) && list.length > 0) {
+          list.forEach(item => {
+            const row = document.createElement('div');
+            row.style.padding = '8px 10px';
+            row.style.cursor = 'pointer';
+            row.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+            row.style.borderRadius = '6px';
+            row.innerHTML = `<strong style="color:var(--accent-orange);">📍 Located Area</strong> - <span style="font-size:10.5px; color:#ccc;">${escapeHtml(item.displayName)}</span>`;
+            row.onmouseover = () => row.style.background = '#222';
+            row.onmouseout = () => row.style.background = 'transparent';
+            row.onclick = () => {
+              const lat = parseFloat(item.lat || item.latitude);
+              const lon = parseFloat(item.lng || item.longitude);
+              if (pickerLeafletMap && pickerMarker && !isNaN(lat) && !isNaN(lon)) {
+                pickerLeafletMap.setView([lat, lon], 16);
+                pickerMarker.setLatLng([lat, lon]);
+                triggerPinDropAnimation();
+                updateAddressText(lat, lon);
+              }
+              resultsDiv.style.display = 'none';
+            };
+            resultsDiv.appendChild(row);
+          });
         } else {
           resultsDiv.innerHTML = `<span style="color:var(--accent-red); padding:4px;">No matching locations found. Try another search.</span>`;
         }
       } catch (err) {
-        const isNotDeployed = err && (err.code === 'not-found' || err.message?.includes('not-found') || err.code === 'unimplemented');
-        const errMsg = isNotDeployed
-          ? (currentLang === 'ta' ? "சர்வர் சேவை இன்னும் செயல்படுத்தப்படவில்லை. தயவுசெய்து பின்னர் முயற்சிக்கவும்." : "Server service is not deployed yet. Please try again later.")
-          : (currentLang === 'ta' ? "தேடல் தோல்வியடைந்தது. நெட்வொர்க் இணைப்பைச் சரிபார்க்கவும்." : "Search failed. Check network connection.");
+        const errMsg = currentLang === 'ta' ? "தேடல் தோல்வியடைந்தது. நெட்வொர்க் இணைப்பைச் சரிபார்க்கவும்." : "Search failed. Check network connection.";
         resultsDiv.innerHTML = `<span style="color:var(--accent-red); padding:4px;">${errMsg}</span>`;
-        console.error(err);
+        console.warn("[Search Map Address] Error:", err);
       }
     }
 
@@ -2444,8 +2583,6 @@ function renderHomeScreen(forceReRender = false) {
     function closeMapAddressPicker() {
       const modal = document.getElementById('map-picker-modal');
       if (modal) {
-        const sheet = modal.querySelector('.bottom-sheet');
-        if (sheet) sheet.style.transform = 'scale(0.9)';
         modal.classList.remove('active');
         setTimeout(() => {
           modal.remove();
@@ -2454,7 +2591,7 @@ function renderHomeScreen(forceReRender = false) {
             pickerLeafletMap = null;
           }
           pickerMarker = null;
-        }, 200);
+        }, 220);
       }
     }
 
@@ -3361,12 +3498,12 @@ function renderHomeScreen(forceReRender = false) {
               if (textVal.length > 5) {
                 geocodeTimeout = setTimeout(async () => {
                   try {
-                    const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
-                    if (geocodeFn) {
-                      const res = await geocodeFn({ address: textVal + ', Edappadi, Salem, Tamil Nadu' });
-                      if (res && res.data && res.data.latitude) {
-                        const lat = parseFloat(res.data.latitude);
-                        const lng = parseFloat(res.data.longitude);
+                    const list = await searchAddressGeocode(textVal);
+                    if (Array.isArray(list) && list.length > 0) {
+                      const first = list[0];
+                      const lat = parseFloat(first.lat || first.latitude);
+                      const lng = parseFloat(first.lng || first.longitude);
+                      if (!isNaN(lat) && !isNaN(lng)) {
                         addressTextarea.setAttribute('data-lat', lat);
                         addressTextarea.setAttribute('data-lng', lng);
                         recalculateBill();

@@ -2799,7 +2799,7 @@ function getActiveLyoProposalMsg() {
         renderLyoAiChat();
         updateLyoDraftCartBar();
         updateCartBadge();
-        updateCartUI();
+        if (typeof updateCartUI === "function") updateCartUI();
       }
 
       // Invalidate the AI parse cache for the original ambiguous query

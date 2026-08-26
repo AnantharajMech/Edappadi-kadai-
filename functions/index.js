@@ -186,35 +186,41 @@ exports.saveSmsGatewaySecrets = functions
       throw new functions.https.HttpsError('unauthenticated', 'Login required.');
     }
     const uid = context.auth.uid;
-    const adminDoc = await admin.firestore().collection('ek_admin_accounts').doc(uid).get();
-    if (!adminDoc.exists) {
-      throw new functions.https.HttpsError('permission-denied', 'Access denied.');
-    }
-    const adminData = adminDoc.data();
-    if (!adminData || (adminData.role !== 'admin' && adminData.role !== 'superadmin') || adminData.active === false) {
-      throw new functions.https.HttpsError('permission-denied', 'Access denied.');
-    }
-
-    const allowedKeys = ['smsProvider', 'smsApiKey', 'smsTwilioSid', 'smsTwilioToken', 'smsTwilioFrom', 'smsCustomUrl'];
-    const secretsToSave = {};
-
-    for (const key of Object.keys(data)) {
-      if (!allowedKeys.includes(key)) {
-        throw new functions.https.HttpsError('invalid-argument', `Field ${key} is not allowed.`);
+    try {
+      const adminDoc = await admin.firestore().collection('ek_admin_accounts').doc(uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError('permission-denied', 'Access denied.');
       }
-      if (data[key] !== undefined && data[key] !== null) {
-        if (typeof data[key] !== 'string') {
-          throw new functions.https.HttpsError('invalid-argument', `Field ${key} must be a string.`);
+      const adminData = adminDoc.data();
+      if (!adminData || (adminData.role !== 'admin' && adminData.role !== 'superadmin') || adminData.active === false) {
+        throw new functions.https.HttpsError('permission-denied', 'Access denied.');
+      }
+
+      const allowedKeys = ['smsProvider', 'smsApiKey', 'smsTwilioSid', 'smsTwilioToken', 'smsTwilioFrom', 'smsCustomUrl'];
+      const secretsToSave = {};
+
+      for (const key of Object.keys(data)) {
+        if (!allowedKeys.includes(key)) {
+          throw new functions.https.HttpsError('invalid-argument', `Field ${key} is not allowed.`);
         }
-        secretsToSave[key] = data[key];
+        if (data[key] !== undefined && data[key] !== null) {
+          if (typeof data[key] !== 'string') {
+            throw new functions.https.HttpsError('invalid-argument', `Field ${key} must be a string.`);
+          }
+          secretsToSave[key] = data[key];
+        }
       }
+
+      secretsToSave.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+      await admin.firestore().collection('ek_secrets').doc('sms_gateway').set(secretsToSave, { merge: true });
+
+      return { success: true, message: "SMS gateway settings saved securely." };
+    } catch (err) {
+      if (err instanceof functions.https.HttpsError) throw err;
+      console.error('[saveSmsGatewaySecrets] Error:', err);
+      throw new functions.https.HttpsError('internal', 'Failed to save SMS gateway secrets: ' + err.message);
     }
-
-    secretsToSave.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-
-    await admin.firestore().collection('ek_secrets').doc('sms_gateway').set(secretsToSave, { merge: true });
-
-    return { success: true, message: "SMS gateway settings saved securely." };
   });
 
 exports.getSmsGatewayStatus = functions
@@ -224,27 +230,33 @@ exports.getSmsGatewayStatus = functions
       throw new functions.https.HttpsError('unauthenticated', 'Login required.');
     }
     const uid = context.auth.uid;
-    const adminDoc = await admin.firestore().collection('ek_admin_accounts').doc(uid).get();
-    if (!adminDoc.exists) {
-      throw new functions.https.HttpsError('permission-denied', 'Access denied.');
-    }
-    const adminData = adminDoc.data();
-    if (!adminData || (adminData.role !== 'admin' && adminData.role !== 'superadmin') || adminData.active === false) {
-      throw new functions.https.HttpsError('permission-denied', 'Access denied.');
-    }
+    try {
+      const adminDoc = await admin.firestore().collection('ek_admin_accounts').doc(uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError('permission-denied', 'Access denied.');
+      }
+      const adminData = adminDoc.data();
+      if (!adminData || (adminData.role !== 'admin' && adminData.role !== 'superadmin') || adminData.active === false) {
+        throw new functions.https.HttpsError('permission-denied', 'Access denied.');
+      }
 
-    const secretsDoc = await admin.firestore().collection('ek_secrets').doc('sms_gateway').get();
-    const secrets = secretsDoc.exists ? secretsDoc.data() : {};
+      const secretsDoc = await admin.firestore().collection('ek_secrets').doc('sms_gateway').get();
+      const secrets = secretsDoc.exists ? secretsDoc.data() : {};
 
-    return {
-      provider: secrets.smsProvider || 'simulator',
-      configured: true,
-      hasApiKey: !!secrets.smsApiKey,
-      hasTwilioSid: !!secrets.smsTwilioSid,
-      hasTwilioToken: !!secrets.smsTwilioToken,
-      hasTwilioFrom: !!secrets.smsTwilioFrom,
-      hasCustomUrl: !!secrets.smsCustomUrl
-    };
+      return {
+        provider: secrets.smsProvider || 'simulator',
+        configured: true,
+        hasApiKey: !!secrets.smsApiKey,
+        hasTwilioSid: !!secrets.smsTwilioSid,
+        hasTwilioToken: !!secrets.smsTwilioToken,
+        hasTwilioFrom: !!secrets.smsTwilioFrom,
+        hasCustomUrl: !!secrets.smsCustomUrl
+      };
+    } catch (err) {
+      if (err instanceof functions.https.HttpsError) throw err;
+      console.error('[getSmsGatewayStatus] Error:', err);
+      throw new functions.https.HttpsError('internal', 'Failed to get SMS gateway status: ' + err.message);
+    }
   });
 
 const geoCache = new Map();
@@ -252,22 +264,21 @@ const geoCache = new Map();
 exports.geocodeDeliveryAddress = functions
   .region('asia-south1')
   .https.onCall(async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Verification failed. Authentication required.');
-    }
-    const uid = context.auth.uid;
-
-    // Server-side Firestore-backed rate limiting cooldown (3 seconds per user)
+    const uid = context.auth ? context.auth.uid : 'guest';
     const now = Date.now();
-    const cooldownDocRef = admin.firestore().collection('ek_user_cooldowns').doc(uid);
-    const cooldownDoc = await cooldownDocRef.get();
-    if (cooldownDoc.exists) {
-      const lastRequest = cooldownDoc.data().lastRequestTime || 0;
-      if (now - lastRequest < 3000) {
-        throw new functions.https.HttpsError('resource-exhausted', 'Please wait before trying to locate again.');
+
+    if (uid !== 'guest') {
+      // Server-side Firestore-backed rate limiting cooldown (3 seconds per user)
+      const cooldownDocRef = admin.firestore().collection('ek_user_cooldowns').doc(uid);
+      const cooldownDoc = await cooldownDocRef.get();
+      if (cooldownDoc.exists) {
+        const lastRequest = cooldownDoc.data().lastRequestTime || 0;
+        if (now - lastRequest < 3000) {
+          throw new functions.https.HttpsError('resource-exhausted', 'Please wait before trying to locate again.');
+        }
       }
+      await cooldownDocRef.set({ lastRequestTime: now }, { merge: true });
     }
-    await cooldownDocRef.set({ lastRequestTime: now }, { merge: true });
 
     const isReverse = data.lat !== undefined && data.lng !== undefined;
     const axios = require('axios');
@@ -1348,11 +1359,19 @@ exports.restoreAbandonedStock = functions
 
     try {
       const db = admin.firestore();
-      const abandonedOrdersSnap = await db.collection('ek_orders')
+      // Two-step query to avoid composite index requirement
+      const step1Snap = await db.collection('ek_orders')
         .where('stockDeducted', '==', true)
-        .where('stockRestored', '!=', true)
-        .limit(50)
+        .limit(100)
         .get();
+
+      // Filter stockRestored != true in memory (avoids needing a composite index)
+      const abandonedOrdersSnap = {
+        docs: step1Snap.docs.filter(doc => {
+          const d = doc.data();
+          return d.stockRestored !== true;
+        })
+      };
 
       const batch = db.batch();
       let restoredCount = 0;
@@ -1744,8 +1763,8 @@ exports.scheduledWeeklyFirestoreBackup = functions
         console.log(`[Weekly Backup] JSON snapshot backup successfully saved to Cloud Storage: ${fileName}`);
         return { success: true, mode: 'json_storage_backup', backupPath: fileName };
       } catch (fallbackErr) {
-        console.error('[Weekly Backup] Critical failure in weekly backup function:', fallbackErr);
-        throw new functions.https.HttpsError('internal', 'Weekly backup failed: ' + fallbackErr.message);
+        console.error('[scheduledWeeklyFirestoreBackup] Firestore backup failed:', fallbackErr.message);
+        throw new Error('Firestore backup failed: ' + fallbackErr.message);
       }
     }
   });

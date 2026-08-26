@@ -660,8 +660,19 @@ function updateRiderLiveLocation() {
       let todayEarnings = 0;
       if (salaryType === 'per_order') {
         todayEarnings = completedToday.length * salaryRate;
-      } else {
+      } else if (salaryType === 'fixed') {
         todayEarnings = Math.round((salaryRate / 30) * completedToday.length * 10) / 10;
+      } else if (salaryType === 'commission') {
+        // Commission = percentage of total order value delivered today
+        const todayOrderValues = completedToday.map(o => parseFloat(o.totalAmount || 0));
+        const todayTotalValue = todayOrderValues.reduce((sum, val) => sum + val, 0);
+        todayEarnings = Math.round((todayTotalValue * salaryRate) / 100);
+      } else if (salaryType === 'per_km') {
+        // Per KM = distance (km) × rate per km
+        const todayKm = completedToday.reduce((sum, o) => sum + parseFloat(o.deliveryDistanceKm || o.distanceKm || 0), 0);
+        todayEarnings = Math.round(todayKm * salaryRate);
+      } else {
+        todayEarnings = completedToday.length * salaryRate;
       }
 
       document.getElementById('delivery-exec-count').innerText = completedToday.length;
@@ -669,22 +680,33 @@ function updateRiderLiveLocation() {
 
       const earningsEl = document.getElementById('delivery-exec-earnings');
       if (earningsEl) {
-        if (salaryType === 'per_order') {
-          earningsEl.innerText = `₹${todayEarnings}`;
-        } else {
-          earningsEl.innerText = `₹${salaryRate}`;
-        }
+        earningsEl.innerText = `₹${todayEarnings}`;
       }
 
       const bannerEl = document.getElementById('delivery-exec-salary-banner');
       if (bannerEl) {
-        let typeText = salaryType === 'per_order'
-          ? `Per Order (₹${salaryRate})`
-          : `Fixed Monthly (₹${salaryRate})`;
+        let typeText;
+        let earnText;
 
-        let earnText = salaryType === 'per_order'
-          ? `₹${completedAllTime.length * salaryRate}`
-          : `₹${salaryRate} Guaranteed`;
+        if (salaryType === 'per_order') {
+          typeText = `Per Order (₹${salaryRate}/order)`;
+          earnText = `₹${completedAllTime.length * salaryRate}`;
+        } else if (salaryType === 'fixed') {
+          typeText = `Fixed Monthly (₹${salaryRate})`;
+          earnText = `₹${salaryRate} Guaranteed`;
+        } else if (salaryType === 'commission') {
+          const allTimeOrderValues = completedAllTime.map(o => parseFloat(o.totalAmount || 0));
+          const allTimeTotalValue = allTimeOrderValues.reduce((sum, val) => sum + val, 0);
+          typeText = `Commission (${salaryRate}% per order)`;
+          earnText = `₹${Math.round((allTimeTotalValue * salaryRate) / 100)}`;
+        } else if (salaryType === 'per_km') {
+          const allTimeKm = completedAllTime.reduce((sum, o) => sum + parseFloat(o.deliveryDistanceKm || o.distanceKm || 0), 0);
+          typeText = `Per KM (₹${salaryRate}/km)`;
+          earnText = `₹${Math.round(allTimeKm * salaryRate)}`;
+        } else {
+          typeText = `Per Order (₹${salaryRate})`;
+          earnText = `₹${completedAllTime.length * salaryRate}`;
+        }
 
         bannerEl.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0; border-bottom: 1px solid #222;">
@@ -2578,6 +2600,44 @@ function updateRiderLiveLocation() {
     let deliveryRoutePolyline = null;
     let deliveryRiderMarker = null;
 
+    function createDeliveryTileLayer(theme) {
+      let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+      let layerOptions = {
+        maxZoom: 20,
+        subdomains: ['a', 'b', 'c', 'd'],
+        updateWhenIdle: true,
+        keepBuffer: 2
+      };
+
+      if (theme === 'satellite') {
+        tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+        layerOptions.subdomains = ['1', '2', '3', '4'];
+      }
+
+      const layer = L.tileLayer(tileUrl, layerOptions);
+
+      layer.on('tileerror', function(errorEvent) {
+        const tile = errorEvent.tile;
+        if (tile && !tile._fallbackAttempted) {
+          tile._fallbackAttempted = true;
+          const coords = errorEvent.coords;
+          if (coords) {
+            const z = coords.z;
+            const x = coords.x;
+            const y = coords.y;
+            if (theme === 'satellite') {
+              tile.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+            } else {
+              const sub = ['a', 'b', 'c'][Math.abs(x + y) % 3];
+              tile.src = `https://${sub}.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+            }
+          }
+        }
+      });
+
+      return layer;
+    }
+
     function setDeliveryMapTheme(theme) {
       deliveryMapTheme = theme;
 
@@ -2608,12 +2668,12 @@ function updateRiderLiveLocation() {
         }
       }
 
-      if (deliveryLeafletMap && deliveryTileLayer) {
-        let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        if (theme === 'satellite') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      if (deliveryLeafletMap) {
+        if (deliveryTileLayer) {
+          try { deliveryLeafletMap.removeLayer(deliveryTileLayer); } catch(e) {}
         }
-        deliveryTileLayer.setUrl(tileUrl);
+        deliveryTileLayer = createDeliveryTileLayer(theme);
+        deliveryTileLayer.addTo(deliveryLeafletMap);
       }
     }
 
@@ -2781,20 +2841,8 @@ function updateRiderLiveLocation() {
           preferCanvas: true
         }).setView(storePos, 14);
 
-        let initialTileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        if (deliveryMapTheme === 'satellite') {
-          initialTileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-        }
-
-        deliveryTileLayer = L.tileLayer(initialTileUrl, {
-          maxZoom: 20,
-          updateWhenIdle: true,
-          keepBuffer: 2
-        }).addTo(deliveryLeafletMap);
-
-        setTimeout(() => {
-          setDeliveryMapTheme(deliveryMapTheme);
-        }, 30);
+        deliveryTileLayer = createDeliveryTileLayer(deliveryMapTheme);
+        deliveryTileLayer.addTo(deliveryLeafletMap);
 
         deliveryStoreMarker = L.marker(storePos, { icon: storeIcon }).addTo(deliveryLeafletMap)
           .bindPopup("<strong>Lyo Food Delivery (நம்ம கடை) - Kavandampatti, Edappadi 🏪🍖</strong>");
@@ -2837,11 +2885,23 @@ function updateRiderLiveLocation() {
           deliveryLeafletMap.fitBounds(group.getBounds().pad(0.15));
         }
 
-        setTimeout(() => {
-          if (deliveryLeafletMap) {
-            deliveryLeafletMap.invalidateSize();
-          }
-        }, 250);
+        [50, 150, 300, 600, 1200].forEach(d => {
+          setTimeout(() => {
+            if (deliveryLeafletMap) {
+              deliveryLeafletMap.invalidateSize();
+            }
+          }, d);
+        });
+
+        if (window.ResizeObserver && !mapContainer._hasResizeObserver) {
+          mapContainer._hasResizeObserver = true;
+          const ro = new ResizeObserver(() => {
+            if (deliveryLeafletMap) {
+              try { deliveryLeafletMap.invalidateSize(); } catch(e) {}
+            }
+          });
+          ro.observe(mapContainer);
+        }
 
       } catch (err) {
         console.error("Rider map initialization failed:", err);

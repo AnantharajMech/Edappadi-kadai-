@@ -161,17 +161,55 @@
         }
       });
 
-      if (trackerLeafletMap && trackerTileLayer) {
-        let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        if (theme === 'dark') {
-          tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        } else if (theme === 'light') {
-          tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-        } else if (theme === 'satellite') {
-          tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      if (trackerLeafletMap) {
+        if (trackerTileLayer) {
+          try { trackerLeafletMap.removeLayer(trackerTileLayer); } catch(e) {}
         }
-        trackerTileLayer.setUrl(tileUrl);
+        trackerTileLayer = createTrackerTileLayer(theme);
+        trackerTileLayer.addTo(trackerLeafletMap);
       }
+    }
+
+    function createTrackerTileLayer(theme) {
+      let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+      let layerOptions = {
+        maxZoom: 20,
+        subdomains: ['a', 'b', 'c', 'd'],
+        updateWhenIdle: true,
+        keepBuffer: 2
+      };
+
+      if (theme === 'dark') {
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+      } else if (theme === 'light') {
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      } else if (theme === 'satellite') {
+        tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+        layerOptions.subdomains = ['1', '2', '3', '4'];
+      }
+
+      const layer = L.tileLayer(tileUrl, layerOptions);
+
+      layer.on('tileerror', function(errorEvent) {
+        const tile = errorEvent.tile;
+        if (tile && !tile._fallbackAttempted) {
+          tile._fallbackAttempted = true;
+          const coords = errorEvent.coords;
+          if (coords) {
+            const z = coords.z;
+            const x = coords.x;
+            const y = coords.y;
+            if (theme === 'satellite') {
+              tile.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+            } else {
+              const sub = ['a', 'b', 'c'][Math.abs(x + y) % 3];
+              tile.src = `https://${sub}.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+            }
+          }
+        }
+      });
+
+      return layer;
     }
 
     function initLiveTrackerMap(order) {
@@ -261,9 +299,11 @@
       clearRiderAnimation();
 
       if (trackerLeafletMap) {
-        setTimeout(() => {
-          if (trackerLeafletMap) trackerLeafletMap.invalidateSize();
-        }, 150);
+        [50, 150, 300, 600].forEach(d => {
+          setTimeout(() => {
+            if (trackerLeafletMap) trackerLeafletMap.invalidateSize();
+          }, d);
+        });
         updateMapMarkers(order, storePos, custPos);
         return;
       }
@@ -275,20 +315,8 @@
           preferCanvas: true
         }).setView(storePos, 14);
 
-        let initialTileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        if (trackerMapTheme === 'dark') {
-          initialTileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        } else if (trackerMapTheme === 'light') {
-          initialTileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-        } else if (trackerMapTheme === 'satellite') {
-          initialTileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-        }
-
-        trackerTileLayer = L.tileLayer(initialTileUrl, {
-          maxZoom: 20,
-          updateWhenIdle: true,
-          keepBuffer: 2
-        }).addTo(trackerLeafletMap);
+        trackerTileLayer = createTrackerTileLayer(trackerMapTheme);
+        trackerTileLayer.addTo(trackerLeafletMap);
 
         const storeIcon = L.divIcon({
           html: `
@@ -332,11 +360,21 @@
           triggerMapTapExperience(order);
         });
 
-        setTimeout(() => {
-          if (trackerLeafletMap) {
-            trackerLeafletMap.invalidateSize();
-          }
-        }, 250);
+        [50, 150, 300, 600, 1200].forEach(d => {
+          setTimeout(() => {
+            if (trackerLeafletMap) trackerLeafletMap.invalidateSize();
+          }, d);
+        });
+
+        if (window.ResizeObserver && !mapContainer._hasResizeObserver) {
+          mapContainer._hasResizeObserver = true;
+          const ro = new ResizeObserver(() => {
+            if (trackerLeafletMap) {
+              try { trackerLeafletMap.invalidateSize(); } catch(e) {}
+            }
+          });
+          ro.observe(mapContainer);
+        }
 
         updateMapMarkers(order, storePos, custPos);
 
@@ -3755,22 +3793,29 @@ function saveProfileChanges() {
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${filename}</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Hind+Madurai:wght@500;700;900&display=swap" rel="stylesheet">
   <style>
     @page {
-      size: 80mm auto;
-      margin: 0;
+      size: auto;
+      margin: 3mm 0mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     html, body {
-      font-family: 'Poppins', 'Hind Madurai', sans-serif;
-      width: 80mm;
-      margin: 0;
-      padding: 4mm;
+      font-family: 'Poppins', 'Hind Madurai', 'Courier New', monospace, sans-serif;
+      width: 100%;
+      max-width: 80mm;
+      margin: 0 auto;
+      padding: 3mm;
       color: #000000;
       background: #ffffff;
-      box-sizing: border-box;
       font-size: 11.5px;
+      line-height: 1.4;
     }
     body > div {
       border: none !important;
@@ -3782,32 +3827,14 @@ function saveProfileChanges() {
       max-width: 100% !important;
     }
     table { width: 100%; border-collapse: collapse; }
-    hr { border: none; border-top: 1.5px dashed #000; margin: 10px 0; }
+    hr { border: none; border-top: 1.5px dashed #000; margin: 8px 0; }
+    h1, h2, h3, p { margin-top: 2px; margin-bottom: 2px; }
   </style>
 </head>
 <body>
-  ${contentHTML}
-
-    <!-- CHANGE EMAIL MODAL -->
-    <div id="change-email-modal" class="modal-backdrop" onclick="hideChangeEmailModal()" style="align-items: center; padding: 20px; display: none; z-index: 10005;">
-      <div style="background: #111111; color: #ffffff; border: 1.5px solid var(--border-color); border-radius: 28px; width: 100%; max-width: 400px; padding: 24px; position: relative; box-shadow: 0 15px 35px rgba(0,0,0,0.85); display: flex; flex-direction: column;" onclick="event.stopPropagation()">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 style="font-size: 16px; font-weight: 700; color: var(--accent-orange); margin: 0;">✉️ Change Email Address</h3>
-          <button onclick="hideChangeEmailModal()" style="background: #222222; color: #ffffff; width: 32px; height: 32px; border-radius: 50%; border: none; font-size: 18px; cursor: pointer;">×</button>
-        </div>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">Re-authenticate with your current password to update your registered email securely.</p>
-        <div class="form-group" style="margin-bottom: 12px;">
-          <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Current Password</label>
-          <input type="password" id="ce-current-password" class="form-control" placeholder="Enter current password" style="margin-top: 4px; padding: 10px; font-size: 13px;">
-        </div>
-        <div class="form-group" style="margin-bottom: 16px;">
-          <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">New Email Address</label>
-          <input type="email" id="ce-new-email" class="form-control" placeholder="Enter new email address" style="margin-top: 4px; padding: 10px; font-size: 13px;">
-        </div>
-        <button class="btn btn-primary" onclick="submitChangeEmail()" style="padding: 14px; width: 100%; font-weight: 700;">Update Email</button>
-      </div>
-    </div>
-
+  <div style="width:100%; max-width:76mm; margin:0 auto;">
+    ${contentHTML}
+  </div>
 </body>
 </html>`;
         AndroidStorage.printHtml(printedHTML, filename);

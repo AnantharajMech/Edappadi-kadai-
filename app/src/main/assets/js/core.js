@@ -361,10 +361,10 @@ window.setupCloudRealtimeListeners2 = function() {
             _lastDataSnapshotHash = null;
 
             try { if (typeof renderSlidingBanners === 'function') renderSlidingBanners(); } catch(e) {}
-            try { if (typeof renderAdminBannerList === 'function') renderAdminBannerList(true); } catch(e) {}
+            try { if (typeof renderAdminBannerList === 'function') renderAdminBannerList(false); } catch(e) {}
             try { if (typeof renderCategoryPills === 'function') renderCategoryPills(); } catch(e) {}
-            try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true); } catch(e) {}
-            try { if (typeof renderHomeScreen === 'function') renderHomeScreen(true); } catch(e) {}
+            try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(false); } catch(e) {}
+            try { if (typeof renderHomeScreen === 'function') renderHomeScreen(false); } catch(e) {}
             try { if (typeof updateHeaderUI === 'function') updateHeaderUI(); } catch(e) {}
             try { if (typeof checkAppVersion === 'function') checkAppVersion(cloudData); } catch(e) {}
           }
@@ -411,8 +411,8 @@ window.setupCloudRealtimeListeners2 = function() {
 
           try { if (typeof renderCategoryPills === 'function') renderCategoryPills(); } catch(e) {}
           try { if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true); } catch(e) {}
-          try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true); } catch(e) {}
-          try { if (typeof renderHomeScreen === 'function') renderHomeScreen(true); } catch(e) {}
+          try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(false); } catch(e) {}
+          try { if (typeof renderHomeScreen === 'function') renderHomeScreen(false); } catch(e) {}
           try { if (typeof populateProductCategoryOptions === 'function') populateProductCategoryOptions(); } catch(e) {}
         }
       }, err => console.warn("[Realtime Sync] Categories listener notice:", err));
@@ -496,7 +496,7 @@ window.setupCloudRealtimeListeners2 = function() {
 
           const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
           if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
-            try { if (typeof renderHomeScreen === 'function') renderHomeScreen(true); else if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true); } catch(e) {}
+            try { if (typeof renderHomeScreen === 'function') renderHomeScreen(false); else if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(false); } catch(e) {}
           }
           if (curScreen === 'screen-admin') {
             try { if (typeof renderAdminProducts === 'function') renderAdminProducts(); } catch(e) {}
@@ -1553,6 +1553,19 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
               isFirebaseAuthRestoring = false;
             }
           });
+
+          // Handle Firebase Auth token refresh — prevents silent auth failures after 1 hour
+          firebase.auth().onIdTokenChanged(async user => {
+            if (user) {
+              try {
+                // Force token refresh to ensure Firestore operations work
+                await user.getIdToken(true);
+                debugLog('[Auth] ID token refreshed successfully.');
+              } catch (tokenErr) {
+                console.warn('[Auth] Token refresh failed:', tokenErr);
+              }
+            }
+          });
         } else {
           updateCloudStatus('connected', 'Cloud Database Connected ✓');
           setupCloudRealtimeListeners2();
@@ -1967,7 +1980,14 @@ function getImageUrlWithCacheBuster(url, updatedAt) {
       }
 
       if (!buster) {
-        buster = Math.floor((typeof clientLastSyncTime !== 'undefined' && clientLastSyncTime ? clientLastSyncTime : Date.now()) / 10000);
+        // Use a stable fallback — app install timestamp, not Date.now() which changes constantly
+        if (typeof clientLastSyncTime !== 'undefined' && clientLastSyncTime) {
+          buster = Math.floor(clientLastSyncTime / 10000);
+        } else {
+          // Use a stable value based on the current day, so it only changes once per day
+          const dayKey = new Date().toISOString().slice(0, 10);
+          buster = dayKey.split('-').join('');
+        }
       }
 
       if (url.match(/([?&])(t|v)=\d+/)) {

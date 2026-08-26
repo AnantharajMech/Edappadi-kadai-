@@ -457,8 +457,9 @@
       processPendingSyncQueue().then(() => syncWithCloud());
     });
 
-    // Background interval to auto-retry pending writes every 15 seconds
-    setInterval(() => {
+    // Background interval to auto-retry pending writes every 15 seconds (with cleanup)
+    if (window._pendingSyncInterval) clearInterval(window._pendingSyncInterval);
+    window._pendingSyncInterval = setInterval(() => {
       if (document.hidden || window._isAppBackgrounded) return;
       if (navigator.onLine && db) {
         processPendingSyncQueue();
@@ -646,6 +647,25 @@
         subtotalAmount: financials.subtotal,
         deliveryFee: financials.deliveryFee,
         deliveryCharge: financials.deliveryFee,
+        deliveryDistanceKm: (() => {
+          try {
+            const sLat = parseFloat((typeof getData === 'function' ? (getData('ek_settings', {}) || {}).storeLat : null) || 11.5815);
+            const sLng = parseFloat((typeof getData === 'function' ? (getData('ek_settings', {}) || {}).storeLng : null) || 77.8488);
+            const cLat = sanitizedLat;
+            const cLng = sanitizedLng;
+            if (cLat === null || cLng === null || isNaN(cLat) || isNaN(cLng)) return null;
+            const R = 6371;
+            const dLat = (cLat - sLat) * Math.PI / 180;
+            const dLng = (cLng - sLng) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(sLat * Math.PI / 180) * Math.cos(cLat * Math.PI / 180) *
+                      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return Math.round(R * c * 100) / 100;
+          } catch (e) {
+            return null;
+          }
+        })(),
         expressDelivery: false,
         loyaltyPointsUsed: financials.loyaltyDiscount * 10,
         loyaltyDiscount: financials.loyaltyDiscount,
@@ -666,13 +686,12 @@
       if (needsManualLocationPin) {
         setTimeout(async () => {
           try {
-            const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
-            if (geocodeFn) {
-              debugLog("[Background Geocode] Resolving in background for Order ID:", randomID);
-              const res = await geocodeFn({ address: address + ', Edappadi, Salem, Tamil Nadu' });
-              if (res && res.data && res.data.latitude) {
-                const bgLat = parseFloat(res.data.latitude);
-                const bgLng = parseFloat(res.data.longitude);
+            debugLog("[Background Geocode] Resolving in background for Order ID:", randomID);
+            const list = await searchAddressGeocode(address);
+            if (Array.isArray(list) && list.length > 0) {
+              const bgLat = parseFloat(list[0].lat || list[0].latitude);
+              const bgLng = parseFloat(list[0].lng || list[0].longitude);
+              if (!isNaN(bgLat) && !isNaN(bgLng)) {
                 debugLog("[Background Geocode] Successfully geocoded. Updating Firestore and cache:", randomID, bgLat, bgLng);
                 
                 await db.collection('ek_orders').doc(randomID).update({
@@ -2178,7 +2197,8 @@ recoverPendingUpiOrder();
       try {
         if (typeof runTimeScheduler === "function") {
           runTimeScheduler();
-          setInterval(() => {
+          if (window._timeSchedulerInterval) clearInterval(window._timeSchedulerInterval);
+          window._timeSchedulerInterval = setInterval(() => {
             if (document.hidden || window._isAppBackgrounded) return;
             runTimeScheduler();
           }, 60000);

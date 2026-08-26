@@ -107,7 +107,7 @@
       list.forEach(e => {
         const sType = String(e.salaryType || e.payoutType || 'per_order').toLowerCase();
         const sRate = e.salaryRate !== undefined ? e.salaryRate : (e.payoutAmount !== undefined ? e.payoutAmount : 35);
-        const sText = sType === 'per_order' ? `₹${sRate} / order` : `₹${sRate} / month`;
+        const sText = sType === 'per_order' ? `₹${sRate} / order` : (sType === 'fixed' ? `₹${sRate} / month` : (sType === 'commission' ? `${sRate}% / order` : (sType === 'per_km' ? `₹${sRate} / km` : `₹${sRate} / order`)));
 
         const ratingHtml = e.averageRating
           ? `<div style="font-size:11px; margin-top:4px; display:flex; align-items:center; gap:4px; color:#f59e0b;">

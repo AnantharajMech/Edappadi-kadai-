@@ -68,10 +68,6 @@
     .leaflet-container img {
       max-width: none !important;
       max-height: none !important;
-      transform: none !important;
-      -webkit-transform: none !important;
-      background-color: transparent !important;
-      will-change: auto !important;
     }
     .leaflet-tile {
       visibility: inherit !important;
@@ -81,14 +77,20 @@
     .leaflet-container {
       font-family: inherit !important;
       background-color: #111827 !important;
-    }
-    #admin-zones-leaflet-map {
       width: 100% !important;
-      height: 250px !important;
-      min-height: 250px !important;
+      position: relative !important;
+      outline: none !important;
+    }
+    #picker-map, #live-map-container, #delivery-live-map-container, #admin-zones-leaflet-map {
+      width: 100% !important;
       position: relative !important;
       z-index: 1 !important;
       display: block !important;
+      outline: none !important;
+    }
+    #admin-zones-leaflet-map {
+      height: 250px !important;
+      min-height: 250px !important;
     }
     .leaflet-popup-content-wrapper {
       background: rgba(12, 17, 23, 0.95) !important;
@@ -116,10 +118,169 @@
     }
 
     /* Remove default Leaflet DivIcon white background and border safely */
-    .leaflet-div-icon, .custom-map-icon, .custom-rider-map-icon {
+    .leaflet-div-icon, .custom-map-icon, .custom-rider-map-icon, .gps-ripple-div-icon {
       background: transparent !important;
       border: none !important;
       box-shadow: none !important;
+    }
+
+    /* Map Picker Shimmer Background during Tile Loading */
+    #picker-map {
+      background-color: #12151c !important;
+      background-image: linear-gradient(
+        90deg,
+        rgba(18, 21, 28, 1) 0%,
+        rgba(32, 38, 52, 0.8) 50%,
+        rgba(18, 21, 28, 1) 100%
+      ) !important;
+      background-size: 200% 100% !important;
+      animation: mapTileLoadingShimmer 1.8s ease-in-out infinite !important;
+      transition: background-color 0.25s ease;
+    }
+    #picker-map.tiles-loaded {
+      animation: none !important;
+      background-image: none !important;
+      background-color: #111827 !important;
+    }
+    @keyframes mapTileLoadingShimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Map Pin Drop & Bounce Animation */
+    .map-pin-marker-inner {
+      will-change: transform, opacity;
+      transform-origin: center bottom;
+      transition: transform 0.1s ease;
+    }
+    .map-pin-animate-drop {
+      animation: pinDropBounce 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+    }
+    @keyframes pinDropBounce {
+      0% {
+        transform: translateY(-24px) scale(1.15);
+        opacity: 0;
+      }
+      50% {
+        transform: translateY(0) scale(1.08);
+        opacity: 1;
+      }
+      75% {
+        transform: translateY(-5px) scale(0.96);
+      }
+      90% {
+        transform: translateY(1px) scale(1.02);
+      }
+      100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* GPS Radar Pulse Ripple Animation */
+    .gps-ripple-div-icon {
+      pointer-events: none !important;
+    }
+    .gps-radar-ripple-container {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .gps-radar-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 2px solid #10b981;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.28) 0%, rgba(249, 115, 22, 0.1) 55%, transparent 75%);
+      opacity: 0;
+      transform: scale(0.15);
+      animation: gpsRadarPulse 2s cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+      will-change: transform, opacity;
+      pointer-events: none;
+    }
+    .gps-radar-ring.ring-1 {
+      animation-delay: 0s;
+    }
+    .gps-radar-ring.ring-2 {
+      animation-delay: 0.45s;
+    }
+    .gps-radar-ring.ring-3 {
+      animation-delay: 0.9s;
+    }
+    @keyframes gpsRadarPulse {
+      0% {
+        transform: scale(0.15);
+        opacity: 0.95;
+        border-color: #10b981;
+      }
+      45% {
+        border-color: #f97316;
+        opacity: 0.65;
+      }
+      100% {
+        transform: scale(1.15);
+        opacity: 0;
+        border-color: #f97316;
+      }
+    }
+
+    /* Map Picker Modal Sheet Smooth Entrance & Exit */
+    .map-picker-sheet {
+      will-change: transform, opacity;
+      transform: scale(0.93) translateY(12px);
+      opacity: 0;
+      transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease-out !important;
+    }
+    .modal-backdrop.active .map-picker-sheet {
+      transform: scale(1) translateY(0) !important;
+      opacity: 1 !important;
+    }
+
+    /* Confirm Location Button Ready State Animation */
+    .picker-confirm-btn {
+      will-change: transform, box-shadow;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    }
+    .btn-location-ready {
+      animation: confirmBtnPulseReady 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+    }
+    @keyframes confirmBtnPulseReady {
+      0% {
+        transform: scale(1);
+        box-shadow: 0 4px 15px rgba(249, 115, 22, 0.3);
+      }
+      40% {
+        transform: scale(1.025);
+        box-shadow: 0 0 20px rgba(249, 115, 22, 0.65), 0 4px 15px rgba(220, 38, 38, 0.4);
+      }
+      75% {
+        transform: scale(0.99);
+        box-shadow: 0 0 14px rgba(249, 115, 22, 0.45);
+      }
+      100% {
+        transform: scale(1);
+        box-shadow: 0 4px 15px rgba(249, 115, 22, 0.3);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .map-pin-animate-drop,
+      .gps-radar-ring,
+      .btn-location-ready,
+      #picker-map {
+        animation: none !important;
+        transform: none !important;
+      }
+      .map-picker-sheet {
+        transition: none !important;
+        transform: none !important;
+        opacity: 1 !important;
+      }
     }
 
     /* MODERN GLASS RANGE SLIDER STYLING */
@@ -2981,3 +3142,103 @@ body:not(.app-backgrounded) .shimmer,
 body:not(.app-backgrounded) .spinner {
   animation-play-state: running !important;
 }
+
+/* ==========================================================================
+   PREMIUM 3D ANIMATIONS & INTERACTIONS
+   ========================================================================== */
+
+/* TASK 1: 3D PRODUCT CARD HOVER & TILT EFFECT */
+.product-card-3d {
+  perspective: 1000px;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+}
+.product-card-3d:active {
+  transform: scale(0.96) translateZ(-10px);
+  transition: transform 0.15s ease-out;
+}
+
+/* 3D TILT ON PRODUCT IMAGE */
+@keyframes card3DTilt {
+  0% { transform: perspective(800px) rotateX(0deg) rotateY(0deg) translateZ(0px); }
+  50% { transform: perspective(800px) rotateX(2deg) rotateY(-2deg) translateZ(20px); }
+  100% { transform: perspective(800px) rotateX(0deg) rotateY(0deg) translateZ(0px); }
+}
+
+/* TASK 2: 3D SPLASH LOGO ENTRY */
+@keyframes splash3DLogoEntry {
+  0% {
+    transform: perspective(800px) rotateX(-90deg) rotateY(0deg) translateZ(-200px) scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: perspective(800px) rotateX(10deg) rotateY(5deg) translateZ(30px) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(800px) rotateX(0deg) rotateY(0deg) translateZ(0px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* TASK 3: 3D ORDER SUCCESS MODAL */
+@keyframes successModal3DEntry {
+  0% {
+    transform: perspective(1200px) rotateX(-45deg) translateZ(-300px) translateY(100px) scale(0.5);
+    opacity: 0;
+  }
+  60% {
+    transform: perspective(1200px) rotateX(5deg) translateZ(20px) translateY(-10px) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(1200px) rotateX(0deg) translateZ(0px) translateY(0px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* TASK 4: 3D CATEGORY PILL SELECT */
+@keyframes categoryPill3DSelect {
+  0% { transform: perspective(600px) rotateX(0deg) translateZ(0px); }
+  50% { transform: perspective(600px) rotateX(-25deg) translateZ(30px) scale(1.1); }
+  100% { transform: perspective(600px) rotateX(0deg) translateZ(0px) scale(1); }
+}
+
+/* TASK 5: 3D CART ADD BOUNCE */
+@keyframes cart3DBounce {
+  0% { transform: perspective(600px) translateZ(0px) scale(1); }
+  30% { transform: perspective(600px) translateZ(40px) scale(1.3) rotateY(10deg); }
+  60% { transform: perspective(600px) translateZ(10px) scale(0.9) rotateY(-5deg); }
+  100% { transform: perspective(600px) translateZ(0px) scale(1) rotateY(0deg); }
+}
+
+/* TASK 6: 3D SCREEN TRANSITION */
+@keyframes screen3DEnter {
+  0% {
+    transform: perspective(1000px) rotateY(15deg) translateZ(-100px) translateX(50px);
+    opacity: 0;
+  }
+  100% {
+    transform: perspective(1000px) rotateY(0deg) translateZ(0px) translateX(0px);
+    opacity: 1;
+  }
+}
+
+@keyframes screen3DExit {
+  0% {
+    transform: perspective(1000px) rotateY(0deg) translateZ(0px) translateX(0px);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(1000px) rotateY(-15deg) translateZ(-100px) translateX(-50px);
+    opacity: 0;
+  }
+}
+
+/* TASK 7: 3D BUTTON PRESS */
+@keyframes btn3DPress {
+  0% { transform: perspective(400px) translateZ(0px) scale(1); }
+  50% { transform: perspective(400px) translateZ(-15px) scale(0.95) rotateX(5deg); }
+  100% { transform: perspective(400px) translateZ(0px) scale(1); }
+}
+

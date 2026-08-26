@@ -135,7 +135,7 @@
       rainMode: false,
       rainCharge: 20,
       minAppVersion: "7.0.0",
-      recommendedVersion: "7.0.0",
+      recommendedVersion: "8.0.0",
       playStoreUrl: "https://play.google.com/store/apps/details?id=com.edappadikadai.app",
       privacyPolicyUrl: "privacy_policy.html",
       slidingBanners: [
@@ -629,26 +629,129 @@
       }
     }
 
-    async function reverseGeocodeWithRetry(lat, lng, retries = 3, delay = 1500) {
-      const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
-      if (!geocodeFn) {
+    async function reverseGeocodeWithRetry(lat, lng, retries = 1, delay = 1000) {
+      const numLat = parseFloat(lat);
+      const numLng = parseFloat(lng);
+      if (isNaN(numLat) || isNaN(numLng)) {
         return { displayName: "Selected Delivery Location, Edappadi, Salem, Tamil Nadu" };
       }
-      for (let i = 0; i < retries; i++) {
+
+      // 1. First priority: High-speed native Android Geocoder (zero network latency, zero CORS)
+      if (window.AndroidStorage && typeof window.AndroidStorage.nativeReverseGeocode === 'function') {
         try {
-          const res = await geocodeFn({ lat: lat, lng: lng });
+          const nativeJson = window.AndroidStorage.nativeReverseGeocode(numLat, numLng);
+          if (nativeJson && nativeJson.length > 5) {
+            const parsed = JSON.parse(nativeJson);
+            if (parsed && parsed.displayName) {
+              return parsed;
+            }
+          }
+        } catch (nativeErr) {
+          console.warn("[Geocoder] Native reverse geocode attempt error:", nativeErr);
+        }
+      }
+
+      // 2. Second priority: Cloud Function geocodeDeliveryAddress if authenticated
+      try {
+        const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
+        if (geocodeFn) {
+          const res = await geocodeFn({ lat: numLat, lng: numLng });
           if (res && res.data && res.data.displayName) {
             return res.data;
           }
-        } catch (e) {
-          console.warn(`Geocoding retry ${i + 1} failed:`, e);
-          if (i === retries - 1) {
-            break;
+        }
+      } catch (cfErr) {
+        console.warn("[Geocoder] Cloud function geocode fallback triggered:", cfErr.message || cfErr);
+      }
+
+      // 3. Third priority: Direct OpenStreetMap Nominatim reverse geocode (has CORS headers)
+      try {
+        const osmRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${numLat}&lon=${numLng}&zoom=18&addressdetails=1`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (osmRes && osmRes.ok) {
+          const data = await osmRes.json();
+          if (data && data.display_name) {
+            return {
+              displayName: data.display_name,
+              lat: numLat,
+              lng: numLng
+            };
           }
-          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      } catch (osmErr) {
+        console.warn("[Geocoder] OSM reverse geocode attempt error:", osmErr);
+      }
+
+      return {
+        displayName: `Selected Delivery Location (${numLat.toFixed(4)}, ${numLng.toFixed(4)}), Edappadi, Salem, Tamil Nadu`,
+        lat: numLat,
+        lng: numLng
+      };
+    }
+
+    async function searchAddressGeocode(query) {
+      const q = String(query || '').trim();
+      if (!q) return [];
+
+      const fullQuery = q.toLowerCase().includes('salem') || q.toLowerCase().includes('edappadi') ? q : `${q}, Edappadi, Salem, Tamil Nadu`;
+
+      // 1. Native Android Forward Geocoding
+      if (window.AndroidStorage && typeof window.AndroidStorage.nativeForwardGeocode === 'function') {
+        try {
+          const nativeJson = window.AndroidStorage.nativeForwardGeocode(fullQuery);
+          if (nativeJson && nativeJson.length > 5) {
+            const parsed = JSON.parse(nativeJson);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed;
+            }
+          }
+        } catch (nativeErr) {
+          console.warn("[Geocoder] Native forward geocode error:", nativeErr);
         }
       }
-      return { displayName: "Selected Delivery Location, Edappadi, Salem, Tamil Nadu" };
+
+      // 2. Cloud Function
+      try {
+        const geocodeFn = getCloudFunction('geocodeDeliveryAddress');
+        if (geocodeFn) {
+          const res = await geocodeFn({ address: fullQuery });
+          if (res && res.data && res.data.latitude) {
+            return [{
+              displayName: res.data.displayName || fullQuery,
+              latitude: parseFloat(res.data.latitude),
+              longitude: parseFloat(res.data.longitude),
+              lat: parseFloat(res.data.latitude),
+              lng: parseFloat(res.data.longitude)
+            }];
+          }
+        }
+      } catch (cfErr) {
+        console.warn("[Geocoder] Cloud function search fallback triggered:", cfErr.message || cfErr);
+      }
+
+      // 3. Direct Nominatim OpenStreetMap Search
+      try {
+        const osmRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&limit=5&addressdetails=1`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (osmRes && osmRes.ok) {
+          const list = await osmRes.json();
+          if (Array.isArray(list) && list.length > 0) {
+            return list.map(item => ({
+              displayName: item.display_name,
+              latitude: parseFloat(item.lat),
+              longitude: parseFloat(item.lon),
+              lat: parseFloat(item.lat),
+              lng: parseFloat(item.lon)
+            }));
+          }
+        }
+      } catch (osmErr) {
+        console.warn("[Geocoder] OSM search geocode error:", osmErr);
+      }
+
+      return [];
     }
 
     function mapErrorMessage(message) {
@@ -1907,7 +2010,7 @@
             window.activeGpsSimulationInterval = null;
           }
         }
-        if (screenId !== 'screen-admin' && typeof deliveryLeafletMap !== 'undefined' && deliveryLeafletMap) {
+        if (screenId !== 'screen-delivery' && typeof deliveryLeafletMap !== 'undefined' && deliveryLeafletMap) {
           try {
             deliveryLeafletMap.remove();
           } catch(e) { console.warn(e); }
@@ -1931,6 +2034,16 @@
 
           setTimeout(() => {
             target.classList.remove('screen-transitioning');
+            // Trigger automatic map resize invalidations once screen animation completes
+            try {
+              if (screenId === 'screen-track' && typeof trackerLeafletMap !== 'undefined' && trackerLeafletMap) {
+                trackerLeafletMap.invalidateSize();
+              } else if (screenId === 'screen-delivery' && typeof deliveryLeafletMap !== 'undefined' && deliveryLeafletMap) {
+                deliveryLeafletMap.invalidateSize();
+              } else if (screenId === 'screen-admin' && typeof refreshAdminZonesMapSize === 'function') {
+                refreshAdminZonesMapSize();
+              }
+            } catch(e) {}
           }, 280);
         } else {
           console.error(`[showScreen] Target screen "${screenId}" not found in DOM!`);
