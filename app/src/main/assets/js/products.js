@@ -1099,6 +1099,30 @@ function renderAdminBannerList(force = false) {
   });
   listEl.innerHTML = html;
 }
+function updateCategoryAccentVisuals(catId) {
+  try {
+    const config = typeof getCategoryConfig === 'function' ? getCategoryConfig(catId) : { color: '#2E7D32' };
+    const accentColor = (config && config.color) ? config.color : '#2E7D32';
+    const homeScreen = document.getElementById('screen-home');
+    if (homeScreen) {
+      homeScreen.style.setProperty('--category-accent-color', accentColor);
+    }
+    const logoEmblem = document.querySelector('.customer-logo-3d-emblem') || document.querySelector('#screen-home .brand-mini-logo');
+    if (logoEmblem) {
+      logoEmblem.style.borderColor = accentColor;
+      logoEmblem.style.boxShadow = `0 4px 12px rgba(0,0,0,0.65), inset 0 1px 2px rgba(255,255,255,0.3), 0 0 14px ${accentColor}`;
+      const svgEls = logoEmblem.querySelectorAll('circle, path');
+      svgEls.forEach(el => {
+        el.setAttribute('stroke', accentColor);
+        el.style.stroke = accentColor;
+      });
+    }
+  } catch (e) {
+    console.warn("[updateCategoryAccentVisuals] error:", e);
+  }
+}
+window.updateCategoryAccentVisuals = updateCategoryAccentVisuals;
+
 function renderHomeScreen(forceReRender = false) {
       _categoriesListCachedValue = null;
       window._categoriesListCachedValue = null;
@@ -1123,15 +1147,7 @@ function renderHomeScreen(forceReRender = false) {
       const debugCats = typeof getCategoriesList === 'function' ? getCategoriesList() : [];
       debugLog('[Home Debug] Products count:', debugProds.length, 'Categories count:', debugCats.length);
 
-      try {
-        const config = getCategoryConfig(activeCategory);
-        const homeScreen = document.getElementById('screen-home');
-        if (homeScreen) {
-          homeScreen.style.setProperty('--category-accent-color', config.color);
-        }
-      } catch (e) {
-        console.warn("[renderHomeScreen] Failed to set initial accent color:", e);
-      }
+      updateCategoryAccentVisuals(activeCategory);
       try {
         renderSlidingBanners();
       } catch (carouselErr) {
@@ -1229,17 +1245,12 @@ function renderHomeScreen(forceReRender = false) {
 
     function filterHomeProducts(catId, btn) {
       activeCategory = catId;
-      try {
-        const config = getCategoryConfig(catId);
-        const homeScreen = document.getElementById('screen-home');
-        if (homeScreen) {
-          homeScreen.style.setProperty('--category-accent-color', config.color);
-        }
-      } catch (e) {
-        console.warn("[filterHomeProducts] Failed to update CSS accent color:", e);
+      if (typeof window !== 'undefined') {
+        window.activeCategory = catId;
       }
+      updateCategoryAccentVisuals(catId);
       renderCategoryPills();
-      renderHomeScreenProducts();
+      renderHomeScreenProducts(true);
 
       if (btn && typeof scrollToCenterHorizontal === 'function') {
         scrollToCenterHorizontal(btn, btn.parentElement);
@@ -1434,6 +1445,7 @@ function renderHomeScreen(forceReRender = false) {
     let isCategoriesLoading = false;
     let categoriesLoadError = null;
 
+    let _catalogSyncTimer = null;
     function updateCatalogSyncIndicator(isFromCache) {
       let badge = document.getElementById('catalog-sync-indicator');
       if (!badge) {
@@ -1441,7 +1453,7 @@ function renderHomeScreen(forceReRender = false) {
         if (container) {
           badge = document.createElement('div');
           badge.id = 'catalog-sync-indicator';
-          badge.style.cssText = 'display:none; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:600; color:var(--text-muted, #94a3b8); padding:4px 12px; border-radius:20px; background:rgba(255,255,255,0.05); margin:6px auto; width:fit-content; border:1px solid rgba(255,255,255,0.1); transition:all 0.3s ease; z-index:5;';
+          badge.style.cssText = 'display:none; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:600; color:var(--text-muted, #94a3b8); padding:4px 12px; border-radius:20px; background:rgba(255,255,255,0.05); margin:6px auto; width:fit-content; border:1px solid rgba(255,255,255,0.1); opacity:0; transition:opacity 0.3s ease; z-index:5;';
           badge.innerHTML = `<span class="spinner-dual" style="width:12px; height:12px; border-width:2px; display:inline-block;"></span> <span>${typeof currentLang !== 'undefined' && currentLang === 'ta' ? 'அண்மைய தகவல்கள் புதுப்பிக்கப்படுகின்றன...' : 'Updating catalog...'}</span>`;
           if (container.firstChild) {
             container.insertBefore(badge, container.firstChild);
@@ -1451,7 +1463,32 @@ function renderHomeScreen(forceReRender = false) {
         }
       }
       if (badge) {
-        badge.style.display = isFromCache ? 'inline-flex' : 'none';
+        if (_catalogSyncTimer) {
+          clearTimeout(_catalogSyncTimer);
+          _catalogSyncTimer = null;
+        }
+        if (isFromCache) {
+          badge.style.display = 'inline-flex';
+          requestAnimationFrame(() => {
+            if (badge) badge.style.opacity = '1';
+          });
+          // Automatically fade out and hide after 1.8 seconds so it never gets stuck
+          _catalogSyncTimer = setTimeout(() => {
+            if (badge) {
+              badge.style.opacity = '0';
+              setTimeout(() => {
+                if (badge && badge.style.opacity === '0') {
+                  badge.style.display = 'none';
+                }
+              }, 300);
+            }
+          }, 1800);
+        } else {
+          badge.style.opacity = '0';
+          setTimeout(() => {
+            if (badge) badge.style.display = 'none';
+          }, 200);
+        }
       }
     }
     window.updateCatalogSyncIndicator = updateCatalogSyncIndicator;
@@ -1639,16 +1676,48 @@ function renderHomeScreen(forceReRender = false) {
 
         let filtered = (products || []).filter(p => p && !p.isHidden);
 
-        if (String(activeCategory) === 'favorites') {
-          filtered = filtered.filter(p => p && isProductFavorite(p.id));
-        } else if (String(activeCategory) !== 'all') {
-          const activeCatLower = String(activeCategory).toLowerCase().trim();
-          filtered = filtered.filter(p => p && String(p.category || '').toLowerCase().trim() === activeCatLower);
-        }
+        const checkInCategory = (typeof isProductInCategory === 'function') ? isProductInCategory : function(p, targetCatId, cList) {
+          if (!p || !targetCatId) return false;
+          const targetIdLower = String(targetCatId).toLowerCase().trim();
+          if (targetIdLower === 'all') return true;
+          if (targetIdLower === 'favorites') return typeof isProductFavorite === 'function' ? isProductFavorite(p.id) : false;
+          const prodCatRaw = String(p.category || '').toLowerCase().trim();
+          if (!prodCatRaw) return false;
+          if (prodCatRaw === targetIdLower) return true;
+          const allCats = (Array.isArray(cList) && cList.length > 0) ? cList : (window.DEFAULT_CATEGORIES || []);
+          const targetCatObj = allCats.find(c => c && String(c.id).toLowerCase().trim() === targetIdLower);
+          if (targetCatObj) {
+            const enName = String(targetCatObj.nameEn || targetCatObj.en || '').toLowerCase().trim();
+            const taName = String(targetCatObj.nameTa || targetCatObj.ta || '').toLowerCase().trim();
+            if (enName && (prodCatRaw === enName || prodCatRaw.includes(enName))) return true;
+            if (taName && (prodCatRaw === taName || prodCatRaw.includes(taName))) return true;
+          }
+          const prodCatObj = allCats.find(c => c && String(c.id).toLowerCase().trim() === prodCatRaw);
+          if (prodCatObj) {
+            const prodEn = String(prodCatObj.nameEn || prodCatObj.en || '').toLowerCase().trim();
+            const prodTa = String(prodCatObj.nameTa || prodCatObj.ta || '').toLowerCase().trim();
+            if (prodEn === targetIdLower || prodTa === targetIdLower) return true;
+          }
+          const catAliases = {
+            'veg': ['veg', 'vegetable', 'vegetables', 'காய்கறி', 'காய்கறிகள்', 'greens', 'keerai', 'spinach'],
+            'meat': ['meat', 'chicken', 'mutton', 'beef', 'pork', 'poultry', 'கறி', 'கறிவகை', 'சிக்கன்', 'மட்டன்', 'ஆடு', 'கோழி'],
+            'fish': ['fish', 'seafood', 'prawn', 'crab', 'மீன்', 'மீன்வகை', 'கடல் உணவு', 'nethili', 'vanjaram'],
+            'fruits': ['fruits', 'fruit', 'பழங்கள்', 'பழம்'],
+            'dairy': ['dairy', 'milk', 'egg', 'eggs', 'பால்', 'முட்டை', 'பால் & முட்டை', 'dairy & eggs'],
+            'bakery': ['bakery', 'bread', 'cake', 'பேக்கரி', 'bakes', 'bun', 'cookies', 'pastry'],
+            'groceries': ['groceries', 'grocery', 'provision', 'provisions', 'மளிகை', 'oil', 'rice', 'dal', 'spices', 'masala']
+          };
+          for (const [key, aliasArr] of Object.entries(catAliases)) {
+            const isTargetMatch = (targetIdLower === key) || aliasArr.includes(targetIdLower);
+            if (isTargetMatch && (prodCatRaw === key || aliasArr.includes(prodCatRaw))) return true;
+          }
+          return false;
+        };
 
-        if (filtered.length === 0 && String(activeCategory) !== 'all' && !searchQuery) {
-          activeCategory = 'all';
-          filtered = (products || []).filter(p => p && !p.isHidden);
+        if (String(activeCategory) === 'favorites') {
+          filtered = filtered.filter(p => p && (typeof isProductFavorite === 'function' ? isProductFavorite(p.id) : false));
+        } else if (String(activeCategory) !== 'all') {
+          filtered = filtered.filter(p => checkInCategory(p, activeCategory, catList));
         }
 
         if (searchQuery) {
@@ -1725,7 +1794,56 @@ function renderHomeScreen(forceReRender = false) {
         const dataHash = filtered.map(p => `${p ? p.id : ''}:${p ? p.stockKg : ''}:${p ? p.isOutOfStock : ''}:${p ? p.pricePerKg : ''}:${p ? String(p.imageUrl || '').trim() : ''}:${p ? String(p.englishName || '').trim() : ''}:${p ? (p.sellingUnit || p.unit || '') : ''}:${p ? String(p.category || '') : ''}:${p ? !!p.isHidden : ''}`).join('|');
         const combinedKey = filterKey + '::' + dataHash;
         if (filtered.length === 0) {
-          grid.innerHTML = `            <div style="grid-column: 1 / -1; text-align: center; padding: 48px 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">              <div style="font-size: 40px; filter: grayscale(1);">🛒</div>              <p style="color: var(--text-muted); font-size: 14px; font-weight: 500; margin: 0;">                ${currentLang === 'ta' ? 'தயாரிப்புகள் இன்னும் சேர்க்கப்படவில்லை.' : 'No products available yet.'}              </p>              <p style="color: var(--text-muted); font-size: 11px; margin: 0; opacity: 0.7;">                ${currentLang === 'ta' ? 'அட்மின் பேனலில் இருந்து புதிய தயாரிப்புகளை சேர்க்கவும்.' : 'Add products from the Admin Panel.'}              </p>            </div>          `;
+          const isTa = currentLang === 'ta';
+          const isFav = String(activeCategory) === 'favorites';
+          const isAll = String(activeCategory) === 'all';
+          const targetCat = (catList || []).find(c => c && String(c.id).toLowerCase().trim() === String(activeCategory).toLowerCase().trim());
+          const catNameTa = targetCat ? (targetCat.nameTa || targetCat.ta || targetCat.nameEn || activeCategory) : activeCategory;
+          const catNameEn = targetCat ? (targetCat.nameEn || targetCat.en || activeCategory) : activeCategory;
+          const catIcon = targetCat ? (targetCat.icon || '📦') : (isFav ? '❤️' : '🛒');
+          const catColor = targetCat ? (targetCat.accentColor || getCategoryConfig(String(activeCategory)).color) : 'var(--accent-orange)';
+
+          let emptyTitle = '';
+          let emptySubtitle = '';
+          let emptyIconHtml = '';
+
+          if (searchQuery) {
+            emptyIconHtml = `<div class="empty-icon-bubble" style="--empty-accent: #38bdf8;">🔍</div>`;
+            emptyTitle = isTa ? `"${searchQuery}" என்ற தேடலுக்கு தயாரிப்புகள் இல்லை` : `No products found for "${searchQuery}"`;
+            emptySubtitle = isTa ? 'எழுத்துப்பிழைகளை சரிபார்க்கவும் அல்லது வேறு வார்த்தையைத் தேடவும்.' : 'Check for spelling errors or try a different search term.';
+          } else if (isFav) {
+            emptyIconHtml = `<div class="empty-icon-bubble" style="--empty-accent: #ef4444;">❤️</div>`;
+            emptyTitle = isTa ? 'விருப்பப்பட்டியலில் தயாரிப்புகள் இல்லை' : 'Your Wishlist is Empty';
+            emptySubtitle = isTa ? 'உங்களுக்குப் பிடித்த தயாரிப்புகளில் ❤️ குறியீட்டை அழுத்தி இங்கு சேர்க்கலாம்.' : 'Tap the ❤️ icon on any product to save it to your favourites list.';
+          } else if (!isAll) {
+            emptyIconHtml = `
+              <div class="empty-icon-bubble" style="--empty-accent: ${catColor};">
+                <span class="empty-floating-emoji">${catIcon}</span>
+                <div class="empty-halo"></div>
+              </div>
+            `;
+            emptyTitle = isTa ? `${catNameTa} பிரிவில் தற்போது எந்தப் பொருளும் இல்லை` : `No products available in ${catNameEn}`;
+            emptySubtitle = isTa ? 'விரைவில் புதிய பொருட்கள் சேர்க்கப்படும். பிற பிரிவுகளைப் பார்வையிடவும்.' : 'Fresh items will be added soon. Explore our other fresh categories.';
+          } else {
+            emptyIconHtml = `<div class="empty-icon-bubble" style="--empty-accent: var(--accent-orange);">🧺</div>`;
+            emptyTitle = isTa ? 'தயாரிப்புகள் இன்னும் சேர்க்கப்படவில்லை' : 'No products available yet';
+            emptySubtitle = isTa ? 'அட்மின் பேனலில் இருந்து புதிய தயாரிப்புகளை சேர்க்கவும்.' : 'Add products from the Admin Panel.';
+          }
+
+          const actionBtnHtml = (searchQuery || !isAll) ? `
+            <button class="empty-state-btn" onclick="${searchQuery ? "document.getElementById('home-product-search').value=''; renderHomeScreenProducts(true);" : "filterHomeProducts('all');"}" style="margin-top: 8px;">
+              <span>${searchQuery ? (isTa ? '🔄 தேடலை அழி / Clear Search' : '🔄 Clear Search') : (isTa ? '🍽️ அனைத்து பொருட்களையும் பார்க்க / View All' : '🍽️ View All Products')}</span>
+            </button>
+          ` : '';
+
+          grid.innerHTML = `
+            <div class="category-empty-state" role="status" aria-live="polite" style="grid-column: 1 / -1; width: 100%; box-sizing: border-box;">
+              ${emptyIconHtml}
+              <h4 class="empty-state-title">${emptyTitle}</h4>
+              <p class="empty-state-subtitle">${emptySubtitle}</p>
+              ${actionBtnHtml}
+            </div>
+          `;
           const loadMoreIndicator = document.getElementById('product-load-more-indicator');
           if (loadMoreIndicator) loadMoreIndicator.style.display = 'none';
           _lastDataSnapshotHash = combinedKey;
@@ -1744,6 +1862,9 @@ function renderHomeScreen(forceReRender = false) {
         const renderTargetCount = _currentFilteredProducts.length;
         while (_currentRenderedCount < renderTargetCount && _currentRenderedCount < _currentFilteredProducts.length) {
           renderNextProductBatch();
+        }
+        if (typeof updateCatalogSyncIndicator === 'function') {
+          updateCatalogSyncIndicator(false);
         }
       } catch (err) {
         console.error("renderHomeScreenProducts exception caught safely:", err);
@@ -3211,7 +3332,11 @@ function renderHomeScreen(forceReRender = false) {
           cart.push(cartItem);
         }
 
-        if (navigator.vibrate) navigator.vibrate(10);
+        if (typeof safeVibrate === 'function') {
+          safeVibrate(10);
+        } else {
+          try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate(10); } catch(e) {}
+        }
 
         saveCart();
 
@@ -3605,9 +3730,17 @@ function renderHomeScreen(forceReRender = false) {
       }
 
       if (direction < 0) {
-        if (navigator.vibrate) navigator.vibrate(8);
+        if (typeof safeVibrate === 'function') {
+          safeVibrate(8);
+        } else {
+          try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate(8); } catch(e) {}
+        }
       } else if (direction > 0) {
-        if (navigator.vibrate) navigator.vibrate(8);
+        if (typeof safeVibrate === 'function') {
+          safeVibrate(8);
+        } else {
+          try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate(8); } catch(e) {}
+        }
       }
 
       saveCart();

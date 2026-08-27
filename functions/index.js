@@ -13,32 +13,50 @@ exports.sendFcmOnQueue = onDocumentCreated({
   const snap = event.data;
   if (!snap) return;
   const data = snap.data();
-  if (!data || !data.targetToken || data.processed) return;
-  const message = {
-    token: data.targetToken,
-    notification: { title: data.title || '', body: data.body || '' },
-    data: {
-      orderId: data.orderId || '',
-      oldStatus: data.oldStatus || '',
-      newStatus: data.newStatus || '',
-      click_action: 'OPEN_MAIN_ACTIVITY'
-    },
-    android: {
-      priority: 'high',
-      notification: { channelId: 'status_alerts' }
-    }
+  if (!data || data.processed) return;
+
+  const payloadData = {
+    orderId: data.orderId ? String(data.orderId) : '',
+    oldStatus: data.oldStatus ? String(data.oldStatus) : '',
+    newStatus: data.newStatus ? String(data.newStatus) : '',
+    type: data.type ? String(data.type) : '',
+    screen: data.screen ? String(data.screen) : '',
+    click_action: 'OPEN_MAIN_ACTIVITY'
   };
+
+  let fcmSuccess = false;
+  let fcmError = null;
+
+  if (data.targetToken) {
+    const message = {
+      token: String(data.targetToken).trim(),
+      notification: { title: data.title || '', body: data.body || '' },
+      data: payloadData,
+      android: {
+        priority: 'high',
+        notification: { channelId: 'status_alerts' }
+      }
+    };
+    try {
+      await admin.messaging().send(message);
+      fcmSuccess = true;
+    } catch (err) {
+      console.warn('[FCM Queue Send Error]', err.message);
+      fcmError = err.message;
+    }
+  } else {
+    fcmError = 'No targetToken provided';
+  }
+
   try {
-    await admin.messaging().send(message);
     await snap.ref.update({
       processed: true,
-      sentAt: new Date().toISOString()
+      sentAt: new Date().toISOString(),
+      fcmSuccess: fcmSuccess,
+      fcmError: fcmError
     });
-  } catch (err) {
-    await snap.ref.update({
-      processed: false,
-      error: err.message
-    });
+  } catch (dbErr) {
+    console.warn('[Queue Status Update Error]', dbErr.message);
   }
 });
 
@@ -51,14 +69,21 @@ exports.sendTopicBroadcast = onDocumentCreated({
   if (!snap) return;
   const data = snap.data();
   if (!data || !data.topic || data.processed) return;
+
   const message = {
-    topic: data.topic,
+    topic: String(data.topic).trim(),
     notification: { title: data.title || '', body: data.body || '' },
+    data: {
+      topic: String(data.topic).trim(),
+      broadcast: 'true',
+      click_action: 'OPEN_MAIN_ACTIVITY'
+    },
     android: {
       priority: 'high',
       notification: { channelId: 'status_alerts' }
     }
   };
+
   try {
     await admin.messaging().send(message);
     await snap.ref.update({
@@ -66,6 +91,7 @@ exports.sendTopicBroadcast = onDocumentCreated({
       sentAt: new Date().toISOString()
     });
   } catch (err) {
+    console.warn('[FCM Topic Broadcast Error]', err.message);
     await snap.ref.update({
       processed: false,
       error: err.message
@@ -83,6 +109,73 @@ exports.sendOtpSms = functions
     if (!phoneNumber || !otpCode) {
       throw new functions.https.HttpsError('invalid-argument', 'phoneNumber and otpCode required.');
     }
+
+    const cleanOtp = String(otpCode).trim();
+    if (!/^\d{4,6}$/.test(cleanOtp)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Valid 4-6 digit numeric OTP code required.');
+    }
+
+    let cleanPhone = String(phoneNumber).replace(/\s+/g, '').replace(/[^\d+]/g, '');
+    if (cleanPhone.startsWith('+91')) {
+      cleanPhone = cleanPhone.substring(1);
+    } else if (cleanPhone.length === 10 && !cleanPhone.startsWith('91')) {
+      cleanPhone = '91' + cleanPhone;
+    }
+
+    if (!/^91[6-9]\d{9}$/.test(cleanPhone)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Valid 10-digit Indian mobile number required.');
+    }
+
+    const now = Date.now();
+    const firestore = admin.firestore();
+    const rateLimitDocRef = firestore.collection('ek_sms_rate_limits').doc(cleanPhone);
+    const userRateLimitDocRef = firestore.collection('ek_user_sms_rate_limits').doc(context.auth.uid);
+
+    // Atomic rate-limiting check
+    await firestore.runTransaction(async (t) => {
+      const phoneSnap = await t.get(rateLimitDocRef);
+      const userSnap = await t.get(userRateLimitDocRef);
+
+      const phoneData = phoneSnap.exists ? phoneSnap.data() : {};
+      const userData = userSnap.exists ? userSnap.data() : {};
+
+      // 1. Phone number 60s cooldown check
+      const lastSentPhone = phoneData.lastSentAt || 0;
+      if (now - lastSentPhone < 55000) { // 55s cooldown
+        const waitSec = Math.ceil((55000 - (now - lastSentPhone)) / 1000);
+        throw new functions.https.HttpsError('resource-exhausted', `Please wait ${waitSec}s before requesting another SMS OTP.`);
+      }
+
+      // 2. Phone number hourly window limit (max 5 requests/hour)
+      const oneHourAgo = now - (60 * 60 * 1000);
+      const phoneRecentTimestamps = (phoneData.recentTimestamps || []).filter(ts => ts > oneHourAgo);
+      if (phoneRecentTimestamps.length >= 5) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Hourly SMS limit reached for this mobile number. Please try again later.');
+      }
+
+      // 3. User UID hourly limit (max 10 requests/hour)
+      const userRecentTimestamps = (userData.recentTimestamps || []).filter(ts => ts > oneHourAgo);
+      if (userRecentTimestamps.length >= 10) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Account SMS quota exceeded. Please try again later.');
+      }
+
+      phoneRecentTimestamps.push(now);
+      userRecentTimestamps.push(now);
+
+      t.set(rateLimitDocRef, {
+        phoneNumber: cleanPhone,
+        lastSentAt: now,
+        recentTimestamps: phoneRecentTimestamps,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      t.set(userRateLimitDocRef, {
+        uid: context.auth.uid,
+        lastSentAt: now,
+        recentTimestamps: userRecentTimestamps,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    });
 
     const axios = require('axios');
 
@@ -102,12 +195,7 @@ exports.sendOtpSms = functions
     }
     const secrets = secretsDoc.data() || {};
 
-    let cleanPhone = String(phoneNumber).replace(/\s+/g, '');
-    if (cleanPhone.length === 10 && !cleanPhone.startsWith('+')) {
-      cleanPhone = '91' + cleanPhone;
-    }
-
-    const messageText = `Edappadi Kadai security verification OTP is: ${otpCode}. Valid for 5 mins. Do not share.`;
+    const messageText = `Edappadi Kadai security verification OTP is: ${cleanOtp}. Valid for 5 mins. Do not share.`;
 
     if (provider === 'fast2sms') {
       const apiKey = secrets.smsApiKey;
@@ -725,6 +813,46 @@ exports.deductStock = functions
       throw new functions.https.HttpsError('invalid-argument', 'orderItems must be a non-empty array.');
     }
 
+    // Aggregate items by productId to handle duplicate entries cleanly and safely
+    const aggregatedMap = new Map();
+    for (const rawItem of orderItems) {
+      if (!rawItem || !rawItem.productId) continue;
+      const pid = String(rawItem.productId).trim();
+      if (!pid) continue;
+
+      let itemQty = 0;
+      if (rawItem.weightGrams !== undefined && !isNaN(parseFloat(rawItem.weightGrams))) {
+        const rawWeight = parseFloat(rawItem.weightGrams);
+        if (rawWeight <= 0 || rawWeight > 200000) continue; // ignore non-positive or absurd weights (>200kg)
+        itemQty = rawWeight / 1000;
+      } else if (rawItem.quantity !== undefined && !isNaN(parseFloat(rawItem.quantity))) {
+        const rawQty = parseFloat(rawItem.quantity);
+        if (rawQty <= 0 || rawQty > 200) continue; // ignore non-positive or absurd quantities
+        itemQty = rawQty >= 10 ? (rawQty / 1000) : rawQty;
+      } else {
+        itemQty = 1;
+      }
+
+      if (itemQty <= 0 || itemQty > 200) continue;
+
+      if (aggregatedMap.has(pid)) {
+        const existing = aggregatedMap.get(pid);
+        existing.requestedQty += itemQty;
+      } else {
+        aggregatedMap.set(pid, {
+          productId: pid,
+          name: rawItem.name || rawItem.englishName || rawItem.tamilName || pid,
+          requestedQty: itemQty,
+          unit: rawItem.unit || 'kg'
+        });
+      }
+    }
+
+    const aggregatedItems = Array.from(aggregatedMap.values());
+    if (aggregatedItems.length === 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'No valid items with positive quantity provided.');
+    }
+
     const firestore = admin.firestore();
     const itemResults = [];
 
@@ -735,18 +863,13 @@ exports.deductStock = functions
 
         // Step A: Read all product documents first (all reads before writes in Firestore transaction)
         const productReads = [];
-        for (const item of orderItems) {
-          if (!item || !item.productId) continue;
-          const prodRef = firestore.collection('ek_products').doc(String(item.productId));
+        for (const item of aggregatedItems) {
+          const prodRef = firestore.collection('ek_products').doc(item.productId);
           productReads.push({
             item,
             prodRef,
             snapPromise: transaction.get(prodRef)
           });
-        }
-
-        if (productReads.length === 0) {
-          throw new functions.https.HttpsError('invalid-argument', 'No valid product items provided with productId.');
         }
 
         const productSnaps = [];
@@ -764,7 +887,7 @@ exports.deductStock = functions
 
         for (const { item, prodRef, snap } of productSnaps) {
           const prodId = item.productId;
-          const prodName = item.name || item.englishName || item.tamilName || prodId;
+          const prodName = item.name;
 
           if (!snap.exists) {
             hasConflict = true;
@@ -782,19 +905,7 @@ exports.deductStock = functions
           const prodData = snap.data() || {};
           const currentStock = parseFloat(prodData.stockKg !== undefined ? prodData.stockKg : 0);
           const unit = String(prodData.unit || item.unit || 'kg').toLowerCase();
-          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-
-          // Handle weightGrams vs quantity
-          let requestedQty;
-          if (item.weightGrams !== undefined && !isNaN(parseFloat(item.weightGrams))) {
-            const rawWeight = parseFloat(item.weightGrams);
-            requestedQty = isWeight ? (rawWeight / 1000) : rawWeight;
-          } else if (item.quantity !== undefined && !isNaN(parseFloat(item.quantity))) {
-            const rawQty = parseFloat(item.quantity);
-            requestedQty = isWeight ? (rawQty >= 10 ? rawQty / 1000 : rawQty) : rawQty;
-          } else {
-            requestedQty = 1;
-          }
+          const requestedQty = item.requestedQty;
 
           if (currentStock < requestedQty) {
             hasConflict = true;
@@ -1435,9 +1546,36 @@ exports.restoreAbandonedStock = functions
 exports.sendEmailOtp = functions
   .region('asia-south1')
   .https.onCall(async (data, context) => {
-    const email = data.email;
+    let email = (data && data.email ? String(data.email).trim().toLowerCase() : '');
+    const phoneInput = (data && (data.phone || data.identifier) ? String(data.phone || data.identifier).trim() : '');
+
+    // If email is not directly provided but phone/identifier is, resolve email
+    if (!email && phoneInput) {
+      if (phoneInput.includes('@')) {
+        email = phoneInput.toLowerCase();
+      } else {
+        let phone10 = phoneInput.replace(/\D/g, '');
+        if (phone10.startsWith('91') && phone10.length === 12) phone10 = phone10.slice(2);
+        else if (phone10.startsWith('0') && phone10.length === 11) phone10 = phone10.slice(1);
+        else if (phone10.length > 10) phone10 = phone10.slice(-10);
+
+        if (phone10.length === 10) {
+          const variants = [phone10, '+91' + phone10, '91' + phone10, '0' + phone10, '+91 ' + phone10, '91 ' + phone10];
+          const userSnap = await admin.firestore().collection('ek_users').where('phone', 'in', variants).limit(1).get().catch(() => null);
+          if (userSnap && !userSnap.empty && userSnap.docs[0].data().email) {
+            email = userSnap.docs[0].data().email.trim().toLowerCase();
+          } else {
+            const userDocSnap = await admin.firestore().collection('ek_users').doc(phone10).get().catch(() => null);
+            if (userDocSnap && userDocSnap.exists && userDocSnap.data().email) {
+              email = userDocSnap.data().email.trim().toLowerCase();
+            }
+          }
+        }
+      }
+    }
+
     if (!email) {
-      throw new functions.https.HttpsError('invalid-argument', 'Email is required.');
+      throw new functions.https.HttpsError('invalid-argument', 'Valid email address or registered phone number is required.');
     }
 
     const now = Date.now();
@@ -1455,13 +1593,24 @@ exports.sendEmailOtp = functions
     const crypto = require('crypto');
 
     // Email enumeration prevention: check if email is registered
-    const userSnap = await admin.firestore().collection('ek_users').where('email', '==', email).limit(1).get();
-    if (userSnap.empty) {
-      const userSnap2 = await admin.firestore().collection('users').where('email', '==', email).limit(1).get();
-      if (userSnap2.empty) {
-        // Email not registered — return success WITHOUT sending OTP
-        return { success: true };
+    const userSnap = await admin.firestore().collection('ek_users').where('email', '==', email).limit(1).get().catch(() => null);
+    let isUserRegistered = (userSnap && !userSnap.empty);
+    if (!isUserRegistered) {
+      const userSnap2 = await admin.firestore().collection('users').where('email', '==', email).limit(1).get().catch(() => null);
+      if (userSnap2 && !userSnap2.empty) {
+        isUserRegistered = true;
       }
+    }
+    if (!isUserRegistered) {
+      try {
+        const authUser = await admin.auth().getUserByEmail(email);
+        if (authUser) isUserRegistered = true;
+      } catch (authErr) {}
+    }
+
+    if (!isUserRegistered) {
+      // Email truly not registered — return notRegistered flag so frontend can notify user accurately
+      return { success: false, notRegistered: true, message: 'This email or phone number is not registered.' };
     }
 
     const otp = String(crypto.randomInt(100000, 1000000));
@@ -1551,37 +1700,44 @@ exports.verifyEmailOtpAndResetPassword = functions
       throw new functions.https.HttpsError('invalid-argument', 'Email, OTP, and new password are required.');
     }
 
-    const docRef = admin.firestore().collection('ek_email_otps').doc(email);
-    const snap = await docRef.get();
-
-    if (!snap.exists) {
-      throw new functions.https.HttpsError('not-found', 'No OTP request found for this email.');
-    }
-
-    const otpData = snap.data();
-    const now = Date.now();
-
-    if (now > otpData.expiresAt) {
-      throw new functions.https.HttpsError('failed-precondition', 'OTP expired');
-    }
-
-    if (otpData.attempts >= 5) {
-      throw new functions.https.HttpsError('resource-exhausted', 'Too many attempts');
-    }
-
+    const cleanEmail = String(email).trim().toLowerCase();
+    const docRef = admin.firestore().collection('ek_email_otps').doc(cleanEmail);
     const crypto = require('crypto');
     const inputHash = crypto.createHash('sha256').update(String(otp).trim()).digest('hex');
-    const isValid = otpData.otpHash ? (inputHash === otpData.otpHash) : (String(otp).trim() === String(otpData.otp).trim());
 
-    if (!isValid) {
-      await docRef.update({ attempts: admin.firestore.FieldValue.increment(1) });
-      throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP');
-    }
+    // Run atomically in a transaction to prevent concurrent brute force attempts
+    await admin.firestore().runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+
+      if (!snap.exists) {
+        throw new functions.https.HttpsError('not-found', 'No OTP request found for this email.');
+      }
+
+      const otpData = snap.data();
+      const now = Date.now();
+
+      if (now > otpData.expiresAt) {
+        throw new functions.https.HttpsError('failed-precondition', 'OTP expired');
+      }
+
+      if ((otpData.attempts || 0) >= 5) {
+        throw new functions.https.HttpsError('resource-exhausted', 'Too many attempts. Please request a new OTP.');
+      }
+
+      const isValid = otpData.otpHash ? (inputHash === otpData.otpHash) : (String(otp).trim() === String(otpData.otp).trim());
+
+      if (!isValid) {
+        transaction.update(docRef, { attempts: (otpData.attempts || 0) + 1 });
+        throw new functions.https.HttpsError('invalid-argument', 'Invalid OTP');
+      }
+
+      // Mark as consumed inside transaction
+      transaction.delete(docRef);
+    });
 
     try {
-      const userRecord = await admin.auth().getUserByEmail(email);
+      const userRecord = await admin.auth().getUserByEmail(cleanEmail);
       await admin.auth().updateUser(userRecord.uid, { password: newPassword });
-      await docRef.delete();
       return { success: true };
     } catch (err) {
       console.error("Error resetting password:", err);
@@ -1639,7 +1795,187 @@ exports.checkPhoneUnique = functions
       return { isUnique: true, canonicalPhone: canonicalPhone };
     } catch (err) {
       console.error('Phone uniqueness check error:', err);
-      return { isUnique: true, canonicalPhone: canonicalPhone };
+      throw new functions.https.HttpsError('internal', 'Unable to verify phone uniqueness at this time. Please try again.');
+    }
+  });
+
+/**
+ * LOOKUP CUSTOMER AUTH EMAIL & STATUS — Server-side resolution
+ * Used during Customer Login when identifier is a phone number (e.g., 8778148899, +918778148899).
+ * Resolves phone number to customer's registered Firebase Auth email and verifies account active status,
+ * safely resolving unauthenticated Firestore access restrictions with Admin SDK.
+ */
+exports.lookupCustomerAuthEmail = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+    const rawInput = String((data && data.phone) || (data && data.identifier) || '').trim();
+    if (!rawInput) {
+      throw new functions.https.HttpsError('invalid-argument', 'Phone number or email is required.');
+    }
+
+    // 1. If identifier is an email
+    if (rawInput.includes('@')) {
+      const cleanEmail = rawInput.toLowerCase();
+      try {
+        const userSnap = await admin.firestore().collection('ek_users').where('email', '==', cleanEmail).limit(1).get().catch(() => null);
+        if (userSnap && !userSnap.empty) {
+          const uDoc = userSnap.docs[0];
+          const uData = uDoc.data();
+          const isActive = uData.active !== false && uData.isActive !== false && !uData.isBlocked && !uData.disabled;
+          return {
+            found: true,
+            email: cleanEmail,
+            name: uData.name || '',
+            phone: uData.phone || '',
+            active: isActive,
+            user: {
+              id: uDoc.id,
+              name: uData.name || '',
+              phone: uData.phone || '',
+              email: cleanEmail,
+              active: isActive
+            }
+          };
+        }
+
+        // Check Firebase Auth directly
+        try {
+          const authUser = await admin.auth().getUserByEmail(cleanEmail);
+          if (authUser) {
+            return {
+              found: true,
+              email: cleanEmail,
+              name: authUser.displayName || '',
+              active: !authUser.disabled
+            };
+          }
+        } catch (e) {}
+
+        return { found: false, email: cleanEmail };
+      } catch (err) {
+        console.error("lookupCustomerAuthEmail email check error:", err);
+        throw new functions.https.HttpsError('internal', 'Lookup failed: ' + err.message);
+      }
+    }
+
+    // 2. Identifier is a phone number
+    let digits = rawInput.replace(/\D/g, '');
+    if (digits.startsWith('91') && digits.length === 12) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith('0') && digits.length === 11) {
+      digits = digits.slice(1);
+    } else if (digits.length > 10) {
+      digits = digits.slice(-10);
+    }
+
+    if (digits.length !== 10) {
+      throw new functions.https.HttpsError('invalid-argument', 'Valid 10-digit mobile number required.');
+    }
+
+    const canonicalPhone = digits;
+    const phoneVariants = [
+      canonicalPhone,
+      '+91' + canonicalPhone,
+      '+91 ' + canonicalPhone,
+      '91' + canonicalPhone,
+      '91 ' + canonicalPhone,
+      '0' + canonicalPhone,
+      '+91-' + canonicalPhone,
+      `${canonicalPhone.slice(0, 5)} ${canonicalPhone.slice(5)}`,
+      `+91 ${canonicalPhone.slice(0, 5)} ${canonicalPhone.slice(5)}`,
+      `cust_${canonicalPhone}`,
+      `user_${canonicalPhone}`
+    ];
+
+    try {
+      const db = admin.firestore();
+      const phoneNum = Number(canonicalPhone);
+      const queries = [
+        db.collection('ek_users').where('phone', 'in', phoneVariants.slice(0, 10)).limit(1).get(),
+        db.collection('ek_users').where('phoneNumber', 'in', phoneVariants.slice(0, 10)).limit(1).get(),
+        db.collection('ek_users').where('cleanPhone', '==', canonicalPhone).limit(1).get(),
+        db.collection('ek_users').where('mobile', 'in', phoneVariants.slice(0, 10)).limit(1).get(),
+        !isNaN(phoneNum) ? db.collection('ek_users').where('phone', '==', phoneNum).limit(1).get() : null,
+        !isNaN(phoneNum) ? db.collection('ek_users').where('phoneNumber', '==', phoneNum).limit(1).get() : null,
+        db.collection('ek_users').doc(canonicalPhone).get(),
+        db.collection('ek_users').doc('cust_' + canonicalPhone).get(),
+        db.collection('users').where('phone', 'in', phoneVariants.slice(0, 10)).limit(1).get(),
+        db.collection('users').where('phoneNumber', 'in', phoneVariants.slice(0, 10)).limit(1).get()
+      ].filter(Boolean);
+
+      const results = await Promise.all(queries.map(p => p.catch(() => null)));
+      let userRecord = null;
+      let docId = '';
+
+      for (const snap of results) {
+        if (snap) {
+          if (snap.docs && snap.docs.length > 0) {
+            userRecord = snap.docs[0].data();
+            docId = snap.docs[0].id;
+            break;
+          } else if (snap.exists && snap.data) {
+            userRecord = snap.data();
+            docId = snap.id;
+            break;
+          }
+        }
+      }
+
+      if (userRecord) {
+        const isActive = userRecord.active !== false && userRecord.isActive !== false && !userRecord.isBlocked && !userRecord.disabled;
+        const resolvedEmail = (userRecord.email && userRecord.email.includes('@'))
+          ? userRecord.email.trim().toLowerCase()
+          : `${canonicalPhone}@app.com`;
+
+        return {
+          found: true,
+          email: resolvedEmail,
+          name: userRecord.name || '',
+          phone: canonicalPhone,
+          active: isActive,
+          user: {
+            id: userRecord.id || docId,
+            name: userRecord.name || '',
+            phone: canonicalPhone,
+            email: resolvedEmail,
+            active: isActive
+          }
+        };
+      }
+
+      // Check Firebase Auth for synthetic phone-based user or direct phone auth user
+      try {
+        const syntheticEmail = `${canonicalPhone}@app.com`;
+        const authUser = await admin.auth().getUserByEmail(syntheticEmail);
+        if (authUser) {
+          return {
+            found: true,
+            email: syntheticEmail,
+            name: authUser.displayName || '',
+            phone: canonicalPhone,
+            active: !authUser.disabled
+          };
+        }
+      } catch (authErr) {}
+
+      try {
+        const authUserPhone = await admin.auth().getUserByPhoneNumber('+91' + canonicalPhone);
+        if (authUserPhone) {
+          const authEmail = (authUserPhone.email && authUserPhone.email.includes('@')) ? authUserPhone.email : `${canonicalPhone}@app.com`;
+          return {
+            found: true,
+            email: authEmail,
+            name: authUserPhone.displayName || '',
+            phone: canonicalPhone,
+            active: !authUserPhone.disabled
+          };
+        }
+      } catch (phoneAuthErr) {}
+
+      return { found: false, canonicalPhone: canonicalPhone };
+    } catch (err) {
+      console.error("lookupCustomerAuthEmail error:", err);
+      throw new functions.https.HttpsError('internal', 'Lookup error: ' + err.message);
     }
   });
 
@@ -1656,7 +1992,7 @@ exports.cleanupInvalidFcmTokens = functions
       throw new functions.https.HttpsError('unauthenticated', 'Admin authentication required.');
     }
     const adminDoc = await admin.firestore().collection('ek_admin_accounts').doc(context.auth.uid).get();
-    if (!adminDoc.exists || (adminDoc.data().role !== 'admin' && adminDoc.data().role !== 'superadmin')) {
+    if (!adminDoc.exists || (adminDoc.data().role !== 'admin' && adminDoc.data().role !== 'superadmin') || adminDoc.data().active === false) {
       throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
     }
 
@@ -1767,6 +2103,95 @@ exports.scheduledWeeklyFirestoreBackup = functions
         throw new Error('Firestore backup failed: ' + fallbackErr.message);
       }
     }
+  });
+
+/**
+ * Server-Side AI Generation Gateway
+ * Keeps all AI provider API keys secured on the server.
+ */
+exports.generateAiResponse = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Authentication required to use AI assistant.');
+    }
+
+    const { prompt, systemInstruction, contents, model, provider, temperature } = data || {};
+    if (!prompt && (!contents || !Array.isArray(contents) || contents.length === 0)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Prompt or contents required.');
+    }
+
+    const axios = require('axios');
+    const selectedProvider = String(provider || 'gemini').toLowerCase().trim();
+
+    // 1. Fetch AI Provider Configuration from secure server settings
+    let apiKey = process.env.GEMINI_API_KEY || '';
+    let targetModel = model || 'gemini-2.5-flash';
+
+    try {
+      const configDoc = await admin.firestore().collection('ek_settings').doc('ai_provider_config').get();
+      if (configDoc.exists) {
+        const cfg = configDoc.data() || {};
+        if (cfg.apiKey && typeof cfg.apiKey === 'string' && cfg.apiKey.trim()) {
+          apiKey = cfg.apiKey.trim();
+        }
+        if (cfg.model && typeof cfg.model === 'string' && cfg.model.trim()) {
+          targetModel = cfg.model.trim();
+        }
+      }
+    } catch (e) {
+      console.warn("Could not read Firestore ai_provider_config:", e.message);
+    }
+
+    if (!apiKey) {
+      apiKey = process.env.GEMINI_API_KEY || '';
+    }
+
+    if (!apiKey) {
+      throw new functions.https.HttpsError('failed-precondition', 'AI Service API Key is not configured on server.');
+    }
+
+    // 2. Format conversation contents
+    const conversationContents = contents && Array.isArray(contents) && contents.length > 0 
+      ? contents 
+      : [{ role: 'user', parts: [{ text: String(prompt || '') }] }];
+
+    const geminiModels = [targetModel, 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest'];
+    let lastError = null;
+
+    for (const m of geminiModels) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+        const requestBody = {
+          contents: conversationContents,
+          generationConfig: {
+            temperature: typeof temperature === 'number' ? temperature : 0.2
+          }
+        };
+        if (systemInstruction) {
+          requestBody.systemInstruction = {
+            parts: [{ text: String(systemInstruction) }]
+          };
+        }
+
+        const res = await axios.post(endpoint, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+
+        if (res.data) {
+          const replyText = res.data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (replyText) {
+            return { success: true, text: replyText, provider: 'gemini', model: m };
+          }
+        }
+      } catch (err) {
+        lastError = err.response?.data?.error?.message || err.message;
+        console.warn(`Server AI call to model ${m} failed:`, lastError);
+      }
+    }
+
+    throw new functions.https.HttpsError('internal', 'AI generation failed: ' + (lastError || 'No response from provider'));
   });
 
 

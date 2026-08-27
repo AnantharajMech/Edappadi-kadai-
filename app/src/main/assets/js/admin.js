@@ -1565,7 +1565,7 @@ ${o.items.map((it, idx) => {
                       <span style="font-size:12px; color:var(--accent-orange); font-weight:700;">${'★'.repeat(o.rating)}${'☆'.repeat(5 - o.rating)}</span>
                     </div>
                     ${o.feedbackComment ? `
-                      <p style="margin:4px 0 0 0; font-size:11.5px; color:rgba(255,255,255,0.85); font-style:italic;">"${o.feedbackComment}"</p>
+                      <p style="margin:4px 0 0 0; font-size:11.5px; color:rgba(255,255,255,0.85); font-style:italic;">"${typeof escapeHtml === 'function' ? escapeHtml(o.feedbackComment) : o.feedbackComment}"</p>
                     ` : `
                       <p style="margin:4px 0 0 0; font-size:11px; color:var(--text-muted);">No written comments provided.</p>
                     `}
@@ -2056,7 +2056,9 @@ ${o.items.map((it, idx) => {
       saveData('ek_orders', orders);
 
       try {
-        sendFcmPushNotification(orders[idx], oldStatus, orders[idx].status);
+        if (oldStatus !== orders[idx].status) {
+          sendFcmPushNotification(orders[idx], oldStatus, orders[idx].status);
+        }
         if (exec) {
           sendFcmNotificationToRider(orders[idx], exec);
           if (typeof sendFcmNotificationForRiderAssignment === 'function') {

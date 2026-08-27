@@ -1255,20 +1255,10 @@
         debugLog("[Forgot Password] Opening modal safely...");
         const loginIdEl = document.getElementById('login-identifier');
         const loginIdVal = loginIdEl ? loginIdEl.value.trim() : '';
-        const phoneInp = document.getElementById('fp-phone-input');
         const emailInp = document.getElementById('fp-email-input');
 
-        if (phoneInp) phoneInp.value = '';
-        if (emailInp) emailInp.value = '';
-
-        if (loginIdVal) {
-          if (/^\+?\d+$/.test(loginIdVal)) {
-            if (phoneInp) phoneInp.value = loginIdVal;
-          } else if (loginIdVal.includes('@')) {
-            if (emailInp) emailInp.value = loginIdVal;
-          } else {
-            if (phoneInp) phoneInp.value = loginIdVal;
-          }
+        if (emailInp) {
+          emailInp.value = loginIdVal || '';
         }
 
         currentFPMethod = 'gmail-link';
@@ -1281,15 +1271,6 @@
         const stageLoading = document.getElementById('fp-stage-loading'); if (stageLoading) stageLoading.style.display = 'none';
         const stageOtp = document.getElementById('fp-stage-otp'); if (stageOtp) stageOtp.style.display = 'none';
         const stageLink = document.getElementById('fp-stage-link'); if (stageLink) stageLink.style.display = 'none';
-
-        if (methodOtp) {
-          const lbl = methodOtp.closest('label');
-          if (lbl) lbl.style.borderColor = 'var(--border-color)';
-        }
-        if (methodLink) {
-          const lbl = methodLink.closest('label');
-          if (lbl) lbl.style.borderColor = 'var(--accent-orange)';
-        }
 
         const otpInp = document.getElementById('fp-otp-input'); if (otpInp) otpInp.value = '';
         const newpassInp = document.getElementById('fp-newpass-input'); if (newpassInp) newpassInp.value = '';
@@ -1358,6 +1339,7 @@
     }
 
     function maskIdentifier(val) {
+      if (!val) return '';
       if (val.includes('@')) {
         const parts = val.split('@');
         const name = parts[0];
@@ -1409,24 +1391,46 @@
     }
 
     async function sendForgotPasswordOtp() {
-      const emailVal = (document.getElementById('fp-email-input')?.value || '').trim().toLowerCase();
+      const inputVal = (document.getElementById('fp-email-input')?.value || '').trim();
       const isTa = currentLang === 'ta';
 
-      if (!emailVal) {
+      if (!inputVal) {
         showToast(
-          isTa ? "தயவுசெய்து உங்கள் பதிவு செய்யப்பட்ட மின்னஞ்சல் முகவரியை உள்ளிடவும்." : "Please enter your registered email address.",
+          isTa ? "தயவுசெய்து உங்கள் பதிவு செய்யப்பட்ட மொபைல் எண் அல்லது மின்னஞ்சலை உள்ளிடவும்." : "Please enter your registered mobile number or email address.",
           "error"
         );
         return;
       }
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(emailVal)) {
-        showToast(
-          isTa ? "செல்லுபடியாகும் மின்னஞ்சல் முகவரியை உள்ளிடவும்." : "Please enter a valid email address.",
-          "error"
-        );
-        return;
+      let emailVal = '';
+      let isPhone = false;
+      let phone10 = '';
+
+      if (inputVal.includes('@')) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(inputVal)) {
+          showToast(
+            isTa ? "செல்லுபடியாகும் மின்னஞ்சல் முகவரியை உள்ளிடவும்." : "Please enter a valid email address.",
+            "error"
+          );
+          return;
+        }
+        emailVal = inputVal.toLowerCase();
+      } else {
+        isPhone = true;
+        let digits = inputVal.replace(/\D/g, '');
+        if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
+        else if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
+        else if (digits.length > 10) digits = digits.slice(-10);
+
+        if (digits.length !== 10) {
+          showToast(
+            isTa ? "தயவுசெய்து சரியான 10 இலக்க மொபைல் எண்ணை உள்ளிடவும்." : "Please enter a valid 10-digit mobile number.",
+            "error"
+          );
+          return;
+        }
+        phone10 = digits;
       }
 
       const stage1 = document.getElementById('fp-stage-1');
@@ -1445,77 +1449,69 @@
       if (loadingMsg) loadingMsg.innerText = isTa ? "கணக்கை சரிபார்த்து OTP அனுப்பப்படுகிறது..." : "Verifying account & sending 6-digit OTP...";
 
       try {
-        // 1. Check if email is registered
-        let isRegistered = false;
-
-        // Check local users cache
-        const localUsers = typeof getData === 'function' ? getData('ek_users', []) : [];
-        if (Array.isArray(localUsers) && localUsers.some(u => u && (u.email || '').toLowerCase() === emailVal)) {
-          isRegistered = true;
-        }
-
-        // Check Firestore ek_users / users collections
-        if (!isRegistered && typeof db !== 'undefined' && db) {
-          try {
-            const [qEkUsers, qUsers] = await Promise.all([
-              db.collection('ek_users').where('email', '==', emailVal).limit(1).get().catch(() => null),
-              db.collection('users').where('email', '==', emailVal).limit(1).get().catch(() => null)
-            ]);
-
-            if ((qEkUsers && !qEkUsers.empty) || (qUsers && !qUsers.empty)) {
-              isRegistered = true;
+        // Resolve email if phone was entered
+        if (isPhone && !emailVal) {
+          if (typeof getCloudFunction === 'function') {
+            try {
+              const lookupFn = getCloudFunction('lookupCustomerAuthEmail');
+              if (lookupFn) {
+                const lookupRes = await lookupFn({ phone: phone10 });
+                if (lookupRes && lookupRes.data && lookupRes.data.found && lookupRes.data.email) {
+                  emailVal = lookupRes.data.email.trim().toLowerCase();
+                }
+              }
+            } catch (lErr) {
+              console.warn("lookupCustomerAuthEmail in FP error:", lErr);
             }
-          } catch (dbErr) {
-            console.warn("[Forgot Password] Firestore query check error:", dbErr);
+          }
+
+          if (!emailVal) {
+            const localUsers = typeof getData === 'function' ? (getData('ek_users', []) || []) : [];
+            const matchedUser = localUsers.find(u => {
+              if (!u) return false;
+              const uDigits = String(u.phone || u.phoneNumber || '').replace(/\D/g, '');
+              const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
+              return u10 === phone10;
+            });
+            if (matchedUser && matchedUser.email) {
+              emailVal = matchedUser.email.trim().toLowerCase();
+            }
           }
         }
 
-        // Fallback check Firebase Auth methods if not found in Firestore
-        if (!isRegistered && typeof firebase !== 'undefined' && firebase.auth) {
-          try {
-            const methods = await firebase.auth().fetchSignInMethodsForEmail(emailVal);
-            if (methods && methods.length > 0) {
-              isRegistered = true;
-            }
-          } catch (authErr) {
-            console.warn("[Forgot Password] fetchSignInMethodsForEmail check error:", authErr);
-          }
-        }
-
-        if (!isRegistered) {
-          if (stageLoading) stageLoading.style.display = 'none';
-          if (stage1) stage1.style.display = 'block';
-          showToast(
-            isTa ? "இந்த மின்னஞ்சல் பதிவு செய்யப்படவில்லை! தயவுசெய்து சரியான மின்னஞ்சலை உள்ளிடவும் அல்லது புதிய கணக்கை உருவாக்கவும்." 
-                 : "This email address is not registered! Please enter your registered email or sign up.",
-            "error"
-          );
-          return;
-        }
-
-        // 2. Email is registered -> call sendEmailOtp Cloud Function
+        // Call sendEmailOtp Cloud Function
         const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
         if (!sendOtpFn) {
           throw new Error("Cloud Function service (sendEmailOtp) is unavailable.");
         }
 
-        const res = await sendOtpFn({ email: emailVal });
+        const res = await sendOtpFn({ email: emailVal || '', phone: isPhone ? phone10 : '' });
         if (res && res.data && res.data.success) {
           if (stageLoading) stageLoading.style.display = 'none';
           if (stageOtp) stageOtp.style.display = 'flex';
           
           if (typeof clearOtpValues === 'function') clearOtpValues();
           const helpText = document.getElementById('fp-otp-help-text');
+          const maskedDisplay = maskIdentifier(emailVal || inputVal);
           if (helpText) {
             helpText.innerText = isTa 
-              ? `${emailVal} என்ற மின்னஞ்சலுக்கு அனுப்பப்பட்ட 6-இலக்க OTP குறியீட்டை உள்ளிடவும்.` 
-              : `Enter the 6-digit OTP sent to ${emailVal}.`;
+              ? `${maskedDisplay} என்ற பதிவு செய்யப்பட்ட மின்னஞ்சலுக்கு அனுப்பப்பட்ட 6-இலக்க OTP குறியீட்டை உள்ளிடவும்.` 
+              : `Enter the 6-digit OTP sent to your registered email (${maskedDisplay}).`;
           }
 
           showToast(
             isTa ? "OTP குறியீடு உங்கள் மின்னஞ்சலுக்கு வெற்றிகரமாக அனுப்பப்பட்டது! ✉️" 
                  : "6-digit OTP has been sent to your email address! ✉️",
             "success"
+          );
+        } else if (res && res.data && res.data.notRegistered) {
+          if (stageLoading) stageLoading.style.display = 'none';
+          if (stage1) stage1.style.display = 'block';
+          showToast(
+            isPhone
+              ? (isTa ? `இந்த மொபைல் எண் (${phone10}) பதிவு செய்யப்படவில்லை! தயவுசெய்து கணக்கு தொடங்குங்கள் ❌` : `This mobile number (${phone10}) is not registered! Please register first ❌`)
+              : (isTa ? "இந்த மின்னஞ்சல் முகவரியில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும் ❌" : "This email address is not registered! Please register first ❌"),
+            "error"
           );
         } else {
           const errMsg = (res && res.data && (res.data.message || res.data.error)) || "Failed to send OTP.";
@@ -1533,13 +1529,13 @@
     }
 
     async function resendForgotPasswordOtp() {
-      const emailVal = (document.getElementById('fp-email-input')?.value || '').trim().toLowerCase();
+      const inputVal = (document.getElementById('fp-email-input')?.value || '').trim();
       const isTa = currentLang === 'ta';
       const resendBtn = document.getElementById('fp-resend-otp-btn') || document.getElementById('fp-btn-resend-otp');
 
-      if (!emailVal) {
+      if (!inputVal) {
         showToast(
-          isTa ? "மின்னஞ்சல் முகவரி கிடைக்கவில்லை." : "Email address not found.",
+          isTa ? "மின்னஞ்சல் அல்லது மொபைல் எண் கிடைக்கவில்லை." : "Email address or phone number not found.",
           "error"
         );
         return;
@@ -1565,7 +1561,7 @@
         const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
         if (!sendOtpFn) throw new Error("Cloud Function service is unavailable.");
 
-        const res = await sendOtpFn({ email: emailVal });
+        const res = await sendOtpFn({ email: inputVal.includes('@') ? inputVal.toLowerCase() : '', phone: !inputVal.includes('@') ? inputVal : '' });
         if (res && res.data && res.data.success) {
           if (typeof clearOtpValues === 'function') clearOtpValues();
           showToast(
@@ -1655,10 +1651,35 @@ async function verifyOtpAndResetPassword() {
         });
 
         if (res && res.data && res.data.success) {
+          // Update cached customer password if present
+          try {
+            const localUsers = typeof getData === 'function' ? (getData('ek_users', []) || []) : [];
+            const userIdx = localUsers.findIndex(u => u && (u.email || '').toLowerCase() === emailVal);
+            if (userIdx !== -1) {
+              localUsers[userIdx].password = newPasswordVal;
+              localUsers[userIdx].updatedAt = new Date().toISOString();
+              if (typeof saveData === 'function') saveData('ek_users', localUsers);
+            }
+          } catch (syncErr) {
+            console.warn("Local user cache password sync:", syncErr);
+          }
+
+          // Pre-populate login identifier & clear old login password
+          try {
+            const loginIdEl = document.getElementById('login-identifier');
+            if (loginIdEl && !loginIdEl.value) {
+              loginIdEl.value = emailVal;
+            }
+            const passEl = document.getElementById('login-password');
+            if (passEl) {
+              passEl.value = '';
+            }
+          } catch (uiErr) {}
+
           document.getElementById('fp-stage-loading').style.display = 'none';
           hideForgotPasswordModal();
           showToast(
-            isTa ? "கடவுச்சொல் வெற்றிகரமாக மாற்றப்பட்டது! இப்போது உள்நுழையலாம்." : "Password reset successfully! You can now log in.",
+            isTa ? "கடவுச்சொல் வெற்றிகரமாக மாற்றப்பட்டது! புதிய கடவுச்சொல் மூலம் உள்நுழையவும் 🔐" : "Password reset successfully! Please log in with your new password 🔐",
             "success"
           );
         } else {
@@ -2076,10 +2097,15 @@ async function verifyOtpAndResetPassword() {
 
         let authEmail = identifier;
         let matched = null;
+        const isPhone = !identifier.includes('@');
+        let phone10 = '';
 
-        if (!identifier.includes('@')) {
-          const rawDigits = identifier.replace(/\D/g, '');
-          const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+        if (isPhone) {
+          let rawDigits = identifier.replace(/\D/g, '');
+          if (rawDigits.startsWith('91') && rawDigits.length === 12) phone10 = rawDigits.slice(2);
+          else if (rawDigits.startsWith('0') && rawDigits.length === 11) phone10 = rawDigits.slice(1);
+          else if (rawDigits.length > 10) phone10 = rawDigits.slice(-10);
+          else phone10 = rawDigits;
 
           if (phone10.length !== 10) {
             loginCompleted = true;
@@ -2094,88 +2120,71 @@ async function verifyOtpAndResetPassword() {
             return;
           }
 
+          // 1. Fast local cache check
           const localUsers = getData('ek_users', []) || [];
           matched = localUsers.find(u => {
-            if (!u || !u.phone) return false;
-            const uDigits = String(u.phone).replace(/\D/g, '');
+            if (!u) return false;
+            const uDigits = String(u.phone || u.phoneNumber || '').replace(/\D/g, '');
             const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
-            return u10 === phone10 || uDigits === rawDigits || u.phone === identifier;
+            return u10 === phone10 || uDigits === phone10;
           });
 
-          // Check Firestore for phone lookup if missing in local cache
-          if (!matched && typeof db !== 'undefined' && db) {
+          // 2. Server-side cloud function lookup with Admin SDK (avoids unauthenticated client-side rule restrictions)
+          let serverLookupAttempted = false;
+          let isKnownRegistered = false;
+
+          if (typeof getCloudFunction === 'function') {
             try {
-              const phoneVariants = Array.from(new Set([
-                phone10,
-                cleanDigits,
-                rawDigits,
-                `+91${phone10}`,
-                `+91 ${phone10}`,
-                `91${phone10}`,
-                `91 ${phone10}`,
-                `0${phone10}`,
-                `+91-${phone10}`,
-                `${phone10.slice(0, 5)} ${phone10.slice(5)}`,
-                `+91 ${phone10.slice(0, 5)} ${phone10.slice(5)}`,
-                `+91 ${phone10.slice(0, 5)}-${phone10.slice(5)}`,
-                `+91-${phone10.slice(0, 5)}-${phone10.slice(5)}`,
-                `cust_${phone10}`,
-                `user_${phone10}`,
-                identifier
-              ])).filter(Boolean);
-
-              const queryChunk1 = phoneVariants.slice(0, 10);
-              const queryChunk2 = phoneVariants.slice(10, 20);
-              const qResults = await Promise.all([
-                db.collection('ek_users').where('phone', 'in', queryChunk1).limit(1).get().catch(() => null),
-                queryChunk2.length > 0 ? db.collection('ek_users').where('phone', 'in', queryChunk2).limit(1).get().catch(() => null) : null,
-                db.collection('ek_users').where('phoneNumber', 'in', queryChunk1).limit(1).get().catch(() => null),
-                db.collection('users').where('phone', 'in', queryChunk1).limit(1).get().catch(() => null),
-                db.collection('ek_users').doc(phone10).get().catch(() => null),
-                db.collection('ek_users').doc(`cust_${phone10}`).get().catch(() => null)
-              ]);
-
-              for (const snap of qResults) {
-                if (snap) {
-                  if (snap.docs && snap.docs.length > 0) {
-                    matched = snap.docs[0].data();
-                    break;
-                  } else if (snap.exists && snap.data) {
-                    matched = snap.data();
-                    break;
+              const lookupFn = getCloudFunction('lookupCustomerAuthEmail');
+              if (lookupFn) {
+                serverLookupAttempted = true;
+                const lookupRes = await lookupFn({ phone: phone10 });
+                if (lookupRes && lookupRes.data) {
+                  if (lookupRes.data.found) {
+                    isKnownRegistered = true;
+                    if (lookupRes.data.active === false) {
+                      loginCompleted = true;
+                      cleanupTimers();
+                      showToast(
+                        currentLang === 'ta'
+                          ? "உங்கள் கணக்கு முடக்கப்பட்டுள்ளது. நிர்வாகியைத் தொடர்பு கொள்ளவும் ❌"
+                          : "Your account has been disabled. Please contact support ❌",
+                        "error"
+                      );
+                      restoreButton();
+                      return;
+                    }
+                    if (lookupRes.data.email) {
+                      authEmail = lookupRes.data.email.trim().toLowerCase();
+                    }
+                    if (lookupRes.data.user) {
+                      matched = { ...(matched || {}), ...lookupRes.data.user };
+                    }
+                  } else {
+                    // Confirmed by backend Admin SDK that phone is NOT registered in Firestore or Firebase Auth
+                    loginCompleted = true;
+                    cleanupTimers();
+                    showToast(
+                      currentLang === 'ta'
+                        ? `இந்த மொபைல் எண் (${phone10}) பதிவு செய்யப்படவில்லை! தயவுசெய்து முதலில் கணக்கு தொடங்குங்கள் (Register) ❌`
+                        : `This mobile number (${phone10}) is not registered! Please register first ❌`,
+                      "error"
+                    );
+                    restoreButton();
+                    return;
                   }
                 }
               }
-
-              if (!matched) {
-                for (const variant of phoneVariants) {
-                  const phoneDocSnap = await db.collection('ek_users').where('phone', '==', variant).limit(1).get().catch(() => null);
-                  if (phoneDocSnap && !phoneDocSnap.empty) {
-                    matched = phoneDocSnap.docs[0].data();
-                    break;
-                  }
-                }
-              }
-            } catch (pErr) {
-              console.warn("[Customer Phone Lookup Warning]:", pErr);
+            } catch (fnErr) {
+              console.warn("[Customer Auth Lookup Backend Warning]:", fnErr);
             }
           }
 
-          // STRICT CHECK: If mobile number is NOT registered, REJECT IMMEDIATELY.
-          if (!matched) {
-            loginCompleted = true;
-            cleanupTimers();
-            showToast(
-              currentLang === 'ta'
-                ? `இந்த மொபைல் எண் (${phone10}) பதிவு செய்யப்படவில்லை! தயவுசெய்து முதலில் கணக்கு தொடங்குங்கள் (Register) ❌`
-                : `This mobile number (${phone10}) is not registered! Please register first ❌`,
-              "error"
-            );
-            restoreButton();
-            return;
+          if (matched && matched.email && matched.email.includes('@')) {
+            authEmail = matched.email.trim().toLowerCase();
+          } else if (!authEmail.includes('@')) {
+            authEmail = `${phone10}@app.com`;
           }
-
-          authEmail = (matched.email && matched.email.includes('@')) ? matched.email.trim().toLowerCase() : `${phone10}@app.com`;
         }
 
         if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -2190,18 +2199,11 @@ async function verifyOtpAndResetPassword() {
             try {
               cred = await firebase.auth().signInWithEmailAndPassword(authEmail, pass);
             } catch (signInErr) {
-              // If email failed for phone user, retry with phone-based email format strictly using signIn
-              if (!identifier.includes('@') && matched) {
-                const rawDigits = identifier.replace(/\D/g, '');
-                const phone10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
-                const fallbackEmail = `${phone10}@app.com`;
-                if (authEmail !== fallbackEmail) {
-                  try {
-                    cred = await firebase.auth().signInWithEmailAndPassword(fallbackEmail, pass);
-                  } catch (retryErr) {
-                    throw signInErr;
-                  }
-                } else {
+              // If email failed for phone user where candidate wasn't `${phone10}@app.com`, try fallback candidate
+              if (isPhone && authEmail !== `${phone10}@app.com`) {
+                try {
+                  cred = await firebase.auth().signInWithEmailAndPassword(`${phone10}@app.com`, pass);
+                } catch (retryErr) {
                   throw signInErr;
                 }
               } else {
@@ -2211,10 +2213,10 @@ async function verifyOtpAndResetPassword() {
 
             const uid = cred.user.uid;
 
-            // Fast local profile lookup first
+            // Fast local profile lookup
             const localUsers = getData('ek_users', []) || [];
             if (!matched) {
-              matched = localUsers.find(u => u.id === uid || u.email === authEmail || (u.phone && identifier.includes(u.phone.slice(-8))));
+              matched = localUsers.find(u => u.id === uid || u.email === authEmail || (u.phone && isPhone && phone10 && String(u.phone).includes(phone10)));
             }
 
             // Fallback to fast Firestore fetch if missing locally
@@ -2235,8 +2237,8 @@ async function verifyOtpAndResetPassword() {
               // If account exists in Firebase Auth but no profile was found, load basic verified record
               matched = {
                 id: uid,
-                name: (cred.user.displayName || identifier.split('@')[0]),
-                phone: (!identifier.includes('@') ? identifier.replace(/\D/g, '').slice(-10) : ''),
+                name: (cred.user.displayName || (isPhone ? `Customer ${phone10}` : identifier.split('@')[0])),
+                phone: isPhone ? phone10 : '',
                 email: authEmail,
                 password: '',
                 address: '',
@@ -2252,6 +2254,21 @@ async function verifyOtpAndResetPassword() {
                 referredBy: '',
                 referralRewardClaimed: false
               };
+            }
+
+            // Account status verification (Active / Inactive)
+            if (matched && (matched.active === false || matched.isActive === false || matched.isBlocked === true || matched.disabled === true)) {
+              await firebase.auth().signOut().catch(() => {});
+              loginCompleted = true;
+              cleanupTimers();
+              showToast(
+                currentLang === 'ta'
+                  ? "உங்கள் கணக்கு முடக்கப்பட்டுள்ளது. நிர்வாகியைத் தொடர்பு கொள்ளவும் ❌"
+                  : "Your account has been disabled. Please contact support ❌",
+                "error"
+              );
+              restoreButton();
+              return;
             }
 
             loginCompleted = true;
@@ -2271,7 +2288,7 @@ async function verifyOtpAndResetPassword() {
             sessionStorage.removeItem('ek_customer_session_temp');
 
             const uniqueSessionToken = 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-            const session = { loggedIn: true, userId: matched.id, name: matched.name, phone: matched.phone, sessionToken: uniqueSessionToken };
+            const session = { loggedIn: true, userId: matched.id, name: matched.name, phone: matched.phone || phone10, sessionToken: uniqueSessionToken };
             saveData('ek_customer_session', session);
 
             if (typeof db !== 'undefined' && db) {
@@ -2290,8 +2307,8 @@ async function verifyOtpAndResetPassword() {
 
             showToast(
               currentLang === 'ta'
-                ? `மீண்டும் வருக, ${matched.name}! 🎉`
-                : `Welcome back, ${matched.name}! 🎉`,
+                ? `மீண்டும் வருக, ${matched.name || 'Customer'}! 🎉`
+                : `Welcome back, ${matched.name || 'Customer'}! 🎉`,
               "success"
             );
 
@@ -2308,31 +2325,80 @@ async function verifyOtpAndResetPassword() {
             cleanupTimers();
             console.error("[Firebase Auth] Sign in failed:", authErr);
             let friendlyError = currentLang === 'ta'
-              ? "உள்நுழைவுக் கோரிக்கை தோல்வியடைந்தது. மின்னஞ்சல்/போன் அல்லது கடவுச்சொல் தவறானது."
-              : "Login failed. Incorrect email/phone or password.";
+              ? "உள்நுழைவுக் கோரிக்கை தோல்வியடைந்தது. தயவுசெய்து மீண்டும் முயற்சிக்கவும்."
+              : "Login failed. Please check your details and try again.";
 
             if (authErr && authErr.code) {
               const code = authErr.code;
-              if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+              if (code === 'auth/wrong-password') {
                 friendlyError = currentLang === 'ta'
                   ? "கடவுச்சொல் தவறானது! தயவுசெய்து உங்கள் சரியான கடவுச்சொல்லை உள்ளிடவும் ❌"
                   : "Incorrect password! Please enter the correct password ❌";
               } else if (code === 'auth/user-not-found') {
-                friendlyError = currentLang === 'ta'
-                  ? "இந்த மின்னஞ்சல் அல்லது போன் எண்ணில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும் ❌"
-                  : "No account found with this email or phone number. Please register first ❌";
+                if (isPhone) {
+                  friendlyError = currentLang === 'ta'
+                    ? `இந்த மொபைல் எண் (${phone10}) பதிவு செய்யப்படவில்லை! தயவுசெய்து முதலில் கணக்கு தொடங்குங்கள் (Register) ❌`
+                    : `This mobile number (${phone10}) is not registered! Please register first ❌`;
+                } else {
+                  friendlyError = currentLang === 'ta'
+                    ? "இந்த மின்னஞ்சல் முகவரியில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும் ❌"
+                    : "No account found with this email address. Please register first ❌";
+                }
+              } else if (code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
+                // Determine whether user is registered or not
+                if (isPhone) {
+                  // For phone, if server lookup confirmed registration, it's definitely wrong password
+                  friendlyError = currentLang === 'ta'
+                    ? "கடவுச்சொல் தவறானது! தயவுசெய்து உங்கள் சரியான கடவுச்சொல்லை உள்ளிடவும் ❌"
+                    : "Incorrect password! Please enter the correct password ❌";
+                } else {
+                  // For email, perform fast lookup check if possible
+                  let emailExists = false;
+                  const localUsers = getData('ek_users', []) || [];
+                  if (localUsers.some(u => u && u.email && u.email.toLowerCase() === identifier)) {
+                    emailExists = true;
+                  }
+                  if (emailExists) {
+                    friendlyError = currentLang === 'ta'
+                      ? "கடவுச்சொல் தவறானது! தயவுசெய்து உங்கள் சரியான கடவுச்சொல்லை உள்ளிடவும் ❌"
+                      : "Incorrect password! Please enter the correct password ❌";
+                  } else {
+                    // Check server lookup for email
+                    try {
+                      if (typeof getCloudFunction === 'function') {
+                        const lookupFn = getCloudFunction('lookupCustomerAuthEmail');
+                        if (lookupFn) {
+                          const lRes = await lookupFn({ identifier: identifier }).catch(() => null);
+                          if (lRes && lRes.data && lRes.data.found) {
+                            emailExists = true;
+                          }
+                        }
+                      }
+                    } catch (e) {}
+
+                    if (emailExists) {
+                      friendlyError = currentLang === 'ta'
+                        ? "கடவுச்சொல் தவறானது! தயவுசெய்து உங்கள் சரியான கடவுச்சொல்லை உள்ளிடவும் ❌"
+                        : "Incorrect password! Please enter the correct password ❌";
+                    } else {
+                      friendlyError = currentLang === 'ta'
+                        ? "இந்த மின்னஞ்சல் முகவரியில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும் ❌"
+                        : "No account found with this email address. Please register first ❌";
+                    }
+                  }
+                }
               } else if (code === 'auth/user-disabled') {
                 friendlyError = currentLang === 'ta'
-                  ? "உங்கள் கணக்கு முடக்கப்பட்டுள்ளது. நிர்வாகியைத் தொடர்பு கொள்ளவும்."
-                  : "Your account has been disabled. Please contact support.";
+                  ? "உங்கள் கணக்கு முடக்கப்பட்டுள்ளது. நிர்வாகியைத் தொடர்பு கொள்ளவும் ❌"
+                  : "Your account has been disabled. Please contact support ❌";
               } else if (code === 'auth/too-many-requests') {
                 friendlyError = currentLang === 'ta'
-                  ? "மிக அதிகமான உள்நுழைவு கோரிக்கைகள். சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்."
-                  : "Too many login attempts. Please try again after some time.";
+                  ? "மிக அதிகமான உள்நுழைவு கோரிக்கைகள். சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும் ⏳"
+                  : "Too many login attempts. Please try again after some time ⏳";
               } else if (code === 'auth/network-request-failed') {
                 friendlyError = currentLang === 'ta'
-                  ? "இணைய இணைப்பு பிழை. தயவுசெய்து உங்கள் BSNL/Network இணைப்பைச் சரிபார்க்கவும்."
-                  : "Network error. Please check your internet connection and try again.";
+                  ? "இணைய இணைப்பு பிழை. தயவுசெய்து உங்கள் இணைய இணைப்பைச் சரிபார்க்கவும் 📶"
+                  : "Network error. Please check your internet connection and try again 📶";
               }
             }
             showToast(friendlyError, "error");
@@ -2849,7 +2915,9 @@ async function verifyOtpAndResetPassword() {
           preferredLang: currentLang,
           referredBy: referredByUserId,
           referralRewardClaimed: false,
-          activeSessionToken: uniqueSessionToken
+          activeSessionToken: uniqueSessionToken,
+          fcmToken: (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : '') || localStorage.getItem('ek_fcm_token') || '',
+          realFcmToken: (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : '') || localStorage.getItem('ek_fcm_token') || ''
         };
 
         if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -2975,6 +3043,30 @@ async function verifyOtpAndResetPassword() {
            "We are thrilled to welcome you to Edappadi Kadai! You have received 10 welcome loyalty points. Happy Meat Ordering! 🥩",
            "🎉"
         );
+
+        // Targeted FCM Welcome Push Notification
+        try {
+          const userFcmToken = newUser.fcmToken || newUser.realFcmToken || (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getFcmToken === 'function' ? AndroidStorage.getFcmToken() : '');
+          if (userFcmToken && typeof db !== 'undefined' && db) {
+            const welcomeTitle = currentLang === 'ta' ? `வரவேற்கிறோம் ${newUser.name || ''}! 🎉` : `Welcome to Edappadi Kadai, ${newUser.name || ''}! 🎉`;
+            const welcomeBody = currentLang === 'ta'
+              ? "எடப்பாடி கடைக்கு உங்களை அன்போடு வரவேற்கிறோம்! புதிய கணக்கை உருவாக்கியதற்காக 10 லாயல்டி புள்ளிகள் வழங்கப்பட்டுள்ளது. 🥩"
+              : "Your account has been successfully created! You have received 10 welcome loyalty points. Happy Meat Ordering! 🥩";
+
+            db.collection('ek_fcm_queue').add({
+              targetToken: userFcmToken,
+              targetUserId: newUser.id,
+              title: welcomeTitle,
+              body: welcomeBody,
+              type: "welcome",
+              screen: "screen-home",
+              createdAt: new Date().toISOString(),
+              processed: false
+            }).catch(qErr => console.warn("[FCM Welcome Queue] Non-blocking notice:", qErr));
+          }
+        } catch (fcmWelcomeEx) {
+          console.warn("[FCM Welcome Push Ex Handled]", fcmWelcomeEx);
+        }
 
         const session = { loggedIn: true, userId: newUser.id, name: newUser.name, phone: newUser.phone, sessionToken: uniqueSessionToken };
         saveData('ek_customer_session', session);

@@ -45,29 +45,45 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             }
         }
 
+        val dataMap = remoteMessage.data
+
         if (!title.isNullOrEmpty() && !body.isNullOrEmpty()) {
-            sendNotification(title, body)
+            sendNotification(title, body, dataMap)
         }
     }
 
-    private fun sendNotification(title: String, messageBody: String) {
+    private fun sendNotification(title: String, messageBody: String, dataMap: Map<String, String>? = null) {
+        val payloadJson = org.json.JSONObject().apply {
+            put("title", title)
+            put("body", messageBody)
+            dataMap?.forEach { (k, v) -> put(k, v) }
+        }.toString()
+
         if (MainActivity.isActivityInForeground) {
-            Log.d("FCM_SERVICE", "Suppressing native notification since app is in the foreground.")
+            Log.d("FCM_SERVICE", "App in foreground. Delivering payload to active instance.")
+            MainActivity.currentInstance?.handleNotificationPayload(payloadJson)
             return
         }
 
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra("title", title)
+            putExtra("body", messageBody)
+            putExtra("payload_json", payloadJson)
+            dataMap?.forEach { (k, v) -> putExtra(k, v) }
         }
         
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         } else {
-            PendingIntent.FLAG_ONE_SHOT
+            PendingIntent.FLAG_UPDATE_CURRENT
         }
 
+        val orderId = dataMap?.get("orderId") ?: dataMap?.get("order_id") ?: ""
+        val notifId = if (orderId.isNotBlank()) orderId.hashCode() else System.currentTimeMillis().toInt()
+
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent, pendingIntentFlags
+            this, notifId, intent, pendingIntentFlags
         )
 
         val channelId = "status_alerts"
@@ -106,7 +122,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             notificationBuilder.setLargeIcon(largeIcon)
         }
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+        notificationManager.notify(notifId, notificationBuilder.build())
     }
 
     private fun getAppIconBitmap(context: Context): android.graphics.Bitmap? {

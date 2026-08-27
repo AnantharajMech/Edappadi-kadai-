@@ -1252,7 +1252,11 @@ function parseAndroidUpiPaymentResult(statusString) {
             debugLog(`[Cloud Sync] Success: Order ${order.id} saved to Firestore ek_orders!`);
             removePendingSync('ek_orders', order.id);
 
-            if (navigator.vibrate) navigator.vibrate([15, 30, 15, 30, 25]);
+            if (typeof safeVibrate === 'function') {
+              safeVibrate([15, 30, 15, 30, 25]);
+            } else {
+              try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate([15, 30, 15, 30, 25]); } catch(e) {}
+            }
 
             // Also update user profile on Firestore
             if (customerProfile && customerProfile.id) {
@@ -2172,10 +2176,8 @@ recoverPendingUpiOrder();
       ]).then(() => {
         try {
           window._isSettingsFetched = true;
-              window._hasFreshSettings = true;
-              checkAndUpdateFreshCloudData();
           window._hasFreshSettings = true;
-          _lastBannersHash = '';
+          checkAndUpdateFreshCloudData();
           hideLoadingModal();
           hideLyoTransitLoader();
           if (typeof AndroidStorage !== 'undefined') {
@@ -2186,8 +2188,12 @@ recoverPendingUpiOrder();
           }
           if (currentScreen === 'screen-admin' && typeof renderAdminDashboard === 'function') {
             renderAdminDashboard();
-          } else if (currentScreen === 'screen-home' && typeof renderHomeScreenProducts === 'function') {
-            renderHomeScreenProducts();
+          } else if (currentScreen === 'screen-home') {
+            if (typeof scheduleRealtimeHomeRender === 'function') {
+              scheduleRealtimeHomeRender(false);
+            } else if (typeof renderHomeScreenProducts === 'function') {
+              renderHomeScreenProducts(false);
+            }
           }
         } catch (e) {
           console.error("Background data refresh completion error:", e);

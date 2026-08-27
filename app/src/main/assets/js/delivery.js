@@ -1255,9 +1255,6 @@ function updateRiderLiveLocation() {
           if (typeof sendFcmNotificationForRiderAssignment === 'function') {
             sendFcmNotificationForRiderAssignment(currentOrder, session);
           }
-          if (typeof sendFcmPushNotification === 'function') {
-            sendFcmPushNotification(currentOrder, currentOrder.status || 'ready', currentOrder.status || 'ready');
-          }
         } catch (fcmErr) {
           console.warn("FCM notification error on rider claim (offline):", fcmErr);
         }
@@ -1337,9 +1334,6 @@ function updateRiderLiveLocation() {
             const currentOrder = orders[idx];
             if (typeof sendFcmNotificationForRiderAssignment === 'function') {
               sendFcmNotificationForRiderAssignment(currentOrder, session);
-            }
-            if (typeof sendFcmPushNotification === 'function') {
-              sendFcmPushNotification(currentOrder, currentOrder.status || 'ready', currentOrder.status || 'ready');
             }
           } catch (fcmErr) {
             console.warn("FCM notification error on rider claim:", fcmErr);

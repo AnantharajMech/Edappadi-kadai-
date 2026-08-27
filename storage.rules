@@ -16,29 +16,34 @@ service firebase.storage {
         firestore.get(/databases/(default)/documents/ek_admin_accounts/$(request.auth.uid)).data.active != false;
     }
 
+    function isImage() {
+      return request.resource.contentType.matches('image/.*') &&
+             request.resource.size < 5 * 1024 * 1024;
+    }
+
     match /products/{vendorId}/{productId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isImage();
     }
 
     match /avatars/{fileName} {
       allow read: if true;
-      allow write: if isAdmin() || (
+      allow write: if (isAdmin() || (
         isAuthenticated() && (
           fileName.startsWith("customer_" + request.auth.uid + "_") ||
           fileName.startsWith("rider_" + request.auth.uid + "_")
         )
-      );
+      )) && isImage();
     }
 
     match /branding/{fileName} {
       allow read: if true;
-      allow write: if isAdmin() && fileName.startsWith("store_");
+      allow write: if isAdmin() && fileName.startsWith("store_") && isImage();
     }
 
     match /rider_profiles/{uid}/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+      allow write: if (isAdmin() || (isAuthenticated() && request.auth.uid == uid)) && isImage();
     }
   }
 }

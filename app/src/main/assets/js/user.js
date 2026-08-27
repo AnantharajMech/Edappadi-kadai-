@@ -1973,10 +1973,8 @@
           debugLog("[Auth] Re-authentication successful");
         }
 
-        await authUser.delete();
-        debugLog("[Auth] Firebase Auth account deleted successfully");
-
-        if (typeof db !== 'undefined' && db) {
+        // Anonymize/Clean up Firestore profile first while auth user credentials are valid
+        if (typeof db !== 'undefined' && db && user && user.id) {
           try {
             await db.collection('ek_users').doc(user.id).set({
               id: user.id,
@@ -1996,6 +1994,9 @@
             console.warn("[Firestore] Failed to update Firestore profile doc:", dbErr);
           }
         }
+
+        await authUser.delete();
+        debugLog("[Auth] Firebase Auth account deleted successfully");
 
         removeData('ek_customer_session');
         sessionStorage.removeItem('ek_customer_session_temp');
@@ -2438,37 +2439,111 @@
     }
 
     function toggleFavoriteProduct(productId, event) {
-      if (event) event.stopPropagation();
-      let favorites = getData('ek_customer_favorites', []);
-      const index = favorites.indexOf(productId);
+      if (event) {
+        event.stopPropagation();
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+      }
+      if (!productId) return;
+      const pidStr = String(productId).trim();
+      const rawFavs = getData('ek_customer_favorites', []);
+      let favorites = (Array.isArray(rawFavs) ? rawFavs : []).map(id => String(id).trim());
+      const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+
+      const index = favorites.indexOf(pidStr);
+      let isNowFav = false;
       if (index === -1) {
-        favorites.push(productId);
-        showToast("❤️ Added to Favourites!", "success");
+        favorites.push(pidStr);
+        isNowFav = true;
+        showToast(isTa ? "❤️ விருப்பப்பட்டியலில் சேர்க்கப்பட்டது!" : "❤️ Added to Favourites!", "success");
       } else {
         favorites.splice(index, 1);
-        showToast("🤍 Removed from Favourites!", "success");
+        isNowFav = false;
+        showToast(isTa ? "🤍 விருப்பப்பட்டியலில் இருந்து நீக்கப்பட்டது!" : "🤍 Removed from Favourites!", "info");
       }
       saveData('ek_customer_favorites', favorites);
 
-      const heartBtn = document.querySelector(`.fav-heart-btn[data-id="${productId}"]`);
-      if (heartBtn) {
-        const isFav = favorites.includes(productId);
-        heartBtn.innerHTML = isFav ? '❤️' : '🤍';
-        heartBtn.setAttribute('title', isFav ? 'Remove from favorites' : 'Add to favorites');
-      }
+      const heartBtns = document.querySelectorAll(`.fav-heart-btn[data-id="${pidStr}"]`);
+      heartBtns.forEach(heartBtn => {
+        heartBtn.innerHTML = isNowFav ? '❤️' : '🤍';
+        heartBtn.setAttribute('title', isNowFav 
+          ? (isTa ? 'விருப்பப்பட்டியலில் இருந்து நீக்கு' : 'Remove from favorites')
+          : (isTa ? 'விருப்பப்பட்டியலில் சேர்' : 'Add to favorites'));
+      });
 
       _lastCategoryPillsHash = '';
-      renderCategoryPills();
+      if (typeof renderCategoryPills === 'function') renderCategoryPills();
 
-      if (activeCategory === 'favorites') {
-        renderHomeScreenProducts(true);
+      if (typeof activeCategory !== 'undefined' && String(activeCategory).toLowerCase().trim() === 'favorites') {
+        if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(true);
       }
     }
+    window.toggleFavoriteProduct = toggleFavoriteProduct;
 
     function isProductFavorite(productId) {
-      const favorites = getData('ek_customer_favorites', []);
-      return favorites.includes(productId);
+      if (!productId) return false;
+      const pidStr = String(productId).trim();
+      const rawFavs = getData('ek_customer_favorites', []);
+      const favorites = (Array.isArray(rawFavs) ? rawFavs : []).map(id => String(id).trim());
+      return favorites.includes(pidStr);
     }
+    window.isProductFavorite = isProductFavorite;
+
+    function isProductInCategory(p, targetCatId, catList) {
+      if (!p || !targetCatId) return false;
+      const targetIdLower = String(targetCatId).toLowerCase().trim();
+      if (targetIdLower === 'all') return true;
+      if (targetIdLower === 'favorites') return typeof isProductFavorite === 'function' ? isProductFavorite(p.id) : false;
+
+      const prodCatRaw = String(p.category || '').toLowerCase().trim();
+      if (!prodCatRaw) return false;
+
+      // 1. Direct exact or normalized match
+      if (prodCatRaw === targetIdLower) return true;
+
+      // 2. Look up target category from catList / DEFAULT_CATEGORIES
+      const allCats = (Array.isArray(catList) && catList.length > 0)
+        ? catList
+        : (typeof getCategoriesList === 'function' ? getCategoriesList() : (window.DEFAULT_CATEGORIES || []));
+      
+      const targetCatObj = allCats.find(c => c && String(c.id).toLowerCase().trim() === targetIdLower);
+      if (targetCatObj) {
+        const enName = String(targetCatObj.nameEn || targetCatObj.en || '').toLowerCase().trim();
+        const taName = String(targetCatObj.nameTa || targetCatObj.ta || '').toLowerCase().trim();
+        if (enName && (prodCatRaw === enName || prodCatRaw.includes(enName))) return true;
+        if (taName && (prodCatRaw === taName || prodCatRaw.includes(taName))) return true;
+      }
+
+      // Also check if prodCatRaw is a category ID whose name matches targetIdLower
+      const prodCatObj = allCats.find(c => c && String(c.id).toLowerCase().trim() === prodCatRaw);
+      if (prodCatObj) {
+        const prodEn = String(prodCatObj.nameEn || prodCatObj.en || '').toLowerCase().trim();
+        const prodTa = String(prodCatObj.nameTa || prodCatObj.ta || '').toLowerCase().trim();
+        if (prodEn === targetIdLower || prodTa === targetIdLower) return true;
+      }
+
+      // 3. Category Aliases mapping for common variations
+      const categoryAliases = {
+        'veg': ['veg', 'vegetable', 'vegetables', 'காய்கறி', 'காய்கறிகள்', 'greens', 'keerai', 'spinach'],
+        'meat': ['meat', 'chicken', 'mutton', 'beef', 'pork', 'poultry', 'கறி', 'கறிவகை', 'சிக்கன்', 'மட்டன்', 'ஆடு', 'கோழி'],
+        'fish': ['fish', 'seafood', 'prawn', 'crab', 'மீன்', 'மீன்வகை', 'கடல் உணவு', 'nethili', 'vanjaram'],
+        'fruits': ['fruits', 'fruit', 'பழங்கள்', 'பழம்'],
+        'dairy': ['dairy', 'milk', 'egg', 'eggs', 'பால்', 'முட்டை', 'பால் & முட்டை', 'dairy & eggs'],
+        'bakery': ['bakery', 'bread', 'cake', 'பேக்கரி', 'bakes', 'bun', 'cookies', 'pastry'],
+        'groceries': ['groceries', 'grocery', 'provision', 'provisions', 'மளிகை', 'oil', 'rice', 'dal', 'spices', 'masala']
+      };
+
+      for (const [key, aliasArr] of Object.entries(categoryAliases)) {
+        const isTargetMatch = (targetIdLower === key) || aliasArr.includes(targetIdLower);
+        if (isTargetMatch) {
+          if (prodCatRaw === key || aliasArr.includes(prodCatRaw)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+    window.isProductInCategory = isProductInCategory;
 
     let _lastCategoryPillsHash = '';
     function renderCategoryPills() {
@@ -2492,12 +2567,6 @@
         }
 
         const visibleProducts = (allProducts || []).filter(p => p && !p.isHidden);
-        const counts = {};
-        visibleProducts.forEach(p => {
-          if (!p) return;
-          const cat = String(p.category || '').toLowerCase().trim();
-          counts[cat] = (counts[cat] || 0) + 1;
-        });
         const totalCount = visibleProducts.length;
         const favCount = visibleProducts.filter(p => p && isProductFavorite(p.id)).length;
 
@@ -2510,9 +2579,26 @@
         }
 
         let catsToRender = visibleCategories;
-        if (!isCloudSynced && typeof ENABLE_DEMO_SEED_DATA !== 'undefined' && ENABLE_DEMO_SEED_DATA && (!catsToRender || catsToRender.length === 0) && typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) {
-          catsToRender = DEFAULT_CATEGORIES;
+        const defaultCats = (typeof DEFAULT_CATEGORIES !== 'undefined' && Array.isArray(DEFAULT_CATEGORIES)) ? DEFAULT_CATEGORIES : [];
+        if (!catsToRender || catsToRender.length === 0) {
+          catsToRender = defaultCats;
+        } else if (defaultCats.length > 0) {
+          // Merge default categories if any are missing from custom list
+          defaultCats.forEach(dc => {
+            if (dc && dc.id && !catsToRender.some(c => c && String(c.id).toLowerCase().trim() === String(dc.id).toLowerCase().trim())) {
+              catsToRender.push({ ...dc, isAvailable: true });
+            }
+          });
         }
+
+        const counts = {};
+        catsToRender.forEach(c => {
+          if (!c) return;
+          const cid = String(c.id || '');
+          if (!cid) return;
+          const cidLower = cid.toLowerCase().trim();
+          counts[cidLower] = visibleProducts.filter(p => isProductInCategory(p, cid, catList)).length;
+        });
 
         catsToRender.forEach(c => {
           if (!c) return;
@@ -2528,28 +2614,44 @@
           });
         });
 
-        if (!CATEGORIES.some(cat => String(cat.id) === String(activeCategory))) {
+        const isCurrentActiveValid = String(activeCategory).toLowerCase().trim() === 'all' ||
+          String(activeCategory).toLowerCase().trim() === 'favorites' ||
+          CATEGORIES.some(cat => String(cat.id).toLowerCase().trim() === String(activeCategory).toLowerCase().trim()) ||
+          defaultCats.some(cat => String(cat.id).toLowerCase().trim() === String(activeCategory).toLowerCase().trim());
+
+        if (!isCurrentActiveValid) {
           activeCategory = 'all';
+        }
+        if (typeof window !== 'undefined') {
+          window.activeCategory = activeCategory;
         }
 
         window._currentHomeCategories = CATEGORIES;
 
-        const pillsHash = isTa + '::' + activeCategory + '::' + CATEGORIES.map(c => `${c.id}:${c.name}:${c.id === 'all' ? totalCount : (c.id === 'favorites' ? favCount : (counts[String(c.id).toLowerCase().trim()] || 0))}`).join('|');
-        if (pillsHash === _lastCategoryPillsHash && pillsContainer.querySelectorAll('.pill').length > 0) {
+        const pillsHash = isTa + '::' + activeCategory + '::' + CATEGORIES.map(c => {
+          const cidStr = String(c.id).toLowerCase().trim();
+          const cCount = cidStr === 'all' ? totalCount : (cidStr === 'favorites' ? favCount : (counts[cidStr] || 0));
+          return `${c.id}:${c.name}:${cCount}`;
+        }).join('|');
+
+        const currentCachedHash = (typeof window._lastCategoryPillsHash !== 'undefined' && window._lastCategoryPillsHash !== '') ? window._lastCategoryPillsHash : _lastCategoryPillsHash;
+        if (pillsHash === currentCachedHash && pillsContainer.querySelectorAll('.pill').length > 0) {
           return; // Skip recreation if pills criteria are identical and already rendered
         }
         _lastCategoryPillsHash = pillsHash;
+        window._lastCategoryPillsHash = pillsHash;
 
         pillsContainer.innerHTML = CATEGORIES.map(cat => {
           const catIdStr = String(cat.id);
-          const isActive = String(activeCategory) === catIdStr ? 'active' : '';
+          const cidLower = catIdStr.toLowerCase().trim();
+          const isActive = String(activeCategory).toLowerCase().trim() === cidLower ? 'active' : '';
           let count = 0;
-          if (catIdStr === 'all') {
+          if (cidLower === 'all') {
             count = totalCount;
-          } else if (catIdStr === 'favorites') {
+          } else if (cidLower === 'favorites') {
             count = favCount;
           } else {
-            count = counts[catIdStr.toLowerCase().trim()] || 0;
+            count = counts[cidLower] || 0;
           }
           const countBadge = `<span class="pill-count">${count}</span>`;
           const accent = getCategoryConfig(catIdStr).color;

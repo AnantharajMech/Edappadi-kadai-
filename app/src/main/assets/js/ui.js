@@ -2414,6 +2414,7 @@
         if (typeof db !== 'undefined' && db) {
           db.collection('ek_fcm_queue').add({
             targetToken: targetFcmToken,
+            targetUserId: order.customerId || order.customerPhone || '',
             title: finalTitle,
             body: finalBody,
             orderId: order.id,
@@ -2667,6 +2668,7 @@
       if (typeof db !== 'undefined' && db) {
         db.collection('ek_fcm_queue').add({
           targetToken: targetFcmToken,
+          targetUserId: exec.id || exec.uid || exec.phone || '',
           title: currentLang === 'ta' ? titleTa : titleEn,
           body: currentLang === 'ta' ? bodyTa : bodyEn,
           orderId: order.id,
@@ -2692,6 +2694,66 @@
         console.warn("[FCM Rider Push Exception Handled]", riderFcmEx);
       }
     }
+
+    // Global FCM Push Notification Click & Deep Link Router
+    function handleFcmNotificationClick(payload) {
+      try {
+        console.log('[FCM Notification Clicked]', payload);
+        if (!payload || typeof payload !== 'object') return;
+
+        const orderId = payload.orderId || payload.order_id;
+        const type = payload.type;
+        const screen = payload.screen || payload.targetScreen;
+
+        if (orderId) {
+          selectedTrackOrderId = orderId;
+          const orders = (typeof getData === 'function' ? getData('ek_orders', []) : []) || [];
+          const matchedOrder = orders.find(o => o && o.id === orderId);
+          if (matchedOrder && typeof setActiveTrackingOrder === 'function') {
+            setActiveTrackingOrder(matchedOrder);
+          }
+          if (typeof showScreen === 'function') {
+            const dSession = typeof getData === 'function' ? getData('ek_delivery_session') : null;
+            if (dSession && dSession.loggedIn && (type === 'new_assigned_order' || type === 'order_assigned' || type === 'rider_assigned')) {
+              showScreen('screen-delivery');
+            } else {
+              showScreen('screen-track');
+              if (typeof renderTrackerScreen === 'function') {
+                renderTrackerScreen();
+              }
+            }
+          }
+          return;
+        }
+
+        if (screen && typeof showScreen === 'function') {
+          showScreen(screen);
+          return;
+        }
+
+        if (type === 'new_order') {
+          const aSession = typeof getData === 'function' ? getData('ek_admin_session') : null;
+          if (aSession && aSession.loggedIn && typeof showScreen === 'function') {
+            showScreen('screen-admin');
+          }
+        } else if (type === 'rider_assigned' || type === 'delivery_eta_update' || type === 'order_status_update') {
+          if (typeof showScreen === 'function') {
+            showScreen('screen-track');
+          }
+        }
+      } catch (err) {
+        console.warn('[FCM Click Dispatch Error]', err);
+      }
+    }
+    window.handleFcmNotificationClick = handleFcmNotificationClick;
+    window.handleNotificationClick = handleFcmNotificationClick;
+    window.handleOneSignalNotificationClick = handleFcmNotificationClick;
+    window.onOneSignalNotificationClicked = handleFcmNotificationClick;
+
+    function syncOneSignalUserSession(role, userId, phone) {
+      // No-op: Session is managed natively via Firebase & FCM tokens
+    }
+    window.syncOneSignalUserSession = syncOneSignalUserSession;
 
     function getNotifications() {
       return getData('ek_notifications', []);
@@ -4271,9 +4333,11 @@ function saveProfileChanges() {
               ? "சமீபத்திய தரவு தயாராக உள்ளது"
               : "Latest data synced";
           }
-          try {
-            if (navigator.vibrate) navigator.vibrate([12, 35, 18]);
-          } catch(e) {}
+          if (typeof safeVibrate === 'function') {
+            safeVibrate([12, 35, 18]);
+          } else {
+            try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate([12, 35, 18]); } catch(e) {}
+          }
         }
         await new Promise(r => setTimeout(r, 450));
       } catch (err) {
@@ -4406,10 +4470,17 @@ function saveProfileChanges() {
         isValidPull = false;
         pullDistance = 0;
         thresholdReachedOnce = false;
+
+        // Dynamically attach touchmove only while touching to ensure 100% smooth passive scrolling elsewhere
+        window.addEventListener('touchmove', onTouchMove, { passive: false });
       }
 
+      let _ptrRafId = null;
       function onTouchMove(e) {
-        if (!isTracking || window._ptrRefreshing) return;
+        if (!isTracking || window._ptrRefreshing) {
+          window.removeEventListener('touchmove', onTouchMove);
+          return;
+        }
         if (!e.touches || e.touches.length !== 1) return;
 
         const touch = e.touches[0];
@@ -4417,19 +4488,22 @@ function saveProfileChanges() {
         const deltaX = touch.clientX - startX;
 
         if (!directionLocked) {
-          // If scrolling up or horizontal swiping, abort immediately
+          // If scrolling up or horizontal swiping, abort immediately and detach listener
           if (deltaY <= 0) {
             isTracking = false;
+            window.removeEventListener('touchmove', onTouchMove);
             return;
           }
           if (Math.abs(deltaX) > deltaY * 0.85) {
             isTracking = false;
+            window.removeEventListener('touchmove', onTouchMove);
             return;
           }
           // Confirmed downward pull from top
           if (deltaY > 6 && deltaY > Math.abs(deltaX) * 1.2) {
             if (activeScreen && activeScreen.scrollTop > 0) {
               isTracking = false;
+              window.removeEventListener('touchmove', onTouchMove);
               return;
             }
             directionLocked = true;
@@ -4444,58 +4518,70 @@ function saveProfileChanges() {
           const dampedDistance = Math.min(MAX_PULL, Math.pow(rawDistance, 0.82) * 1.55);
           pullDistance = dampedDistance;
 
-          // Indicator layout
-          ptrEl.classList.add('ptr-pulling');
-          ptrEl.style.opacity = String(Math.min(1, dampedDistance / 32));
-          ptrEl.style.transform = `translateY(${Math.min(dampedDistance - 44, 16)}px)`;
+          if (_ptrRafId) cancelAnimationFrame(_ptrRafId);
+          _ptrRafId = requestAnimationFrame(() => {
+            // Indicator layout
+            ptrEl.classList.add('ptr-pulling');
+            ptrEl.style.opacity = String(Math.min(1, dampedDistance / 32));
+            ptrEl.style.transform = `translateY(${Math.min(dampedDistance - 44, 16)}px)`;
 
-          // Screen elastic offset
-          if (activeScreen) {
-            activeScreen.classList.add('ptr-screen-pulling');
-            activeScreen.style.transform = `translateY(${dampedDistance * 0.38}px)`;
-          }
+            // Screen elastic offset
+            if (activeScreen) {
+              activeScreen.classList.add('ptr-screen-pulling');
+              activeScreen.style.transform = `translateY(${dampedDistance * 0.38}px)`;
+            }
 
-          // Arrow rotation
-          const progress = Math.min(1, dampedDistance / THRESHOLD);
-          if (arrowIcon) {
-            arrowIcon.style.transform = `rotate(${progress * 180}deg)`;
-          }
+            // Arrow rotation
+            const progress = Math.min(1, dampedDistance / THRESHOLD);
+            if (arrowIcon) {
+              arrowIcon.style.transform = `rotate(${progress * 180}deg)`;
+            }
 
-          // Threshold state
-          if (dampedDistance >= THRESHOLD) {
-            ptrEl.classList.add('ptr-ready');
-            if (statusText) {
-              statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
-                ? "புதுப்பிக்க விரலை எடுக்கவும்"
-                : "Release to refresh";
+            // Threshold state
+            if (dampedDistance >= THRESHOLD) {
+              ptrEl.classList.add('ptr-ready');
+              if (statusText) {
+                statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                  ? "புதுப்பிக்க விரலை எடுக்கவும்"
+                  : "Release to refresh";
+              }
+              if (subText) {
+                subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                  ? "தற்போதைய தகவலைப் புதுப்பிக்க"
+                  : "Sync latest data";
+              }
+              if (!thresholdReachedOnce) {
+                if (typeof safeVibrate === 'function') {
+                  safeVibrate(15);
+                } else {
+                  try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate(15); } catch(e) {}
+                }
+                thresholdReachedOnce = true;
+              }
+            } else {
+              ptrEl.classList.remove('ptr-ready');
+              if (statusText) {
+                statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                  ? "கீழே இழுக்கவும்..."
+                  : "Pull down to refresh";
+              }
+              if (subText) {
+                subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+                  ? "சமீபத்திய தகவல்கள்"
+                  : "Get latest updates";
+              }
+              thresholdReachedOnce = false;
             }
-            if (subText) {
-              subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
-                ? "தற்போதைய தகவலைப் புதுப்பிக்க"
-                : "Sync latest data";
-            }
-            if (!thresholdReachedOnce) {
-              try { if (navigator.vibrate) navigator.vibrate(15); } catch(e) {}
-              thresholdReachedOnce = true;
-            }
-          } else {
-            ptrEl.classList.remove('ptr-ready');
-            if (statusText) {
-              statusText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
-                ? "கீழே இழுக்கவும்..."
-                : "Pull down to refresh";
-            }
-            if (subText) {
-              subText.innerText = (typeof currentLang !== 'undefined' && currentLang === 'ta')
-                ? "சமீபத்திய தகவல்கள்"
-                : "Get latest updates";
-            }
-            thresholdReachedOnce = false;
-          }
+          });
         }
       }
 
       function onTouchEnd() {
+        window.removeEventListener('touchmove', onTouchMove);
+        if (_ptrRafId) {
+          cancelAnimationFrame(_ptrRafId);
+          _ptrRafId = null;
+        }
         if (!isTracking) return;
         isTracking = false;
 
@@ -4525,9 +4611,8 @@ function saveProfileChanges() {
         pullDistance = 0;
       }
 
-      // Attach non-passive touchmove so e.preventDefault() works cleanly during active pull gesture
+      // Attach lightweight passive touch handlers
       appContainer.addEventListener('touchstart', onTouchStart, { passive: true });
-      window.addEventListener('touchmove', onTouchMove, { passive: false });
       window.addEventListener('touchend', onTouchEnd, { passive: true });
       window.addEventListener('touchcancel', onTouchEnd, { passive: true });
 

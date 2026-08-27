@@ -2,6 +2,16 @@
 const CURRENT_APP_VERSION = '8.0.0';
 window.CURRENT_APP_VERSION = CURRENT_APP_VERSION;
 
+// Safe Haptic Vibration Helper that silently handles browser frame gesture policies
+function safeVibrate(pattern) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(pattern);
+    }
+  } catch (e) {}
+}
+window.safeVibrate = safeVibrate;
+
 // Semantic Version Comparison: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
 function compareSemver(v1, v2) {
   if (!v1 && !v2) return 0;
@@ -311,6 +321,29 @@ let _realtimeUnsubscribers = {
   deliveryZones: null
 };
 
+let _realtimeHomeRenderTimer = null;
+function scheduleRealtimeHomeRender(force = false) {
+  if (_realtimeHomeRenderTimer) {
+    clearTimeout(_realtimeHomeRenderTimer);
+  }
+  _realtimeHomeRenderTimer = setTimeout(() => {
+    _realtimeHomeRenderTimer = null;
+    const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
+    if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
+      try {
+        if (typeof renderHomeScreen === 'function') {
+          renderHomeScreen(force);
+        } else if (typeof renderHomeScreenProducts === 'function') {
+          renderHomeScreenProducts(force);
+        }
+      } catch(e) {
+        console.warn("[Realtime Sync] Debounced render error:", e);
+      }
+    }
+  }, 120);
+}
+window.scheduleRealtimeHomeRender = scheduleRealtimeHomeRender;
+
 window.recordCollectionSyncTime = function(colKey) {
   try {
     const tsMap = JSON.parse(localStorage.getItem('ek_last_sync_timestamps') || '{}');
@@ -360,13 +393,10 @@ window.setupCloudRealtimeListeners2 = function() {
             window._lastDataSnapshotHash = '';
             _lastDataSnapshotHash = null;
 
-            try { if (typeof renderSlidingBanners === 'function') renderSlidingBanners(); } catch(e) {}
             try { if (typeof renderAdminBannerList === 'function') renderAdminBannerList(false); } catch(e) {}
-            try { if (typeof renderCategoryPills === 'function') renderCategoryPills(); } catch(e) {}
-            try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(false); } catch(e) {}
-            try { if (typeof renderHomeScreen === 'function') renderHomeScreen(false); } catch(e) {}
             try { if (typeof updateHeaderUI === 'function') updateHeaderUI(); } catch(e) {}
             try { if (typeof checkAppVersion === 'function') checkAppVersion(cloudData); } catch(e) {}
+            scheduleRealtimeHomeRender(false);
           }
         }
       }, err => console.warn("[Realtime Sync] Settings listener notice:", err));
@@ -409,10 +439,12 @@ window.setupCloudRealtimeListeners2 = function() {
           window._lastProductsHash = '';
           _lastProductsHash = '';
 
-          try { if (typeof renderCategoryPills === 'function') renderCategoryPills(); } catch(e) {}
-          try { if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true); } catch(e) {}
-          try { if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(false); } catch(e) {}
-          try { if (typeof renderHomeScreen === 'function') renderHomeScreen(false); } catch(e) {}
+          const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
+          if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
+            scheduleRealtimeHomeRender(false);
+          } else if (curScreen === 'screen-admin') {
+            try { if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true); } catch(e) {}
+          }
           try { if (typeof populateProductCategoryOptions === 'function') populateProductCategoryOptions(); } catch(e) {}
         }
       }, err => console.warn("[Realtime Sync] Categories listener notice:", err));
@@ -496,7 +528,7 @@ window.setupCloudRealtimeListeners2 = function() {
 
           const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
           if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
-            try { if (typeof renderHomeScreen === 'function') renderHomeScreen(false); else if (typeof renderHomeScreenProducts === 'function') renderHomeScreenProducts(false); } catch(e) {}
+            scheduleRealtimeHomeRender(false);
           }
           if (curScreen === 'screen-admin') {
             try { if (typeof renderAdminProducts === 'function') renderAdminProducts(); } catch(e) {}

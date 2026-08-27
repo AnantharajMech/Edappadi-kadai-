@@ -594,11 +594,11 @@
 
     <!-- SCREEN 4: CUSTOMER HOME PAGE -->
     <div id="screen-home" class="screen" style="padding-top: 8px;">
-      <!-- Top Bar -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <!-- Miniature Glowing Neon Logo -->
-          <div class="brand-mini-logo" style="width: 40px; height: 40px; border-radius: 10px; background: #000000 !important; border: 1.8px solid #10b981 !important; box-shadow: 0 0 10px rgba(16, 185, 129, 0.55) !important; display: flex; align-items: center; justify-content: center; overflow: hidden; fill: none; stroke: none; margin-right: 4px;">
+      <!-- 3D Luxury Customer Top Bar -->
+      <div class="customer-header-3d-card">
+        <div class="customer-header-left">
+          <!-- 3D Glowing Miniature Logo -->
+          <div class="brand-mini-logo customer-logo-3d-emblem">
             <svg viewBox="0 0 100 100" style="width: 28px; height: 28px; display: block;">
               <circle cx="50" cy="50" r="42" stroke="#10b981" stroke-width="6" fill="none" />
               <circle cx="50" cy="50" r="35" stroke="#10b981" stroke-width="2" stroke-dasharray="4,2" fill="none" opacity="0.8" />
@@ -608,24 +608,21 @@
               <path d="M 57,55 L 62,55 L 62,60" stroke="#10b981" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
             </svg>
           </div>
-          <div style="display: flex; flex-direction: column; min-width: 0;">
-            <h3 style="background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent-orange) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 16px; font-weight: 900; letter-spacing: 1.2px; line-height: 1.1; display: flex; align-items: center; gap: 6px; font-family: 'Poppins', sans-serif; text-transform: uppercase; white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis;">
+          <div class="customer-header-title-container">
+            <h3 class="customer-header-3d-title">
               EDAPPADI KADAI
-              <span id="cloud-status-badge-home" style="-webkit-background-clip: initial; -webkit-text-fill-color: initial; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background-color: #eab308; transition: background-color 0.3s ease; box-shadow: 0 0 6px rgba(234, 179, 8, 0.4); flex-shrink: 0;" title="Connecting to Cloud..."></span>
+              <span id="cloud-status-badge-home" class="customer-cloud-pulse-dot" title="Connecting to Cloud..."></span>
             </h3>
-            <span id="shop-status-badge" class="badge"></span>
+            <span id="shop-status-badge" class="badge customer-shop-status-3d"></span>
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <!-- Interactive Notification Bell -->
-          <div onclick="openNotificationCenter()" style="position: relative; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
-            <span style="font-size: 15px;">🔔</span>
-            <span id="notification-unread-badge" style="display: none; position: absolute; top: -4px; right: -4px; background: var(--accent-red); color: white; font-size: 8.5px; font-weight: 800; min-width: 14px; height: 14px; border-radius: 50%; align-items: center; justify-content: center; border: 1px solid var(--bg-card); padding: 1px; box-shadow: 0 2px 5px rgba(231, 76, 60, 0.3); line-height: 12px;">0</span>
-          </div>
-
-          <div onclick="showTab('tab-profile')" style="background: rgba(245,158,11,0.06); border: 1px solid var(--accent-orange); border-radius: 8px; padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 4px; font-weight: 800; color: var(--accent-orange); cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(245,158,11,0.03);">
-            🪙 <span id="home-loyalty-pts">0</span> pts
+        <div class="customer-header-right">
+          <!-- 3D Gold Loyalty Points Shield -->
+          <div class="customer-points-3d-pill" onclick="showTab('tab-profile')" title="My Points / என் பாயிண்ட்டுகள்">
+            <span class="points-coin-icon">🪙</span>
+            <span id="home-loyalty-pts" class="points-num">0</span>
+            <span class="points-label">pts</span>
           </div>
         </div>
       </div>
@@ -2062,31 +2059,6 @@
       </div>
     </div>
 
-    <!-- NOTIFICATION CENTER MODAL -->
-    <div id="notification-center-modal" class="modal-backdrop" onclick="closeNotificationCenter()" style="align-items: center; padding: 20px; display: none; z-index: 10008; background: rgba(0,0,0,0.85);">
-      <div style="background: #0d1117; color: #ffffff; border: 2px solid var(--accent-orange); border-radius: 28px; width: 100%; max-width: 420px; padding: 24px; position: relative; box-shadow: 0 15px 40px rgba(0,0,0,0.85); display: flex; flex-direction: column; gap: 14px; max-height: 85vh; overflow: hidden;" onclick="event.stopPropagation()">
-
-        <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid rgba(255,255,255,0.06); padding-bottom: 12px; margin-bottom: 4px;">
-          <h3 style="font-family: 'Poppins', 'Hind Madurai', sans-serif; font-size: 18px; font-weight: 800; color: #fff; margin: 0; display: flex; align-items: center; gap: 8px;">
-            <span>🔔</span> <span>Notifications / முக்கிய தகவல்கள்</span>
-          </h3>
-          <button onclick="closeNotificationCenter()" style="background: #222222; color: #ffffff; width: 30px; height: 30px; border-radius: 50%; border: none; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; transition: background 0.2s;">×</button>
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-bottom: 4px;">
-          <button class="btn" style="flex: 1; padding: 10px; font-size: 11px; font-weight: 800; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); color: #10b981; border-radius: 8px; cursor: pointer;" onclick="markAllNotificationsAsRead()">✓ Read All / ஜோடி காண்</button>
-          <button class="btn btn-secondary" style="flex: 1; padding: 10px; font-size: 11px; font-weight: 800; border: 1px solid rgba(239, 68, 68, 0.35); color: #ff5c5c; background: rgba(239, 68, 68, 0.12); border-radius: 8px; cursor: pointer;" onclick="clearAllNotifications()">🗑️ Clear All / நீக்கு</button>
-        </div>
-
-        <!-- Notification List container -->
-        <div id="notifications-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px;">
-          <!-- Items will be populated dynamically -->
-        </div>
-
-      </div>
-    </div>
-
     <!-- ORDER SUCCESS MODAL / ஆர்டர் வெற்றிகரமான பாப்-அப் -->
     <div id="order-success-modal" class="modal-backdrop" style="align-items: center; padding: 20px; display: none; z-index: 10005; background: rgba(0,0,0,0.85);">
       <div style="background: #111111; color: #ffffff; border: 2px solid var(--accent-orange); border-radius: 28px; width: 100%; max-width: 400px; padding: 16px; text-align: center; position: relative; box-shadow: 0 15px 40px rgba(0,0,0,0.85); display: flex; flex-direction: column; gap: 8px;" onclick="event.stopPropagation()">
@@ -3127,21 +3099,21 @@
     <div id="screen-admin" class="screen no-nav" style="padding: 8px 16px 24px 16px; overflow-y: auto; overflow-x: hidden; width: 100%; max-width: 100%; box-sizing: border-box;">
       <!-- Restructured Admin Header + Navigation Tabs Single Sticky Wrapper -->
       <div class="admin-sticky-header-wrapper">
-        <div class="admin-header-row">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-size: 24px;">🥩</span>
-            <div>
-              <h1 style="color: var(--accent-orange); font-size: 16px; font-weight: 700; line-height: 1; display: flex; align-items: center; gap: 6px;">
-                ADMIN PANEL
-                <span id="cloud-status-badge-admin" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #eab308; transition: background-color 0.3s ease;" title="Connecting to Cloud..."></span>
-              </h1>
-              <span style="font-size: 11px; color: var(--text-muted);">Edappadi Kadai Management</span>
+        <div class="admin-header-row admin-header-3d-card">
+          <div class="admin-header-brand" style="display: flex; align-items: center; gap: 10px;">
+            <div class="admin-header-3d-emblem">
+              <span class="admin-header-emoji">🥩</span>
+            </div>
+            <div class="admin-header-info">
+              <div class="admin-header-title-wrap">
+                <h1 class="admin-header-3d-title">ADMIN PANEL</h1>
+              </div>
+              <span class="admin-header-subtitle">👑 Super Admin Hub • Edappadi Kadai</span>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <button type="button" class="btn btn-danger" id="admin-header-logout-btn" onclick="adminLogout(event)" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #ffffff; border: none; padding: 6px 14px; border-radius: 10px; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35); cursor: pointer; min-height: 34px; height: 34px; white-space: nowrap;" title="Admin Logout / வெளியேறு">
-              <span>🚪</span> <span>வெளியேறு / Logout</span>
-            </button>
+          <div class="admin-header-status-pill">
+            <span id="cloud-status-badge-admin" class="admin-status-pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #22c55e; transition: background-color 0.3s ease;" title="Connecting to Cloud..."></span>
+            <span class="admin-status-text">Cloud Live</span>
           </div>
         </div>
 
@@ -5222,11 +5194,7 @@ function saveAdminSettings() {
     recommendedVersion: recVerEl ? recVerEl.value.trim() : (currentSettings.recommendedVersion || "8.0.0"),
     playStoreUrl: playStoreUrlEl ? playStoreUrlEl.value.trim() : (currentSettings.playStoreUrl || "https://play.google.com/store/apps/details?id=com.edappadikadai.app"),
     privacyPolicyUrl: (document.getElementById('setting-privacy-policy-url')?.value?.trim() || privacyPolicyUrlEl?.value?.trim() || currentSettings.privacyPolicyUrl || ''),
-    smsProvider: smsProviderEl ? smsProviderEl.value : "fast2sms",
-    fast2smsKey: fast2smsKeyEl ? fast2smsKeyEl.value : "",
-    twilioSid: twilioSidEl ? twilioSidEl.value : "",
-    twilioToken: twilioTokenEl ? twilioTokenEl.value : "",
-    twilioFrom: twilioFromEl ? twilioFromEl.value : ""
+    smsProvider: smsProviderEl ? smsProviderEl.value : "fast2sms"
   };
 
   if (typeof saveData === 'function') {

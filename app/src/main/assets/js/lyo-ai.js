@@ -132,24 +132,53 @@
 
       let primaryErr = null;
 
-      // Attempt primary call with selected provider
+      // 1. Primary: Server-side secure Cloud Function proxy (keeps API keys off client)
+      const aiCloudFn = typeof getCloudFunction === 'function' ? getCloudFunction('generateAiResponse') : null;
+      if (aiCloudFn && !apiKey) {
+        try {
+          const userPrompt = queryText || (conversationContents && conversationContents[0] && conversationContents[0].parts && conversationContents[0].parts[0] ? conversationContents[0].parts[0].text : '');
+          const res = await aiCloudFn({
+            prompt: userPrompt,
+            systemInstruction: systemInstructions || '',
+            contents: conversationContents || [],
+            model: model || '',
+            provider: provider || 'gemini'
+          });
+          if (res && res.data && res.data.text) {
+            return { text: res.data.text, provider: res.data.provider || provider };
+          }
+        } catch (serverErr) {
+          primaryErr = serverErr;
+          console.warn("[AI Orchestrator] Server Cloud Function proxy call failed:", serverErr.message || serverErr);
+        }
+      }
+
+      // 2. Custom client-side execution if a custom key was explicitly provided
       if (apiKey) {
         try {
           return await executeSingleAiCall(provider, apiKey, model, systemInstructions, conversationContents);
         } catch (err) {
           primaryErr = err;
-          console.warn(`[AI Orchestrator] Primary provider (${provider}) failed: HTTP ${err.status || 'N/A'} - ${err.message}. Attempting fallback to Built-in Gemini...`);
+          console.warn(`[AI Orchestrator] Custom provider (${provider}) failed: HTTP ${err.status || 'N/A'} - ${err.message}.`);
         }
       }
 
-      // Fallback: Built-in Gemini Key
-      const builtinKey = getBuiltinGeminiApiKey();
-      if (builtinKey && builtinKey !== apiKey) {
+      // 3. Fallback to server Cloud Function if client key call failed
+      if (aiCloudFn && apiKey) {
         try {
-          return await executeSingleAiCall('gemini', builtinKey, '', systemInstructions, conversationContents);
-        } catch (fallbackErr) {
-          console.warn(`[AI Orchestrator] Builtin Gemini fallback failed: HTTP ${fallbackErr.status || 'N/A'} - ${fallbackErr.message}`);
-          if (!primaryErr) primaryErr = fallbackErr;
+          const userPrompt = queryText || '';
+          const res = await aiCloudFn({
+            prompt: userPrompt,
+            systemInstruction: systemInstructions || '',
+            contents: conversationContents || [],
+            model: model || '',
+            provider: provider || 'gemini'
+          });
+          if (res && res.data && res.data.text) {
+            return { text: res.data.text, provider: res.data.provider || provider };
+          }
+        } catch (serverErr) {
+          if (!primaryErr) primaryErr = serverErr;
         }
       }
 
@@ -1206,6 +1235,15 @@ Return ONLY a JSON array of objects. Do NOT include markdown blocks or commentar
             } catch (mErr) {
               console.warn(`Gemini model ${m} failed, trying next...`, mErr);
             }
+          }
+        } else {
+          try {
+            const aiRes = await callAIProvider(systemPrompt, [{ role: 'user', parts: [{ text: queryText }] }], queryText);
+            if (aiRes && aiRes.text) {
+              rawText = aiRes.text;
+            }
+          } catch (callErr) {
+            console.warn("parseOrderWithAI server proxy call skipped/failed:", callErr.message);
           }
         }
         if (rawText) {

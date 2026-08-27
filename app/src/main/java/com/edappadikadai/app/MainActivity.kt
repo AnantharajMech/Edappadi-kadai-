@@ -49,12 +49,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.edappadikadai.app.ui.theme.MyApplicationTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @SuppressLint("InvalidFragmentVersionForActivityResult")
 class MainActivity : ComponentActivity() {
 
     companion object {
         var isActivityInForeground = false
+        var currentInstance: MainActivity? = null
     }
 
     val isAppLoadedState = androidx.compose.runtime.mutableStateOf(false)
@@ -62,12 +66,45 @@ class MainActivity : ComponentActivity() {
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var integrityCheckRunnable: Runnable? = null
 
+    fun checkPendingNotificationPayload() {
+        val payload = EdappadiApplication.pendingNotificationPayload
+        if (!payload.isNullOrBlank() && isAppLoadedState.value && webView != null) {
+            EdappadiApplication.pendingNotificationPayload = null
+            handleNotificationPayload(payload)
+        }
+    }
+
+    fun handleNotificationPayload(payloadJsonStr: String) {
+        runOnUiThread {
+            if (isAppLoadedState.value && webView != null) {
+                val escapedJson = payloadJsonStr.replace("\\", "\\\\").replace("'", "\\'")
+                webView?.evaluateJavascript(
+                    "javascript:(function() { " +
+                    "  try { " +
+                    "    var payload = JSON.parse('$escapedJson'); " +
+                    "    if (typeof window.handleFcmNotificationClick === 'function') { " +
+                    "      window.handleFcmNotificationClick(payload); " +
+                    "    } else if (typeof window.handleOneSignalNotificationClick === 'function') { " +
+                    "      window.handleOneSignalNotificationClick(payload); " +
+                    "    } else if (typeof window.onOneSignalNotificationClicked === 'function') { " +
+                    "      window.onOneSignalNotificationClicked(payload); " +
+                    "    } " +
+                    "  } catch(e) { console.error('FCM JS click handler error:', e); } " +
+                    "})()", null
+                )
+            } else {
+                EdappadiApplication.pendingNotificationPayload = payloadJsonStr
+            }
+        }
+    }
+
     fun onJsAppLoaded() {
         runOnUiThread {
             isAppLoadedState.value = true
             hasLoadFailedState.value = false
             integrityCheckRunnable?.let { mainHandler.removeCallbacks(it) }
             android.util.Log.d("INTEGRITY_CHECK", "App integrity check passed: WebView rendered successfully.")
+            checkPendingNotificationPayload()
         }
     }
 
@@ -330,22 +367,32 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        currentInstance = this
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleIntentForFcm(intent)
 
         // Pre-create WebView cache directories to prevent Chromium from logging directory-missing errors
         try {
-            val webViewCacheDir = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache")
-            if (!webViewCacheDir.exists()) {
-                webViewCacheDir.mkdirs()
+            val webViewDir = java.io.File(cacheDir, "WebView/Default")
+            if (!webViewDir.exists()) {
+                webViewDir.mkdirs()
             }
-            val jsCacheDir = java.io.File(webViewCacheDir, "js")
+            val httpCacheDir = java.io.File(webViewDir, "HTTP Cache")
+            if (!httpCacheDir.exists()) {
+                httpCacheDir.mkdirs()
+            }
+            val codeCacheDir = java.io.File(httpCacheDir, "Code Cache")
+            if (!codeCacheDir.exists()) {
+                codeCacheDir.mkdirs()
+            }
+            val jsCacheDir = java.io.File(codeCacheDir, "js")
             if (!jsCacheDir.exists()) {
-                jsCacheDir.mkdir()
+                jsCacheDir.mkdirs()
             }
-            val wasmCacheDir = java.io.File(webViewCacheDir, "wasm")
+            val wasmCacheDir = java.io.File(codeCacheDir, "wasm")
             if (!wasmCacheDir.exists()) {
-                wasmCacheDir.mkdir()
+                wasmCacheDir.mkdirs()
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -525,7 +572,6 @@ class MainActivity : ComponentActivity() {
                                     isVerticalScrollBarEnabled = false
                                     isHorizontalScrollBarEnabled = false
                                     overScrollMode = android.view.View.OVER_SCROLL_NEVER
-                                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                                     
 
                                     settings.apply {
@@ -773,8 +819,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        currentInstance = this
         webView?.evaluateJavascript("if (typeof window.onAndroidAppResume === 'function') { window.onAndroidAppResume(); }", null)
         isActivityInForeground = true
+        checkPendingNotificationPayload()
         webView?.requestFocus()
         if (hasLocationPermission()) {
             startActiveLocationUpdates()
@@ -816,6 +864,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (currentInstance == this) {
+            currentInstance = null
+        }
         webView = null
         activeLocationListener?.let { listener ->
             try {
@@ -832,10 +883,85 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntentForFcm(intent)
+    }
 
+    fun handleIntentForFcm(intent: Intent?) {
+        if (intent == null) return
+        val extras = intent.extras ?: return
+        try {
+            val payloadJsonExtra = extras.getString("payload_json")
+            if (!payloadJsonExtra.isNullOrBlank()) {
+                handleNotificationPayload(payloadJsonExtra)
+                return
+            }
+            val orderId = extras.getString("orderId") ?: extras.getString("order_id") ?: extras.getString("order_id_fcm") ?: ""
+            val type = extras.getString("type") ?: ""
+            val screen = extras.getString("screen") ?: ""
+            val title = extras.getString("title") ?: ""
+            val body = extras.getString("body") ?: ""
+
+            if (orderId.isNotBlank() || type.isNotBlank() || screen.isNotBlank() || title.isNotBlank()) {
+                val json = org.json.JSONObject().apply {
+                    put("orderId", orderId)
+                    put("type", type)
+                    put("screen", screen)
+                    put("title", title)
+                    put("body", body)
+                    for (key in extras.keySet()) {
+                        val value = extras.get(key)
+                        if (value != null) {
+                            put(key, value.toString())
+                        }
+                    }
+                }
+                handleNotificationPayload(json.toString())
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FCM_INTENT", "Error handling FCM intent: ${e.message}")
+        }
+    }
 
     class WebAppInterface(private val context: Context) {
         private val sharedPreferences = context.getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
+
+        @JavascriptInterface
+        fun setOneSignalUser(userId: String) {
+            // No-op stub for backwards compatibility
+        }
+
+        @JavascriptInterface
+        fun logoutOneSignal() {
+            // No-op stub for backwards compatibility
+        }
+
+        @JavascriptInterface
+        fun setOneSignalTag(key: String, value: String) {
+            // No-op stub for backwards compatibility
+        }
+
+        @JavascriptInterface
+        fun setOneSignalAppId(appId: String) {
+            // No-op stub for backwards compatibility
+        }
+
+        @JavascriptInterface
+        fun getOneSignalId(): String {
+            return ""
+        }
+
+        @JavascriptInterface
+        fun getOneSignalSubscriptionId(): String {
+            return ""
+        }
+
+        @JavascriptInterface
+        fun promptOneSignalNotificationPermission() {
+            requestNotificationPermission()
+        }
 
         @JavascriptInterface
         fun notifyAppLoaded() {
@@ -899,11 +1025,9 @@ class MainActivity : ComponentActivity() {
 
         @JavascriptInterface
         fun getGeminiApiKey(): String {
-            return try {
-                com.edappadikadai.app.BuildConfig.GEMINI_API_KEY
-            } catch (e: Exception) {
-                ""
-            }
+            // Secure server-side Cloud Function proxy is used for AI requests.
+            // Avoid exposing sensitive API keys to WebView / JavaScript environment.
+            return ""
         }
 
         @JavascriptInterface

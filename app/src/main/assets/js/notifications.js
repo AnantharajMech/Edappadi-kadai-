@@ -1833,16 +1833,11 @@ STRICT PROTOCOLS:
         let parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (!parsed || typeof parsed !== 'object') parsed = {};
 
-        let apiKey = parsed.apiKey || '';
-        if (!apiKey) {
-          const settings = typeof getData === 'function' ? getData('ek_settings', {}) : {};
-          apiKey = settings.geminiApiKey || settings.aiApiKey || settings.apiKey || settings.geminiKey || '';
-        }
-
         return {
           provider: parsed.provider || 'gemini',
-          apiKey: apiKey,
-          model: parsed.model || ''
+          apiKey: parsed.apiKey || '',
+          model: parsed.model || '',
+          hasKey: !!parsed.apiKey || !!parsed.hasKey
         };
       } catch (e) {
         return defaultConfig;
@@ -1850,19 +1845,7 @@ STRICT PROTOCOLS:
     }
 
     function getBuiltinGeminiApiKey() {
-      try {
-        const settings = typeof getData === 'function' ? getData('ek_settings', {}) : {};
-        const dynamicKey = settings.geminiApiKey || settings.aiApiKey || settings.apiKey || settings.geminiKey;
-        if (dynamicKey && typeof dynamicKey === 'string' && dynamicKey.trim().length > 10) {
-          return dynamicKey.trim();
-        }
-      } catch(e) {}
-
-      if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.getGeminiApiKey === 'function') {
-        const k = AndroidStorage.getGeminiApiKey();
-        if (k && k.trim()) return k.trim();
-      }
-      if (typeof window !== 'undefined' && window.GEMINI_API_KEY) return window.GEMINI_API_KEY;
+      // AI generation is executed via server-side Cloud Function proxy to secure credentials
       return '';
     }
 
@@ -1872,18 +1855,20 @@ STRICT PROTOCOLS:
       const elModel = document.getElementById('setting-ai-model');
       const elBadge = document.getElementById('ai-key-provider-badge');
 
-      if (elKey) elKey.value = config.apiKey || '';
+      if (elKey && !elKey.value) {
+        elKey.value = config.apiKey || '';
+      }
       if (elModel) elModel.value = config.model || '';
 
       if (elBadge) {
-        if (config.apiKey) {
+        if (config.hasKey || config.apiKey) {
           const p = config.provider ? config.provider.toUpperCase() : 'CUSTOM';
           elBadge.innerText = `Active: ${p}`;
           elBadge.style.background = 'rgba(16, 185, 129, 0.2)';
           elBadge.style.color = '#10b981';
           elBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
         } else {
-          elBadge.innerText = 'Default (Built-in Gemini)';
+          elBadge.innerText = 'Default (Server Gemini)';
           elBadge.style.background = 'rgba(245, 158, 11, 0.2)';
           elBadge.style.color = '#f59e0b';
           elBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
@@ -1967,32 +1952,30 @@ STRICT PROTOCOLS:
           return;
         }
 
-        const config = {
+        const serverConfig = {
           provider: detectedProvider,
           apiKey: apiKey,
           model: model,
           updatedAt: new Date().toISOString()
         };
 
-        saveData('ek_ai_provider_config', config);
-        const currentSettings = typeof getSettings === 'function' ? getSettings() : {};
-        currentSettings.geminiApiKey = apiKey;
-        delete currentSettings.aiApiKey;
-        delete currentSettings.apiKey;
-        delete currentSettings.geminiKey;
-        saveData('ek_settings', currentSettings);
+        const clientSafeConfig = {
+          provider: detectedProvider,
+          hasKey: true,
+          model: model,
+          updatedAt: new Date().toISOString()
+        };
+
+        saveData('ek_ai_provider_config', clientSafeConfig);
 
         if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.saveData === 'function') {
-          AndroidStorage.saveData('ek_ai_provider_config', JSON.stringify(config));
-          AndroidStorage.saveData('ek_settings', JSON.stringify(currentSettings));
+          AndroidStorage.saveData('ek_ai_provider_config', JSON.stringify(clientSafeConfig));
         }
 
         if (typeof db !== 'undefined' && db) {
           try {
-            await db.collection('ek_settings').doc('ai_provider_config').set(config);
-            await db.collection('settings').doc('ai_provider_config').set(config);
-            await db.collection('ek_settings').doc('general').set({ geminiApiKey: apiKey }, { merge: true });
-            debugLog("[AI Key Settings] Synchronized AI provider config to Firestore!");
+            await db.collection('ek_settings').doc('ai_provider_config').set(serverConfig);
+            debugLog("[AI Key Settings] Synchronized AI provider config securely to server Firestore!");
           } catch (err) {
             console.error("Firestore AI Provider Config write failed:", err);
           }
@@ -2002,29 +1985,33 @@ STRICT PROTOCOLS:
         if (detectedProvider === 'openai') providerName = "OpenAI (ChatGPT)";
         if (detectedProvider === 'anthropic') providerName = "Claude (Anthropic)";
 
-        showToast(`✅ ${providerName} key saved & active!`, "success");
+        showToast(`✅ ${providerName} key saved & active on server!`, "success");
         loadAdminAiKeyConfig();
       } else {
-        const config = {
+        const clientSafeConfig = {
           provider: 'gemini',
-          apiKey: '',
+          hasKey: false,
           model: '',
           updatedAt: new Date().toISOString()
         };
 
-        saveData('ek_ai_provider_config', config);
+        saveData('ek_ai_provider_config', clientSafeConfig);
         if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.saveData === 'function') {
-          AndroidStorage.saveData('ek_ai_provider_config', JSON.stringify(config));
+          AndroidStorage.saveData('ek_ai_provider_config', JSON.stringify(clientSafeConfig));
         }
 
         if (typeof db !== 'undefined' && db) {
           try {
-            await db.collection('ek_settings').doc('ai_provider_config').set(config);
-            await db.collection('settings').doc('ai_provider_config').set(config);
+            await db.collection('ek_settings').doc('ai_provider_config').set({
+              provider: 'gemini',
+              apiKey: '',
+              model: '',
+              updatedAt: new Date().toISOString()
+            });
           } catch (err) {}
         }
 
-        showToast("Reset to built-in Gemini key!", "info");
+        showToast("Reset to server Gemini default!", "info");
         loadAdminAiKeyConfig();
       }
     }

@@ -382,10 +382,15 @@
       if (updated) {
         saveData('ek_settings', settings);
         const isAdmin = (typeof getAdminSession === 'function' && !!getAdminSession()) || !!getData('ek_admin_session');
-        if (isAdmin && typeof db !== 'undefined' && db) {
+        const hasAuthUser = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
+        if (isAdmin && hasAuthUser && typeof db !== 'undefined' && db) {
           db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true })
             .then(() => debugLog("[UPI Self-Heal] Successfully synced updated UPI settings to Firestore (global_config)"))
-            .catch(err => console.error("[UPI Self-Heal] Sync error:", err));
+            .catch(err => {
+              if (err && err.code !== 'permission-denied') {
+                console.warn("[UPI Self-Heal] Cloud sync notice:", err.message || err);
+              }
+            });
           db.collection('ek_settings').doc('global').set(cleanFirestoreData(settings), { merge: true }).catch(() => {});
         }
       }
@@ -907,8 +912,12 @@
     let toastTimeout = null;
 
     function showToast(message, type = 'success') {
-      if (type === 'error' && typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate([12, 35, 18]); } catch(e) {}
+      if (type === 'error') {
+        if (typeof safeVibrate === 'function') {
+          safeVibrate([12, 35, 18]);
+        } else {
+          try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate([12, 35, 18]); } catch(e) {}
+        }
       }
 
       if (type === 'error') {
