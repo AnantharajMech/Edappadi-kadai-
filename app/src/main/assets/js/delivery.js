@@ -466,7 +466,7 @@ function updateRiderLiveLocation() {
           let orderChanged = false;
           allOrders.forEach(ord => {
             const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
-            const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+            const isAssigned = (exec && exec.id === session.id);
             if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
               ord.riderLatitude = parseFloat(lat);
               ord.riderLongitude = parseFloat(lng);
@@ -588,7 +588,7 @@ function updateRiderLiveLocation() {
           let orderChanged = false;
           allOrders.forEach(ord => {
             const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
-            const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+            const isAssigned = (exec && exec.id === session.id);
             if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
               ord.riderLatitude = parseFloat(lat);
               ord.riderLongitude = parseFloat(lng);
@@ -778,7 +778,7 @@ function updateRiderLiveLocation() {
         `;
       }
 
-      const readyForPick = orders.filter(o => !(typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : (o.assignedExecutiveId || o.deliveryExecutiveId)) && isReadyOrderStatus(o.status));
+      const readyForPick = orders.filter(o => !(typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : o.assignedTo) && isReadyOrderStatus(o.status));
       const assignedRider = orders.filter(o => {
         const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
         return exec && exec.id === session.id && !isDeliveredOrderStatus(o.status) && !isCancelledOrderStatus(o.status);
@@ -1120,17 +1120,15 @@ function updateRiderLiveLocation() {
       showToast("Syncing with Cloud real-time database...", "info");
       if (typeof db !== 'undefined' && db) {
         const q0 = db.collection('ek_orders').where('assignedTo.id', '==', session.id).get().catch(() => null);
-        const q1 = db.collection('ek_orders').where('assignedExecutiveId', '==', session.id).get().catch(() => null);
-        const q2 = db.collection('ek_orders').where('assignedDeliveryPartnerUid', '==', session.id).get().catch(() => null);
-        const q3 = db.collection('ek_orders').where('riderUid', '==', session.id).get().catch(() => null);
+        const q1 = db.collection('ek_orders').where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'delivering', 'out_for_delivery', 'dispatch']).get().catch(() => null);
 
-        Promise.all([q0, q1, q2, q3])
-          .then(([snap0, snap1, snap2, snap3]) => {
+        Promise.all([q0, q1])
+          .then(([snap0, snap1]) => {
             const localOrders = getData('ek_orders', []);
             const localOrdersMap = new Map(localOrders.map(o => [o.id, o]));
 
             const list = [];
-            [snap0, snap1, snap2, snap3].forEach(snap => {
+            [snap0, snap1].forEach(snap => {
               if (snap && !snap.empty) {
                 snap.forEach(doc => {
                   const data = normalizeFirestoreData(doc.data());
@@ -1276,25 +1274,13 @@ function updateRiderLiveLocation() {
         const orders = getData('ek_orders', []);
         const idx = orders.findIndex(o => o.id === orderId);
         if (idx === -1) return;
-        // Canonical assignment
+        // Canonical unified assignment
         orders[idx].assignedTo = {
           id: session.id,
           name: session.name,
           phone: session.phone || '',
           role: 'rider'
         };
-        // TODO: Remove legacy rider assignment fields in the next release
-        orders[idx].assignedDeliveryPartnerUid = session.id;
-        orders[idx].assignedDeliveryPartnerName = session.name;
-        orders[idx].riderUid = session.id;
-        orders[idx].riderId = session.id;
-        orders[idx].deliveryPartnerUid = session.id;
-        orders[idx].assignedExecutiveId = session.id;
-        orders[idx].assignedExecutiveName = session.name;
-        orders[idx].assignedExecutivePhone = session.phone;
-        orders[idx].deliveryExecutiveId = session.id;
-        orders[idx].deliveryExecutiveName = session.name;
-        orders[idx].deliveryExecutivePhone = session.phone;
         orders[idx].updatedAt = new Date().toISOString();
         saveData('ek_orders', orders);
 
@@ -1338,18 +1324,6 @@ function updateRiderLiveLocation() {
               phone: session.phone || '',
               role: 'rider'
             },
-            // TODO: Remove legacy rider assignment fields in the next release
-            assignedDeliveryPartnerUid: session.id,
-            assignedDeliveryPartnerName: session.name,
-            riderUid: session.id,
-            riderId: session.id,
-            deliveryPartnerUid: session.id,
-            assignedExecutiveId: session.id,
-            assignedExecutiveName: session.name,
-            assignedExecutivePhone: session.phone,
-            deliveryExecutiveId: session.id,
-            deliveryExecutiveName: session.name,
-            deliveryExecutivePhone: session.phone,
             updatedAt: new Date().toISOString()
           });
         });
@@ -1363,18 +1337,6 @@ function updateRiderLiveLocation() {
             phone: session.phone || '',
             role: 'rider'
           };
-          // TODO: Remove legacy rider assignment fields in the next release
-          orders[idx].assignedDeliveryPartnerUid = session.id;
-          orders[idx].assignedDeliveryPartnerName = session.name;
-          orders[idx].riderUid = session.id;
-          orders[idx].riderId = session.id;
-          orders[idx].deliveryPartnerUid = session.id;
-          orders[idx].assignedExecutiveId = session.id;
-          orders[idx].assignedExecutiveName = session.name;
-          orders[idx].assignedExecutivePhone = session.phone;
-          orders[idx].deliveryExecutiveId = session.id;
-          orders[idx].deliveryExecutiveName = session.name;
-          orders[idx].deliveryExecutivePhone = session.phone;
           orders[idx].updatedAt = new Date().toISOString();
           saveData('ek_orders', orders);
 
@@ -1396,7 +1358,7 @@ function updateRiderLiveLocation() {
           const orders = getData('ek_orders', []);
           const idx = orders.findIndex(o => o.id === orderId);
           if (idx !== -1) {
-             orders[idx].assignedExecutiveId = "other_rider";
+             orders[idx].assignedTo = { id: "other_rider", name: "Other Rider" };
              saveData('ek_orders', orders);
           }
           showToast("மன்னிக்கவும், இந்த ஆர்டர் ஏற்கனவே வேறொருவருக்கு ஒதுக்கப்பட்டுவிட்டது! ❌", "error");
@@ -1606,6 +1568,16 @@ function updateRiderLiveLocation() {
           });
       } else {
         queueFailedSync('ek_orders', orderId, 'set', orders[idx]);
+      }
+
+      const activeRemainingOrders = orders.filter(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        const s = typeof getData === 'function' ? getData('ek_delivery_session', null) : null;
+        return exec && s && exec.id === s.id && ['delivering', 'out_for_delivery', 'dispatch'].includes((o.status || '').toLowerCase().trim());
+      });
+      if (activeRemainingOrders.length === 0) {
+        if (typeof stopRealRiderGpsTracking === 'function') stopRealRiderGpsTracking(false);
+        if (typeof stopRiderGpsSimulation === 'function') stopRiderGpsSimulation(false);
       }
 
       showToast("Delivered! Order status updated successfully ✓", "success");
@@ -1907,6 +1879,16 @@ function updateRiderLiveLocation() {
           });
       } else {
         queueFailedSync('ek_orders', orderId, 'set', orders[idx]);
+      }
+
+      const activeRemainingOrders = orders.filter(o => {
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+        const s = typeof getData === 'function' ? getData('ek_delivery_session', null) : null;
+        return exec && s && exec.id === s.id && ['delivering', 'out_for_delivery', 'dispatch'].includes((o.status || '').toLowerCase().trim());
+      });
+      if (activeRemainingOrders.length === 0) {
+        if (typeof stopRealRiderGpsTracking === 'function') stopRealRiderGpsTracking(false);
+        if (typeof stopRiderGpsSimulation === 'function') stopRiderGpsSimulation(false);
       }
 
       closeDeliveryVerification();
@@ -3130,7 +3112,7 @@ function updateRiderLiveLocation() {
         let anyOrderUpdated = false;
         allOrders.forEach(ord => {
           const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
-          const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+          const isAssigned = (exec && exec.id === session.id);
           if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
             ord.riderLatitude = parseFloat(simLat);
             ord.riderLongitude = parseFloat(simLng);
@@ -3332,7 +3314,7 @@ function updateRiderLiveLocation() {
           let anyOrderUpdated = false;
           allOrders.forEach(ord => {
             const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
-            const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+            const isAssigned = (exec && exec.id === session.id);
             if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
               ord.riderLatitude = parseFloat(simLat);
               ord.riderLongitude = parseFloat(simLng);
@@ -3371,8 +3353,8 @@ function updateRiderLiveLocation() {
         },
         {
           enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
+          timeout: 15000,
+          maximumAge: 3000
         }
       );
     }

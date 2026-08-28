@@ -54,7 +54,7 @@ service cloud.firestore {
              currentData.totalAmount == nextData.totalAmount &&
              currentData.items == nextData.items &&
              currentData.createdAt == nextData.createdAt &&
-             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deliveryStatus', 'assignedTo', 'riderUid', 'riderLocation', 'currentLocation', 'updatedAt', 'deliveredAt', 'pickedUpAt', 'deliveryNotes', 'riderNotes', 'orderStatusHistory', 'timeline', 'riderAssignedAt', 'arrivedAtStoreAt', 'deliveryProofUrl', 'otpVerified', 'deliveryConfirmationOtp', 'signatureUrl', 'customerSignature', 'handoverType', 'handoverProof']) &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deliveryStatus', 'assignedTo', 'riderUid', 'riderLocation', 'currentLocation', 'riderLatitude', 'riderLongitude', 'updatedAt', 'deliveredAt', 'pickedUpAt', 'deliveryNotes', 'riderNotes', 'orderStatusHistory', 'timeline', 'riderAssignedAt', 'arrivedAtStoreAt', 'deliveryProofUrl', 'otpVerified', 'deliveryConfirmationOtp', 'signatureUrl', 'customerSignature', 'handoverType', 'handoverProof']) &&
              (
                (nextData.get('assignedTo', {}) != null && nextData.get('assignedTo', {}).get('id', '') == request.auth.uid) ||
                nextData.get('riderUid', '') == request.auth.uid || 
@@ -227,11 +227,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Delivery persons: admin has full writes, rider can get their own doc & update operational status/location fields
+    // Delivery persons: admin has full writes, authenticated users can get rider profile (for live order tracking), rider can update operational status/location fields
     match /ek_delivery_persons/{docId} {
-      allow get: if isAdmin() || (isAuthenticated() && request.auth.uid == docId);
+      allow get: if isAdmin() || isAuthenticated();
       allow list: if isAdmin();
-      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == docId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['latitude','longitude','lastSeen','availabilityStatus','isOnline','currentLocation','updatedAt']));
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == docId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['latitude','longitude','accuracy','lastLiveUpdate','lastSeen','availabilityStatus','isOnline','currentLocation','updatedAt']));
     }
 
     // Email OTP / SMS Config / AI Config / secrets settings: ADMIN-ONLY read/write (contains credentials)

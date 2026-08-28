@@ -10,7 +10,7 @@
       const orders = getData('ek_orders', []) || [];
       const activeAssignedOrder = orders.find(o => {
         const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
-        const isAssigned = (exec && exec.id === id) || (o.assignedTo === id || o.assignedExecutiveId === id || o.deliveryExecutiveId === id || o.riderUid === id || o.assignedDeliveryPartnerUid === id);
+        const isAssigned = (exec && exec.id === id);
         return isAssigned && !['delivered', 'cancelled', 'completed', 'archived'].includes(String(o.status).toLowerCase().trim());
       });
       if (activeAssignedOrder) {
@@ -1704,7 +1704,7 @@
         const dateStr = o.updatedAt ? new Date(o.updatedAt).toLocaleDateString() : (o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A');
         const starsStr = '★'.repeat(o.rating) + '☆'.repeat(5 - o.rating);
         const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
-        const riderText = (exec && exec.name) || o.assignedExecutiveName || (currentLang === 'ta' ? 'கொடுக்கப்படவில்லை' : 'Unassigned Rider');
+        const riderText = (exec && exec.name) || (currentLang === 'ta' ? 'கொடுக்கப்படவில்லை' : 'Unassigned Rider');
 
         const card = `
           <div class="card" style="border-color: rgba(245,158,11,0.18); background: rgba(245,158,11,0.015); margin-bottom:12px; padding: 14px; border-radius:14px; display: flex; flex-direction: column; gap: 8px;">

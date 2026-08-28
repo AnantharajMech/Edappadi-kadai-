@@ -4353,69 +4353,6 @@
           </div>
         </div>
 
-        <!-- ADMIN SMS & EMAIL OTP GATEWAY CONFIGURATION CARD -->
-        <div class="card" style="margin-top: 16px; border: 1.5px solid rgba(245,158,11,0.25);">
-          <h4 style="font-size: 14px; text-transform: uppercase; color: var(--accent-orange); margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-            <span>💬</span> <span>ரியல் ஓடிபி அமைப்புகள் / Real SMS & Email Gateway</span>
-          </h4>
-          <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;">
-            உங்களது வாடிக்கையாளர்களின் மொபைல் எண்ணிற்கு ரியலாகவே SMS மூலம் OTP அனுப்ப அமைப்புகளைத் தேர்ந்தெடுக்கவும் / Send real SMS OTP or customized messages using professional services or custom API configurations (e.g., matching Livo Food Delivery API).
-          </p>
-
-          <div class="form-group">
-            <label style="font-size: 11.5px; font-weight: 600;">SMS Gateway Mode / எஸ்எம்எஸ் முறை</label>
-            <select id="setting-sms-provider" class="form-control" onchange="toggleSmsFormFields();" style="background:#111; border:1px solid #222; border-radius:10px; height: 46px; padding: 10px 14px; color: #fff; font-size: 13px;">
-              <option value="simulator">📱 Simulator Mode (On-Screen Code / இலவச டெமோ)</option>
-              <option value="fast2sms">🚀 Fast2SMS (Cheap Indian Gateway - API Key)</option>
-              <option value="twilio">🌐 Twilio API (International SMS Service - SID & Token)</option>
-              <option value="custom">⚙️ Custom REST API (Livo Food & Any Gateway - Custom Get Target)</option>
-            </select>
-          </div>
-
-          <!-- Fields for Fast2SMS -->
-          <div id="sms-fields-fast2sms" style="display: none; margin-top: 10px; background: rgba(245,158,11,0.03); padding: 12px; border-radius: 12px; border: 1px dashed #333;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label style="font-size: 11px; color: #aaa;">Fast2SMS Authorization API Key</label>
-              <input type="text" id="setting-fast2sms-key" class="form-control" placeholder="Enter Fast2SMS API Key" style="height: 46px; padding: 10px 14px; font-size:13px;">
-              <p style="font-size:10px; color: var(--text-muted); margin-top:4px;">Get your key from fast2sms.com. Uses the dlt route or quick sms route.</p>
-            </div>
-          </div>
-
-          <!-- Fields for Twilio -->
-          <div id="sms-fields-twilio" style="display: none; margin-top: 10px; background: rgba(245,158,11,0.03); padding: 12px; border-radius: 12px; border: 1px dashed #333;">
-            <div class="form-group" style="margin-bottom: 8px;">
-              <label style="font-size: 11px; color: #aaa;">Twilio Account SID</label>
-              <input type="text" id="setting-twilio-sid" class="form-control" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxx" style="height: 46px; padding: 10px 14px; font-size:13px;">
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-              <label style="font-size: 11px; color: #aaa;">Twilio Auth Token</label>
-              <div style="position: relative;">
-                <input type="password" id="setting-twilio-token" class="form-control" placeholder="Twilio Secret Token" style="height: 46px; padding: 10px 40px 10px 14px; font-size:13px;">
-                <span style="position: absolute; right: 14px; top: 13px; font-size: 16px; cursor: pointer; color: var(--text-muted);" onclick="togglePasswordVisibility('setting-twilio-token', this)">👁️</span>
-              </div>
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-              <label style="font-size: 11px; color: #aaa;">Twilio Sender Phone Number (From)</label>
-              <input type="text" id="setting-twilio-from" class="form-control" placeholder="+1xxxxxxxxxx" style="height: 46px; padding: 10px 14px; font-size:13px;">
-            </div>
-          </div>
-
-          <!-- Fields for Custom API Gateway -->
-          <div id="sms-fields-custom" style="display: none; margin-top: 10px; background: rgba(245,158,11,0.03); padding: 12px; border-radius: 12px; border: 1px dashed #333;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label style="font-size: 11px; color: #aaa;">Custom Gateway Web Hook / API Request URL (HTTP GET)</label>
-              <input type="text" id="setting-sms-custom-url" class="form-control" placeholder="https://api.sms-provider.com/send?apikey=KEY&to={PHONE}&msg=Your+OTP+is+{OTP}" style="height: 46px; padding: 10px 14px; font-size:12px; font-family:'JetBrains Mono',monospace;">
-              <p style="font-size:10px; color: var(--accent-orange); margin-top:4px; line-height: 1.4;">
-                யூசர் மொபைல் மற்றும் OTPயை மாற்ற <strong>{PHONE}</strong> மற்றும் <strong>{OTP}</strong> ஆகிய குறியீட்டைப் பயன்படுத்தலாம்! / Wrap placeholders exactly as <code style="color:#ff9800">{PHONE}</code> and <code style="color:#ff9800">{OTP}</code> – the system dynamically replaces them on trigger!
-              </p>
-            </div>
-          </div>
-
-          <div style="margin-top: 14px; text-align: right;">
-            <button class="btn btn-primary" onclick="saveAdminSmsConfig()" style="width: auto; padding: 8px 18px; font-size: 12px; font-weight: 700;">💾 Save SMS Settings</button>
-          </div>
-        </div>
-
         <!-- EMAIL OTP SETTINGS (GMAIL SMTP) CARD -->
         <div class="card" style="margin-top: 15px; border: 1.5px solid rgba(59, 130, 246, 0.3); background: linear-gradient(135deg, rgba(59, 130, 246, 0.04) 0%, rgba(10,10,10,0.95) 100%);">
           <h4 style="font-size: 14px; text-transform: uppercase; color: #60a5fa; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
@@ -5250,11 +5187,6 @@ function saveAdminSettings() {
   const rainChargeEl = document.getElementById("setting-rain-charge");
   const minWeightEl = document.getElementById("setting-min-weight");
   const minAmountEl = document.getElementById("setting-min-amount");
-  const smsProviderEl = document.getElementById("setting-sms-provider");
-  const fast2smsKeyEl = document.getElementById("setting-fast2sms-key");
-  const twilioSidEl = document.getElementById("setting-twilio-sid");
-  const twilioTokenEl = document.getElementById("setting-twilio-token");
-  const twilioFromEl = document.getElementById("setting-twilio-from");
   const minVerEl = document.getElementById("setting-min-app-version");
   const recVerEl = document.getElementById("setting-recommended-app-version");
   const playStoreUrlEl = document.getElementById("setting-playstore-url");
@@ -5286,8 +5218,7 @@ function saveAdminSettings() {
     minAppVersion: minVerEl ? minVerEl.value.trim() : (currentSettings.minAppVersion || "8.0.0"),
     recommendedVersion: recVerEl ? recVerEl.value.trim() : (currentSettings.recommendedVersion || "8.0.0"),
     playStoreUrl: playStoreUrlEl ? playStoreUrlEl.value.trim() : (currentSettings.playStoreUrl || "https://play.google.com/store/apps/details?id=com.edappadikadai.app"),
-    privacyPolicyUrl: (document.getElementById('setting-privacy-policy-url')?.value?.trim() || privacyPolicyUrlEl?.value?.trim() || currentSettings.privacyPolicyUrl || ''),
-    smsProvider: smsProviderEl ? smsProviderEl.value : "fast2sms"
+    privacyPolicyUrl: (document.getElementById('setting-privacy-policy-url')?.value?.trim() || privacyPolicyUrlEl?.value?.trim() || currentSettings.privacyPolicyUrl || '')
   };
 
   if (typeof saveData === 'function') {
@@ -5311,102 +5242,6 @@ function saveAdminSettings() {
 
   updateAdminUpiQrPreview();
   if (typeof showToast === 'function') showToast("நிர்வாக அமைப்புகள் வெற்றிகரமாக சேமிக்கப்பட்டன ⚙️", "success");
-}
-
-function toggleSmsFormFields() {
-  const providerEl = document.getElementById("setting-sms-provider");
-  const provider = providerEl ? providerEl.value : "fast2sms";
-
-  const fast2smsBox = document.getElementById("sms-fields-fast2sms");
-  const twilioBox = document.getElementById("sms-fields-twilio");
-  const customBox = document.getElementById("sms-fields-custom");
-
-  if (fast2smsBox) fast2smsBox.style.display = provider === "fast2sms" ? "block" : "none";
-  if (twilioBox) twilioBox.style.display = provider === "twilio" ? "block" : "none";
-  if (customBox) customBox.style.display = provider === "custom" ? "block" : "none";
-}
-
-async function loadAdminSmsSettingsUI(settings) {
-  const elProvider = document.getElementById('setting-sms-provider');
-  const elFast2sms = document.getElementById('setting-fast2sms-key');
-  const elTwilioSid = document.getElementById('setting-twilio-sid');
-  const elTwilioToken = document.getElementById('setting-twilio-token');
-  const elTwilioFrom = document.getElementById('setting-twilio-from');
-  const elCustomUrl = document.getElementById('setting-sms-custom-url');
-
-  let smsConfig = settings ? settings.smsConfig : null;
-
-  if (!smsConfig && typeof db !== 'undefined' && db) {
-    try {
-      const doc = await db.collection('ek_settings').doc('smsConfig').get();
-      if (doc.exists) {
-        smsConfig = doc.data();
-      }
-    } catch (e) {
-      console.warn('[SMS Settings] Could not fetch smsConfig from Firestore:', e);
-    }
-  }
-
-  if (!smsConfig && typeof getData === 'function') {
-    smsConfig = getData('edappadi_sms_config', null);
-  }
-
-  if (smsConfig) {
-    if (elProvider && smsConfig.provider) elProvider.value = smsConfig.provider;
-    if (elFast2sms && smsConfig.fast2smsKey !== undefined) elFast2sms.value = smsConfig.fast2smsKey;
-    if (elTwilioSid && smsConfig.twilioSid !== undefined) elTwilioSid.value = smsConfig.twilioSid;
-    if (elTwilioToken && smsConfig.twilioToken !== undefined) elTwilioToken.value = smsConfig.twilioToken;
-    if (elTwilioFrom && smsConfig.twilioFrom !== undefined) elTwilioFrom.value = smsConfig.twilioFrom;
-    if (elCustomUrl && smsConfig.customUrl !== undefined) elCustomUrl.value = smsConfig.customUrl;
-  } else if (settings) {
-    if (elProvider && settings.smsProvider) elProvider.value = settings.smsProvider;
-    if (elFast2sms && settings.fast2smsKey) elFast2sms.value = settings.fast2smsKey;
-    if (elTwilioSid && settings.twilioSid) elTwilioSid.value = settings.twilioSid;
-    if (elTwilioToken && settings.twilioToken) elTwilioToken.value = settings.twilioToken;
-    if (elTwilioFrom && settings.twilioFrom) elTwilioFrom.value = settings.twilioFrom;
-    if (elCustomUrl && settings.smsCustomUrl) elCustomUrl.value = settings.smsCustomUrl;
-  }
-
-  toggleSmsFormFields();
-}
-
-async function saveAdminSmsConfig() {
-  const elProvider = document.getElementById('setting-sms-provider');
-  const elFast2sms = document.getElementById('setting-fast2sms-key');
-  const elTwilioSid = document.getElementById('setting-twilio-sid');
-  const elTwilioToken = document.getElementById('setting-twilio-token');
-  const elTwilioFrom = document.getElementById('setting-twilio-from');
-  const elCustomUrl = document.getElementById('setting-sms-custom-url');
-
-  const config = {
-    provider: elProvider ? elProvider.value : 'simulator',
-    fast2smsKey: elFast2sms ? elFast2sms.value.trim() : '',
-    twilioSid: elTwilioSid ? elTwilioSid.value.trim() : '',
-    twilioToken: elTwilioToken ? elTwilioToken.value.trim() : '',
-    twilioFrom: elTwilioFrom ? elTwilioFrom.value.trim() : '',
-    customUrl: elCustomUrl ? elCustomUrl.value.trim() : '',
-    updatedAt: new Date().toISOString()
-  };
-
-  if (typeof saveData === 'function') {
-    saveData('edappadi_sms_config', config);
-  }
-
-  if (typeof db !== 'undefined' && db) {
-    try {
-      await db.collection('ek_settings').doc('smsConfig').set(config);
-      if (typeof showToast === 'function') showToast("✅ SMS அமைப்புகள் பாதுகாப்பாக சேமிக்கப்பட்டன! / SMS Settings saved successfully!", "success");
-    } catch (err) {
-      console.warn("Firestore smsConfig write warning:", err);
-      if (typeof showToast === 'function') showToast("SMS அமைப்புகள் லோக்கலாக சேமிக்கப்பட்டன! / SMS Settings saved locally!", "success");
-    }
-  } else {
-    if (typeof showToast === 'function') showToast("SMS அமைப்புகள் லோக்கலாக சேமிக்கப்பட்டன! / SMS Settings saved locally!", "success");
-  }
-}
-
-function testCurrentSmsConfig() {
-  if (typeof showToast === 'function') showToast("எஸ்எம்எஸ் சோதனைச் செய்தி அனுப்பப்பட்டது 📱", "info");
 }
 
 function toggleDeliveryMode() {

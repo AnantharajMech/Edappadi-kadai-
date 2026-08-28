@@ -54,6 +54,28 @@
       debugLog("[Remember Me Startup Check] Session persistence active. Local sessions will remain logged in across app restarts until explicit Logout.");
     }
 
+    function getOrderAssignedExecutive(order) {
+      if (!order) return null;
+      if (order.assignedTo && typeof order.assignedTo === 'object' && (order.assignedTo.id || order.assignedTo.uid)) {
+        const rId = order.assignedTo.id || order.assignedTo.uid;
+        return {
+          id: rId,
+          uid: rId,
+          name: order.assignedTo.name || 'Delivery Partner',
+          phone: order.assignedTo.phone || '',
+          role: order.assignedTo.role || 'rider',
+          assignedAt: order.assignedTo.assignedAt || order.updatedAt || order.createdAt || null,
+          status: order.assignedTo.status || 'assigned'
+        };
+      }
+      const uid = (typeof order.assignedTo === 'string' && order.assignedTo) || order.assignedDeliveryPartnerUid || order.riderUid || order.riderId || order.deliveryPartnerUid || order.assignedExecutiveId || order.deliveryExecutiveId || null;
+      if (!uid) return null;
+      const name = order.assignedDeliveryPartnerName || order.assignedRiderName || order.assignedExecutiveName || order.deliveryExecutiveName || 'Delivery Partner';
+      const phone = order.assignedExecutivePhone || order.deliveryExecutivePhone || '';
+      return { id: uid, uid: uid, name, phone, role: 'rider', assignedAt: order.updatedAt || order.createdAt || null, status: 'assigned' };
+    }
+    window.getOrderAssignedExecutive = getOrderAssignedExecutive;
+
     const prefillLoginCredentials = () => {
       try {
         const idInput = document.getElementById('login-identifier');
@@ -186,13 +208,7 @@
         { id: 'zone_2', nameEn: 'Suburbs Near', nameTa: 'அருகிலுள்ள புறநகர்', maxKm: 6, charge: 45 },
         { id: 'zone_3', nameEn: 'Suburbs Far', nameTa: 'தொலைதூர புறநகர்', maxKm: 10, charge: 75 },
         { id: 'zone_4', nameEn: 'Outer Boundary', nameTa: 'வெளிப்புற எல்லை', maxKm: 15, charge: 110 }
-      ],
-      smsProvider: 'fast2sms',
-      smsApiKey: '',
-      smsTwilioSid: '',
-      smsTwilioToken: '',
-      smsTwilioFrom: '',
-      smsCustomUrl: ''
+      ]
     };
 
     const DEFAULT_CATEGORIES = [
@@ -1845,6 +1861,10 @@
           if (composeBox) {
             composeBox.style.transform = 'translateY(0)';
           }
+        }
+
+        if (screenId !== 'screen-track' && typeof cleanupCustomerTrackerListeners === 'function') {
+          cleanupCustomerTrackerListeners();
         }
 
         if (typeof dismissToast === 'function' && typeof toastShowTime !== 'undefined' && Date.now() - toastShowTime > 300) {

@@ -448,10 +448,6 @@
 
         try { if (typeof renderAdminBannerSettings === "function") renderAdminBannerSettings(); } catch(e) {}
 
-        if (typeof loadAdminSmsSettingsUI === 'function') {
-          try { loadAdminSmsSettingsUI(settings); } catch(e) {}
-        }
-
         if (typeof loadAdminEmailOtpConfig === 'function') {
           try { loadAdminEmailOtpConfig(); } catch(e) {}
         }
@@ -1999,29 +1995,13 @@ ${o.items.map((it, idx) => {
       const exec = executives.find(e => e.id === executiveId);
 
       if (exec) {
-        // Canonical assignment object
+        // Canonical unified assignment object
         orders[idx].assignedTo = {
           id: exec.id,
           name: exec.name,
           phone: exec.phone || '',
           role: 'rider'
         };
-
-        // TODO: Remove the 12 legacy fields below in the next release once all consumers read exclusively from order.assignedTo
-        orders[idx].assignedDeliveryPartnerUid = exec.id;
-        orders[idx].assignedDeliveryPartnerName = exec.name;
-        orders[idx].assignedRiderName = exec.name;
-        orders[idx].riderUid = exec.id;
-        orders[idx].riderId = exec.id;
-        orders[idx].deliveryPartnerUid = exec.id;
-
-        orders[idx].assignedExecutiveId = exec.id;
-        orders[idx].assignedExecutiveName = exec.name;
-        orders[idx].assignedExecutivePhone = exec.phone || '';
-
-        orders[idx].deliveryExecutiveId = exec.id;
-        orders[idx].deliveryExecutiveName = exec.name;
-        orders[idx].deliveryExecutivePhone = exec.phone || '';
 
         if (orders[idx].status === 'pending') {
           orders[idx].status = 'ready';
@@ -2031,22 +2011,6 @@ ${o.items.map((it, idx) => {
         }
       } else {
         orders[idx].assignedTo = null;
-
-        // TODO: Remove the 12 legacy fields below in the next release
-        orders[idx].assignedDeliveryPartnerUid = '';
-        orders[idx].assignedDeliveryPartnerName = '';
-        orders[idx].assignedRiderName = '';
-        orders[idx].riderUid = '';
-        orders[idx].riderId = '';
-        orders[idx].deliveryPartnerUid = '';
-
-        orders[idx].assignedExecutiveId = '';
-        orders[idx].assignedExecutiveName = '';
-        orders[idx].assignedExecutivePhone = '';
-
-        orders[idx].deliveryExecutiveId = '';
-        orders[idx].deliveryExecutiveName = '';
-        orders[idx].deliveryExecutivePhone = '';
         showToast("Order unassigned.", "info");
       }
 
@@ -3972,7 +3936,6 @@ ${o.items.map((it, idx) => {
     function loadAdminSettings() {
       try {
         if (typeof renderAdminUpiSettings === 'function') renderAdminUpiSettings();
-        if (typeof loadAdminSmsSettingsUI === 'function') loadAdminSmsSettingsUI();
         if (typeof renderAdminAccountsSettings === 'function') renderAdminAccountsSettings();
         if (typeof loadAdminLyoAiConfig === 'function') loadAdminLyoAiConfig();
         if (typeof loadAdminAiKeyConfig === 'function') loadAdminAiKeyConfig();
@@ -4072,7 +4035,6 @@ ${o.items.map((it, idx) => {
 
     function saveAdminSettings() {
       try {
-        if (typeof saveAdminSmsConfig === 'function') saveAdminSmsConfig();
         if (typeof saveAdminEmailOtpConfig === 'function') saveAdminEmailOtpConfig();
       } catch(e) {
         console.warn("saveAdminSettings error:", e);

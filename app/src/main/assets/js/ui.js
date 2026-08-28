@@ -6,6 +6,9 @@
             window.realGpsWasTrackingBeforeBackground = true;
             stopRealRiderGpsTracking(false);
           }
+          if (typeof cleanupCustomerTrackerListeners === 'function') {
+            cleanupCustomerTrackerListeners();
+          }
         } else {
           if (typeof triggerGlobalScreenRefreshActual === 'function') {
             triggerGlobalScreenRefreshActual();
@@ -15,16 +18,43 @@
             const session = getData('ek_delivery_session', null);
             if (session) {
               const orders = getData('ek_orders', []);
-              const activeOrder = orders.find(o => (o.assignedExecutiveId === session.id || o.deliveryExecutiveId === session.id || o.riderUid === session.id) && o.status === 'delivering');
+              const activeOrder = orders.find(o => {
+                const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(o) : null;
+                return exec && exec.id === session.id && ['delivering', 'out_for_delivery', 'dispatch'].includes((o.status || '').toLowerCase().trim());
+              });
               if (activeOrder) {
                 debugLog("[Real GPS] Document visible again, restarting real GPS tracking...");
                 startRealRiderGpsTracking();
               }
             }
           }
+          if (typeof currentScreen !== 'undefined' && currentScreen === 'screen-track') {
+            if (typeof renderTrackerScreen === 'function') {
+              renderTrackerScreen();
+            }
+          }
         }
       });
     }
+
+    function cleanupCustomerTrackerListeners() {
+      if (typeof window.activeTrackedOrderUnsubscribe === 'function') {
+        try { window.activeTrackedOrderUnsubscribe(); } catch(e) {}
+      }
+      window.activeTrackedOrderUnsubscribe = null;
+      window.activeTrackedOrderIdListener = null;
+
+      if (typeof window.activeTrackedRiderUnsubscribe === 'function') {
+        try { window.activeTrackedRiderUnsubscribe(); } catch(e) {}
+      }
+      window.activeTrackedRiderUnsubscribe = null;
+      window.activeTrackedRiderIdListener = null;
+
+      if (typeof clearRiderAnimation === 'function') {
+        clearRiderAnimation();
+      }
+    }
+    window.cleanupCustomerTrackerListeners = cleanupCustomerTrackerListeners;
 
     let trackerLeafletMap = null;
     let trackerTileLayer = null;
@@ -225,7 +255,9 @@
         return;
       }
 
-      const hasLocation = !!((order.riderLatitude && order.riderLongitude) || (order.assignedExecutiveId && (getData('ek_delivery_persons', []).find(r => r.id === order.assignedExecutiveId) || {}).latitude));
+      const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(order) : null;
+      const riderData = exec ? (getData('ek_delivery_persons', []).find(r => r.id === exec.id) || {}) : {};
+      const hasLocation = !!((order.riderLatitude && order.riderLongitude) || (riderData && riderData.latitude));
 
       trackerMapBox.style.display = 'block';
 
@@ -462,10 +494,11 @@
             ? `⚡ ~${badgeMins}நி ${badgeSecs}வி (~${etaClockString})`
             : `⚡ ~${badgeMins}m ${badgeSecs}s (~${etaClockString})`;
 
+          const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(order) : null;
           const list = getData('ek_delivery_persons', []);
-          const exe = list.find(dp => dp.id === (order.assignedExecutiveId || order.deliveryExecutiveId));
-          const riderName = exe ? exe.name : (order.assignedExecutiveName || order.deliveryExecutiveName || "Edappadi Partner");
-          const riderPhone = exe ? exe.phone : (order.assignedExecutivePhone || order.deliveryExecutivePhone || "9042681532");
+          const exe = exec ? list.find(dp => dp.id === exec.id) : null;
+          const riderName = exe ? exe.name : ((exec && exec.name) || "Edappadi Partner");
+          const riderPhone = exe ? exe.phone : ((exec && exec.phone) || "9042681532");
 
           badgeDesc.innerText = `Rider ${riderName} is enroute to your doorstep. Tap below to call or chat.`;
 
@@ -644,8 +677,9 @@
         lastRiderLng = null;
       }
 
+      const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(order) : null;
       const list = getData('ek_delivery_persons', []);
-      const exe = list.find(dp => dp.id === (order.assignedExecutiveId || order.deliveryExecutiveId || order.riderUid));
+      const exe = exec ? list.find(dp => dp.id === exec.id) : null;
       const effectiveLat = (order.riderLatitude && !isNaN(parseFloat(order.riderLatitude))) 
         ? parseFloat(order.riderLatitude) 
         : (exe && exe.latitude && !isNaN(parseFloat(exe.latitude)) ? parseFloat(exe.latitude) : null);
@@ -706,8 +740,9 @@
       if (isDelivering) {
         showRider = true;
 
+        const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(order) : null;
         const list = getData('ek_delivery_persons', []);
-        const exe = list.find(dp => dp.id === (order.assignedExecutiveId || order.deliveryExecutiveId || order.riderUid));
+        const exe = exec ? list.find(dp => dp.id === exec.id) : null;
 
         let initialLat = storePos[0];
         let initialLng = storePos[1];
@@ -746,8 +781,9 @@
             const freshOrder = currentOrders.find(o => o.id === currentActiveOrder.id);
             if (freshOrder) currentActiveOrder = freshOrder;
 
+            const currentExec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(currentActiveOrder) : null;
             const currentList = getData('ek_delivery_persons', []);
-            cachedExe = currentList.find(dp => dp.id === (currentActiveOrder.assignedExecutiveId || currentActiveOrder.deliveryExecutiveId || currentActiveOrder.riderUid)) || null;
+            cachedExe = currentExec ? (currentList.find(dp => dp.id === currentExec.id) || null) : null;
             lastCacheRead = nowTime;
           }
           const currentExe = cachedExe;
@@ -767,9 +803,22 @@
           }
 
           const currentLatLng = riderMarker.getLatLng();
+          const dLat = targetLat - currentLatLng.lat;
+          const dLng = targetLng - currentLatLng.lng;
+          const distSq = dLat * dLat + dLng * dLng;
+
+          if (distSq < 0.00000001) {
+            riderMarker.setLatLng([targetLat, targetLng]);
+            const currentRiderDist = utils_calcLatLonDistanceKm(targetLat, targetLng, custPos[0], custPos[1]);
+            const currentF = totalDist > 0 ? Math.max(0, Math.min(1 - (currentRiderDist / totalDist), 0.98)) : 0.5;
+            updateCustomerMapHUD(currentActiveOrder, storePos, custPos, currentF);
+            riderAnimationFrameId = null;
+            return;
+          }
+
           const filterCoeff = 0.08; // Smooth interpolation coefficient
-          const interpLat = currentLatLng.lat + (targetLat - currentLatLng.lat) * filterCoeff;
-          const interpLng = currentLatLng.lng + (targetLng - currentLatLng.lng) * filterCoeff;
+          const interpLat = currentLatLng.lat + dLat * filterCoeff;
+          const interpLng = currentLatLng.lng + dLng * filterCoeff;
 
           riderMarker.setLatLng([interpLat, interpLng]);
 
@@ -1065,7 +1114,8 @@
         }
 
         // Realtime listener for assigned delivery partner location updates
-        const riderId = latestTrackable.assignedExecutiveId || latestTrackable.deliveryExecutiveId || latestTrackable.riderUid;
+        const trackedExec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(latestTrackable) : null;
+        const riderId = trackedExec ? trackedExec.id : null;
         if (riderId) {
           if (window.activeTrackedRiderIdListener !== riderId) {
             if (typeof window.activeTrackedRiderUnsubscribe === 'function') {
@@ -1087,7 +1137,14 @@
                   saveData('ek_delivery_persons', list);
 
                   if (currentScreen === 'screen-track') {
-                    renderTrackerScreen();
+                    const currentOrders = getData('ek_orders', []);
+                    const activeOrder = currentOrders.find(o => o.id === trackingOrderId);
+                    if (activeOrder && typeof debouncedLiveTrackingMapUpdate === 'function') {
+                      const coords = getOrderCoordinates(activeOrder);
+                      debouncedLiveTrackingMapUpdate(activeOrder, coords.store, coords.customer);
+                    } else if (typeof renderTrackerScreen === 'function') {
+                      renderTrackerScreen();
+                    }
                   }
                 }
               }
@@ -1231,7 +1288,7 @@
             celebrationContainer.style.display = 'block';
 
             const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(latestTrackable) : null;
-            const rName = (exec && exec.name) || latestTrackable.assignedExecutiveName || latestTrackable.deliveryExecutiveName || "";
+            const rName = (exec && exec.name) || "";
             const currentRating = latestTrackable.riderRating || 0;
             const currentFeedback = latestTrackable.riderFeedback || "";
 
@@ -1379,16 +1436,16 @@
 
           if (riderContainer) {
             const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(latestTrackable) : null;
-            const riderId = (exec && exec.id) || latestTrackable.assignedExecutiveId || latestTrackable.deliveryExecutiveId;
+            const riderId = exec ? exec.id : null;
             if (riderId && ['ready', 'delivering', 'delivered'].includes(latestTrackable.status)) {
               riderContainer.style.display = 'block';
 
               const rawRiders = getData('ek_delivery_persons', []) || [];
               const riderObj = rawRiders.find(r => r.uid === riderId || r.id === riderId);
 
-              const rName = riderObj ? riderObj.name : ((exec && exec.name) || latestTrackable.assignedExecutiveName || latestTrackable.deliveryExecutiveName || "Delivery Partner");
+              const rName = riderObj ? riderObj.name : ((exec && exec.name) || "Delivery Partner");
               const vehicleNo = (riderObj && riderObj.vehicleNo) ? riderObj.vehicleNo : "";
-              const rPhone = riderObj ? riderObj.phone : ((exec && exec.phone) || latestTrackable.assignedExecutivePhone || "9042681532");
+              const rPhone = riderObj ? riderObj.phone : ((exec && exec.phone) || "9042681532");
               const cleanPhone = rPhone.replace(/\D/g, '').slice(-10);
 
               const photoUrl = (riderObj && riderObj.photoUrl) ? riderObj.photoUrl : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M20 82 c0 -18 13 -30 30 -30 s30 12 30 30 z' fill='%23ffffff'/></svg>";
@@ -3071,7 +3128,7 @@
         }
 
         const execObj = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(orders[oIdx]) : null;
-        const assignedRiderId = (execObj && execObj.id) || orders[oIdx].assignedExecutiveId;
+        const assignedRiderId = execObj ? execObj.id : null;
         if (assignedRiderId) {
           const executives = getData('ek_delivery_persons', []);
           const eIdx = executives.findIndex(e => e.id === assignedRiderId);
@@ -4262,7 +4319,7 @@ function saveProfileChanges() {
           if (session && typeof db !== 'undefined' && db) {
             const riderId = session.id || session.phone;
             const [q1Snap, q2Snap, dpDoc] = await Promise.all([
-              db.collection('ek_orders').where('assignedExecutiveId', '==', String(riderId)).limit(40).get().catch(() => null),
+              db.collection('ek_orders').where('assignedTo.id', '==', String(riderId)).limit(40).get().catch(() => null),
               db.collection('ek_orders').where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'delivering', 'out_for_delivery']).limit(40).get().catch(() => null),
               db.collection('ek_settings').doc('delivery_persons').get().catch(() => null)
             ]);
