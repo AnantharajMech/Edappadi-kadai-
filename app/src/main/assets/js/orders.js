@@ -718,54 +718,25 @@
         }, 1500);
       }
 
-      // Atomic Stock Deduction via Cloud Function (Source of Truth)
-      const deductStockFn = (typeof firebase !== 'undefined' && firebase.functions)
-        ? (typeof firebase.app === 'function' && typeof firebase.app().functions === 'function'
-            ? firebase.app().functions('asia-south1').httpsCallable('deductStock')
-            : firebase.functions().httpsCallable('deductStock'))
-        : null;
-
-      if (deductStockFn && order.items && order.items.length > 0) {
-        showToast(currentLang === 'ta' ? "கையிருப்பு சரிபார்க்கப்படுகிறது... ⏳" : "Verifying live stock... ⏳", "info");
-        try {
-          const deductRes = await deductStockFn({ orderItems: order.items });
-          const deductData = (deductRes && deductRes.data) ? deductRes.data : deductRes;
-
-          if (!deductData || deductData.success !== true) {
-            const outOfStockList = (deductData && deductData.items)
-              ? deductData.items.filter(i => !i.success)
-              : ((deductData && deductData.outOfStockItems) ? deductData.outOfStockItems : []);
-
-            let errorMsg;
-            if (outOfStockList.length > 0) {
-              const failedNames = outOfStockList.map(i => i.name || i.productId).join(', ');
-              errorMsg = currentLang === 'ta'
-                ? `மன்னிக்கவும்! பின்வரும் பொருட்கள் கையிருப்பில் இல்லை:\n${failedNames}`
-                : `Sorry! The following items are out of stock:\n${failedNames}`;
-            } else {
-              errorMsg = (deductData && deductData.message)
-                ? deductData.message
-                : (currentLang === 'ta' ? "கையிருப்பு பற்றாக்குறை காரணமாக ஆர்டர் செய்ய இயலவில்லை." : "Unable to place order due to stock insufficiency.");
-            }
-
-            showCustomAlert(currentLang === 'ta' ? "⚠️ கையிருப்பு இல்லை" : "⚠️ Out of Stock", errorMsg);
-            showToast(errorMsg, "error");
+      // Pre-flight catalog stock check (Read-only quick verification before payment launch)
+      const catalogCurrentProds = (typeof getData === 'function') ? getData('ek_products', []) : [];
+      for (const item of (order.items || [])) {
+        if (!item.productId) continue;
+        const catalogItem = catalogCurrentProds.find(p => p.id === item.productId);
+        if (catalogItem && catalogItem.stockKg !== undefined && catalogItem.stockKg !== null) {
+          const unit = (item.unit || catalogItem.unit || 'kg').toLowerCase();
+          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+          const needed = isWeight ? ((parseFloat(item.weightGrams) || 0) / 1000) : (parseFloat(item.weightGrams) || 0);
+          if (parseFloat(catalogItem.stockKg) < needed) {
+            const pName = catalogItem.tamilName || catalogItem.englishName || item.name;
+            const outMsg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+              ? `மன்னிக்கவும்! '${pName}' கையிருப்பு பற்றாக்குறையாக உள்ளது.`
+              : `Sorry! '${pName}' is insufficient in stock.`;
+            showCustomAlert((typeof currentLang !== 'undefined' && currentLang === 'ta') ? "⚠️ கையிருப்பு இல்லை" : "⚠️ Out of Stock", outMsg);
+            showToast(outMsg, "error");
             window.isPlacingOrder = false;
             return;
           }
-
-          order.stockDeducted = true;
-          order.stockDeductedAt = new Date().toISOString();
-        } catch (stockErr) {
-          console.error("[Stock Deduction Callable Error]", stockErr);
-          const errMsg = stockErr.message || stockErr.details || "Stock check error";
-          const displayErr = currentLang === 'ta'
-            ? `கையிருப்பு சரிபார்ப்பில் சிக்கல்: ${errMsg}`
-            : `Stock verification failed: ${errMsg}`;
-          showCustomAlert(currentLang === 'ta' ? "⚠️ ஸ்டாக் பிழை" : "⚠️ Stock Error", displayErr);
-          showToast(displayErr, "error");
-          window.isPlacingOrder = false;
-          return;
         }
       }
 
@@ -1137,7 +1108,7 @@ function parseAndroidUpiPaymentResult(statusString) {
         order.customerId = order.customerId || 'guest_user';
       }
 
-      // Step 2: Ensure all numbers in order object are valid (no NaN/undefined)
+      // Step 2: Ensure all numbers and timestamps in order object are valid
       order.deliveryLatitude = (finalLat !== undefined && finalLat !== null && !isNaN(finalLat)) ? parseFloat(finalLat) : 11.5815;
       order.deliveryLongitude = (finalLng !== undefined && finalLng !== null && !isNaN(finalLng)) ? parseFloat(finalLng) : 77.8488;
       order.address = address || order.address || "Edappadi Main Location";
@@ -1148,8 +1119,211 @@ function parseAndroidUpiPaymentResult(statusString) {
 
       const sanitizedOrder = cleanFirestoreData(order);
 
-      // Step 3: INSTANT LOCAL PERSISTENCE FIRST
-      // A. Save order to local ek_orders array
+      // Verify Firestore database instance
+      let firestoreDb = (typeof db !== 'undefined' && db) ? db : null;
+      if (!firestoreDb && typeof firebase !== 'undefined' && typeof firebase.firestore === 'function') {
+        try {
+          firestoreDb = firebase.firestore();
+        } catch (e) {
+          console.warn("[Firestore Init Check]", e);
+        }
+      }
+
+      if (!navigator.onLine || !firestoreDb) {
+        const netErrMsg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+          ? "இணைய இணைப்பு இல்லை அல்லது சேவையகம் கிடைக்கவில்லை. இணையத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்."
+          : "No internet connection or server unavailable. Please check your network and try again.";
+        showCustomAlert(
+          (typeof currentLang !== 'undefined' && currentLang === 'ta') ? "⚠️ இணைப்பு பிழை" : "⚠️ Connection Error",
+          netErrMsg
+        );
+        showToast(netErrMsg, "error");
+        throw new Error("OFFLINE_OR_NO_DATABASE");
+      }
+
+      // Step 3: SERVER-SIDE ATOMIC TRANSACTION (READS FIRST, THEN ATOMIC WRITES)
+      // Eliminates stock race conditions and ensures Order is confirmed on Firestore BEFORE post-order UI actions
+      const itemsToDeduct = (cartItems && cartItems.length > 0) ? cartItems : (order.items || []);
+      
+      const productDeltas = new Map(); // productId -> needed quantity (kg or units)
+      for (const item of itemsToDeduct) {
+        if (!item || !item.productId) continue;
+        const pId = String(item.productId);
+        const unit = (item.unit || 'kg').toLowerCase();
+        const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+        const needed = isWeight ? ((parseFloat(item.weightGrams) || 0) / 1000) : (parseFloat(item.weightGrams) || 0);
+        if (needed > 0) {
+          const prev = productDeltas.get(pId) || 0;
+          productDeltas.set(pId, prev + needed);
+        }
+      }
+
+      let updatedProductRecords = [];
+      let updatedUserProfile = null;
+
+      try {
+        await firestoreDb.runTransaction(async (transaction) => {
+          // --- A. READ PHASE (Mandatory in Firestore: all reads MUST precede all writes) ---
+          
+          // 1. Order Idempotency / Duplicate-Order Protection
+          const orderRef = firestoreDb.collection('ek_orders').doc(order.id);
+          const orderSnap = await transaction.get(orderRef);
+          if (orderSnap.exists) {
+            const ex = orderSnap.data() || {};
+            if (ex.stockDeducted || ex.status === 'confirmed' || ex.status === 'pending') {
+              console.warn(`[Order Idempotency] Order ${order.id} is already registered on Firestore. Skipping duplicate insertion.`);
+              return;
+            }
+          }
+
+          // 2. Read User profile document
+          let userRef = null;
+          let userSnap = null;
+          if (customerProfile && customerProfile.id) {
+            userRef = firestoreDb.collection('ek_users').doc(customerProfile.id);
+            userSnap = await transaction.get(userRef);
+          }
+
+          // 3. Read Product documents for all items to check live stock atomically
+          const productDocs = new Map();
+          for (const pId of productDeltas.keys()) {
+            const pRef = firestoreDb.collection('ek_products').doc(pId);
+            const pSnap = await transaction.get(pRef);
+            productDocs.set(pId, { ref: pRef, snap: pSnap });
+          }
+
+          // Stock & Availability Validation
+          const outOfStockItems = [];
+          const stageProductUpdates = [];
+
+          for (const [pId, needed] of productDeltas.entries()) {
+            const pEntry = productDocs.get(pId);
+            if (!pEntry || !pEntry.snap.exists) continue; // Skip non-catalog custom items
+
+            const pData = pEntry.snap.data() || {};
+            if (pData.isActive === false || pData.isDeleted === true) {
+              const pName = pData.tamilName || pData.englishName || pId;
+              throw new Error(`ITEM_UNAVAILABLE:${pName}`);
+            }
+
+            if (pData.stockKg !== undefined && pData.stockKg !== null) {
+              const currentStock = parseFloat(pData.stockKg);
+              if (currentStock < needed) {
+                const pName = pData.tamilName || pData.englishName || pId;
+                outOfStockItems.push({
+                  name: pName,
+                  available: currentStock,
+                  needed: needed
+                });
+              } else {
+                const newStock = parseFloat(Math.max(0, currentStock - needed).toFixed(3));
+                stageProductUpdates.push({
+                  ref: pEntry.ref,
+                  pId: pId,
+                  newStock: newStock,
+                  isOutOfStock: (newStock <= 0),
+                  pData: pData
+                });
+              }
+            }
+          }
+
+          if (outOfStockItems.length > 0) {
+            const itemDetails = outOfStockItems.map(i => `${i.name} (கையிருப்பு: ${i.available <= 0 ? '0' : i.available})`).join(', ');
+            throw new Error(`OUT_OF_STOCK:${itemDetails}`);
+          }
+
+          // --- B. WRITE PHASE (Atomically committed by Firestore) ---
+          
+          // 1. Write the new Order record
+          sanitizedOrder.stockDeducted = true;
+          sanitizedOrder.stockDeductedAt = new Date().toISOString();
+          sanitizedOrder.serverConfirmed = true;
+          sanitizedOrder.confirmedAt = new Date().toISOString();
+          transaction.set(orderRef, sanitizedOrder, { merge: true });
+
+          // 2. Atomically update product stock levels
+          updatedProductRecords = [];
+          for (const up of stageProductUpdates) {
+            transaction.update(up.ref, {
+              stockKg: up.newStock,
+              isOutOfStock: up.isOutOfStock,
+              updatedAt: new Date().toISOString()
+            });
+            updatedProductRecords.push({
+              id: up.pId,
+              stockKg: up.newStock,
+              isOutOfStock: up.isOutOfStock
+            });
+          }
+
+          // 3. Atomically update user loyalty points & address
+          if (userRef && userSnap && userSnap.exists) {
+            const userData = userSnap.data() || {};
+            const curPoints = parseInt(userData.loyaltyPoints) || 0;
+            const discountPoints = financials && financials.loyaltyDiscount ? (financials.loyaltyDiscount * 10) : 0;
+            const newPoints = Math.max(0, curPoints - discountPoints) + (pointsEarned || 0);
+            const newTier = typeof computeLoyaltyTier === 'function' ? computeLoyaltyTier(newPoints) : (userData.tier || "bronze");
+
+            let saved = userData.savedAddresses || customerProfile.savedAddresses || [];
+            if (address && !saved.some(a => a.address === address)) {
+              saved = [{
+                id: 'addr_' + Math.floor(100000 + Math.random() * 900000),
+                label: 'Home 🏠',
+                address: address,
+                latitude: order.deliveryLatitude,
+                longitude: order.deliveryLongitude
+              }, ...saved];
+            }
+
+            const userUpdatePayload = {
+              loyaltyPoints: newPoints,
+              tier: newTier,
+              address: address,
+              latitude: order.deliveryLatitude,
+              longitude: order.deliveryLongitude,
+              savedAddresses: saved,
+              updatedAt: new Date().toISOString()
+            };
+            transaction.update(userRef, cleanFirestoreData(userUpdatePayload));
+
+            updatedUserProfile = Object.assign({}, customerProfile, userUpdatePayload);
+          }
+        });
+      } catch (txError) {
+        console.error("[Atomic Order Transaction Failure]", txError);
+        const rawMsg = txError.message || String(txError);
+
+        let userMsg = "";
+        let alertTitle = (typeof currentLang !== 'undefined' && currentLang === 'ta') ? "⚠️ ஆர்டர் பிழை" : "⚠️ Order Placement Failed";
+
+        if (rawMsg.startsWith("OUT_OF_STOCK:")) {
+          const detail = rawMsg.replace("OUT_OF_STOCK:", "").trim();
+          alertTitle = (typeof currentLang !== 'undefined' && currentLang === 'ta') ? "⚠️ கையிருப்பு தீர்ந்துவிட்டது" : "⚠️ Stock Insufficient";
+          userMsg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+            ? `மன்னிக்கவும்! பின்வரும் பொருட்களின் கையிருப்பு தீர்ந்துவிட்டது (மற்றொரு வாடிக்கையாளர் ஏற்கனவே ஆர்டர் செய்துள்ளார்):\n\n${detail}\n\nதயவுசெய்து கார்ட்டில் அளவை மாற்றி மீண்டும் முயற்சிக்கவும்.`
+            : `Sorry! The following items are out of stock (purchased concurrently by another customer):\n\n${detail}\n\nPlease adjust your cart quantity and try again.`;
+        } else if (rawMsg.startsWith("ITEM_UNAVAILABLE:")) {
+          const detail = rawMsg.replace("ITEM_UNAVAILABLE:", "").trim();
+          alertTitle = (typeof currentLang !== 'undefined' && currentLang === 'ta') ? "⚠️ பொருள் கிடைக்கவில்லை" : "⚠️ Product Unavailable";
+          userMsg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+            ? `மன்னிக்கவும்! '${detail}' பொருள் தற்போது விற்பனையில் இல்லை.`
+            : `Sorry! '${detail}' is no longer available in the catalog.`;
+        } else {
+          userMsg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+            ? `சேவையகத்தில் ஆர்டர் பதிவு செய்வதில் பிழை ஏற்பட்டது (${rawMsg}). உங்கள் கார்ட் பாதுகாப்பாக உள்ளது. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.`
+            : `Server could not confirm your order (${rawMsg}). Your cart is safe. Please check connection and try again.`;
+        }
+
+        showCustomAlert(alertTitle, userMsg);
+        showToast(userMsg, "error");
+        throw txError; // Halt execution: Cart will NOT be cleared, Success screen will NOT be shown
+      }
+
+      // Step 4: POST-CONFIRMATION ACTIONS
+      // (Triggered ONLY after the Firestore server transaction has committed successfully!)
+
+      // A. Save confirmed order to local storage cache
       const localOrders = getData('ek_orders', []);
       const existingOrderIdx = localOrders.findIndex(o => o.id === order.id);
       if (existingOrderIdx !== -1) {
@@ -1158,64 +1332,43 @@ function parseAndroidUpiPaymentResult(statusString) {
         localOrders.push(sanitizedOrder);
       }
       saveData('ek_orders', localOrders);
+      removePendingSync('ek_orders', order.id);
 
-      // B. Update local product stock
-      const localProducts = getData('ek_products', []);
-      for (const item of (cartItems || [])) {
-        const prod = localProducts.find(p => p.id === item.productId);
-        if (prod) {
-          const unit = prod.unit || 'kg';
-          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
-          const needed = isWeight ? ((parseFloat(item.weightGrams) || 0) / 1000) : (parseFloat(item.weightGrams) || 0);
-          const currentStock = parseFloat(prod.stockKg || 0);
-          prod.stockKg = parseFloat(Math.max(0, currentStock - needed).toFixed(3));
-          if (prod.stockKg <= 0) prod.isOutOfStock = true;
-          prod.updatedAt = new Date().toISOString();
+      // B. Update local product stock cache
+      if (updatedProductRecords.length > 0) {
+        const localProducts = getData('ek_products', []);
+        for (const upRec of updatedProductRecords) {
+          const p = localProducts.find(prod => prod.id === upRec.id);
+          if (p) {
+            p.stockKg = upRec.stockKg;
+            p.isOutOfStock = upRec.isOutOfStock;
+            p.updatedAt = new Date().toISOString();
+          }
         }
+        saveData('ek_products', localProducts);
       }
-      saveData('ek_products', localProducts);
 
-      // C. Update user profile & primary address persistence
-      if (customerProfile && customerProfile.id) {
+      // C. Update local user profile cache
+      if (updatedUserProfile && updatedUserProfile.id) {
         const users = getData('ek_users', []);
-        const uIdx = users.findIndex(u => u.id === customerProfile.id);
-        const existingPoints = parseInt(customerProfile.loyaltyPoints) || 0;
-        const discountPoints = financials && financials.loyaltyDiscount ? (financials.loyaltyDiscount * 10) : 0;
-        customerProfile.loyaltyPoints = Math.max(0, existingPoints - discountPoints) + (pointsEarned || 0);
-        customerProfile.tier = typeof computeLoyaltyTier === 'function' ? computeLoyaltyTier(customerProfile.loyaltyPoints) : "bronze";
-        customerProfile.address = address;
-        customerProfile.latitude = order.deliveryLatitude;
-        customerProfile.longitude = order.deliveryLongitude;
-
-        // Persist primary address in savedAddresses list
-        let saved = customerProfile.savedAddresses || [];
-        if (!saved.some(a => a.address === address)) {
-          saved.unshift({
-            id: 'addr_' + Math.floor(100000 + Math.random() * 900000),
-            label: 'Home 🏠',
-            address: address,
-            latitude: order.deliveryLatitude,
-            longitude: order.deliveryLongitude
-          });
-          customerProfile.savedAddresses = saved;
-        }
-
+        const uIdx = users.findIndex(u => u.id === updatedUserProfile.id);
         if (uIdx !== -1) {
-          users[uIdx] = customerProfile;
+          users[uIdx] = updatedUserProfile;
         } else {
-          users.push(customerProfile);
+          users.push(updatedUserProfile);
         }
         saveData('ek_users', users);
 
-        // Sync customer session
         const currentSession = getData('ek_customer_session', null);
         if (currentSession) {
           currentSession.address = address;
+          currentSession.loyaltyPoints = updatedUserProfile.loyaltyPoints;
+          currentSession.tier = updatedUserProfile.tier;
           saveData('ek_customer_session', currentSession);
         }
       }
 
-      // D. Clear Cart & Reset UI State
+      // D. Clear Cart & Reset Checkout State
       cart = [];
       saveCart();
       appliedCouponCode = null;
@@ -1225,7 +1378,7 @@ function parseAndroidUpiPaymentResult(statusString) {
       renderCartScreen();
       window.isPlacingOrder = false;
 
-      // E. Show Success Modal & Toast Immediately
+      // E. Display Success Modal, Notifications & Haptic Feedback
       if (document.getElementById('success-modal-id')) document.getElementById('success-modal-id').innerText = order.id;
       if (document.getElementById('success-modal-total')) document.getElementById('success-modal-total').innerText = `₹${order.totalAmount}`;
       if (document.getElementById('success-modal-points')) document.getElementById('success-modal-points').innerText = `+${pointsEarned || 0} pts`;
@@ -1233,59 +1386,30 @@ function parseAndroidUpiPaymentResult(statusString) {
       if (modalEl) modalEl.style.display = 'flex';
       if (typeof triggerSuccessCheckmarkReplay === 'function') triggerSuccessCheckmarkReplay();
 
+      if (typeof safeVibrate === 'function') {
+        safeVibrate([20, 40, 20, 40, 30]);
+      } else {
+        try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate([20, 40, 20, 40, 30]); } catch(e) {}
+      }
+
       addNotification(
         "ஆர்டர் வெற்றிகரமாக செய்யப்பட்டது! 🎉",
         "Order Placed Successfully! 🎉",
-        `உங்கள் ஆர்டர் ${order.id} வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது. மொபைல் மூலம் விநியோக நிலையை பின்தொடரலாம். மொத்த விலை: ₹${order.totalAmount}.`,
-        `Your order ${order.id} has been registered successfully! You can track its live delivery on map. Total amount paid is ₹${order.totalAmount}.`,
+        `உங்கள் ஆர்டர் ${order.id} சேவையகத்தில் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது. விநியோக நிலையை பின்தொடரலாம். மொத்த விலை: ₹${order.totalAmount}.`,
+        `Your order ${order.id} has been registered and confirmed on the server! You can track its live delivery on map. Total amount: ₹${order.totalAmount}.`,
         "📦"
       );
 
       showToast(currentLang === 'ta' ? "உங்கள் ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது! 🎉" : "Your order has been placed successfully. 🎉", "success");
 
-      // Step 4: NON-BLOCKING BACKGROUND CLOUD SYNC
-      setTimeout(async () => {
-        if (typeof db !== 'undefined' && db) {
-          try {
-            const orderRef = db.collection('ek_orders').doc(order.id);
-            await orderRef.set(sanitizedOrder, { merge: true });
-            debugLog(`[Cloud Sync] Success: Order ${order.id} saved to Firestore ek_orders!`);
-            removePendingSync('ek_orders', order.id);
-
-            if (typeof safeVibrate === 'function') {
-              safeVibrate([15, 30, 15, 30, 25]);
-            } else {
-              try { if (typeof navigator !== 'undefined' && navigator && navigator.vibrate) navigator.vibrate([15, 30, 15, 30, 25]); } catch(e) {}
-            }
-
-            // Also update user profile on Firestore
-            if (customerProfile && customerProfile.id) {
-              db.collection('ek_users').doc(customerProfile.id).set(cleanFirestoreData(customerProfile), { merge: true })
-                .catch(err => console.warn("[Cloud Sync] User profile cloud update notice:", err));
-            }
-
-            // Attempt background FCM push
-            try {
-              if (typeof sendFcmPushNotification === 'function') {
-                sendFcmPushNotification(sanitizedOrder, 'none', 'pending');
-              }
-            } catch (fcmErr) {
-              console.warn("[FCM Push Notice]", fcmErr);
-            }
-          } catch (cloudErr) {
-            console.warn(`[Cloud Sync] Direct set failed for order ${order.id}. Queueing in pending syncs:`, cloudErr);
-            queueFailedSync('ek_orders', order.id, 'set', sanitizedOrder);
-            if (typeof processPendingSyncQueue === 'function') {
-              processPendingSyncQueue();
-            }
-          }
-        } else {
-          queueFailedSync('ek_orders', order.id, 'set', sanitizedOrder);
-          if (typeof processPendingSyncQueue === 'function') {
-            processPendingSyncQueue();
-          }
+      // F. Background FCM notification dispatch
+      try {
+        if (typeof sendFcmPushNotification === 'function') {
+          sendFcmPushNotification(sanitizedOrder, 'none', 'pending');
         }
-      }, 50);
+      } catch (fcmErr) {
+        console.warn("[FCM Push Notice]", fcmErr);
+      }
     }
 
     let quickOrderCart = [];
@@ -1709,55 +1833,25 @@ function parseAndroidUpiPaymentResult(statusString) {
         updatedAt: new Date().toISOString()
       };
 
-      // Atomic Stock Deduction via Cloud Function (Source of Truth)
-      const deductStockFn = (typeof firebase !== 'undefined' && firebase.functions)
-        ? (typeof firebase.app === 'function' && typeof firebase.app().functions === 'function'
-            ? firebase.app().functions('asia-south1').httpsCallable('deductStock')
-            : firebase.functions().httpsCallable('deductStock'))
-        : null;
-
-      const validOrderItems = (order.items || []).filter(i => i.productId);
-      if (deductStockFn && validOrderItems.length > 0) {
-        showToast(currentLang === 'ta' ? "கையிருப்பு சரிபார்க்கப்படுகிறது... ⏳" : "Verifying live stock... ⏳", "info");
-        try {
-          const deductRes = await deductStockFn({ orderItems: validOrderItems });
-          const deductData = (deductRes && deductRes.data) ? deductRes.data : deductRes;
-
-          if (!deductData || deductData.success !== true) {
-            const outOfStockList = (deductData && deductData.items)
-              ? deductData.items.filter(i => !i.success)
-              : ((deductData && deductData.outOfStockItems) ? deductData.outOfStockItems : []);
-
-            let errorMsg;
-            if (outOfStockList.length > 0) {
-              const failedNames = outOfStockList.map(i => i.name || i.productId).join(', ');
-              errorMsg = currentLang === 'ta'
-                ? `மன்னிக்கவும்! பின்வரும் பொருட்கள் கையிருப்பில் இல்லை:\n${failedNames}`
-                : `Sorry! The following items are out of stock:\n${failedNames}`;
-            } else {
-              errorMsg = (deductData && deductData.message)
-                ? deductData.message
-                : (currentLang === 'ta' ? "கையிருப்பு பற்றாக்குறை காரணமாக ஆர்டர் செய்ய இயலவில்லை." : "Unable to place order due to stock insufficiency.");
-            }
-
-            showCustomAlert(currentLang === 'ta' ? "⚠️ கையிருப்பு இல்லை" : "⚠️ Out of Stock", errorMsg);
-            showToast(errorMsg, "error");
+      // Pre-flight catalog stock check (Read-only quick verification)
+      const catalogCurrentProds = (typeof getData === 'function') ? getData('ek_products', []) : [];
+      for (const item of (order.items || [])) {
+        if (!item.productId) continue;
+        const catalogItem = catalogCurrentProds.find(p => p.id === item.productId);
+        if (catalogItem && catalogItem.stockKg !== undefined && catalogItem.stockKg !== null) {
+          const unit = (item.unit || catalogItem.unit || 'kg').toLowerCase();
+          const isWeight = !(unit === 'piece' || unit === 'packet' || unit === 'bunch' || unit === 'dozen' || unit === 'unit');
+          const needed = isWeight ? ((parseFloat(item.weightGrams) || 0) / 1000) : (parseFloat(item.weightGrams) || 0);
+          if (parseFloat(catalogItem.stockKg) < needed) {
+            const pName = catalogItem.tamilName || catalogItem.englishName || item.name;
+            const outMsg = (typeof currentLang !== 'undefined' && currentLang === 'ta')
+              ? `மன்னிக்கவும்! '${pName}' கையிருப்பு பற்றாக்குறையாக உள்ளது.`
+              : `Sorry! '${pName}' is insufficient in stock.`;
+            showCustomAlert((typeof currentLang !== 'undefined' && currentLang === 'ta') ? "⚠️ கையிருப்பு இல்லை" : "⚠️ Out of Stock", outMsg);
+            showToast(outMsg, "error");
             window.isPlacingOrder = false;
             return;
           }
-
-          order.stockDeducted = true;
-          order.stockDeductedAt = new Date().toISOString();
-        } catch (stockErr) {
-          console.error("[Stock Deduction Callable Error in Quick Order]", stockErr);
-          const errMsg = stockErr.message || stockErr.details || "Stock check error";
-          const displayErr = currentLang === 'ta'
-            ? `கையிருப்பு சரிபார்ப்பில் சிக்கல்: ${errMsg}`
-            : `Stock verification failed: ${errMsg}`;
-          showCustomAlert(currentLang === 'ta' ? "⚠️ ஸ்டாக் பிழை" : "⚠️ Stock Error", displayErr);
-          showToast(displayErr, "error");
-          window.isPlacingOrder = false;
-          return;
         }
       }
 

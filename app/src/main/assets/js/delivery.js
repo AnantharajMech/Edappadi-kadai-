@@ -421,12 +421,12 @@ function updateRiderLiveLocation() {
 
       debugLog("[Rider Tracker] Attempting to fetch rider coordinates dynamically...");
 
-      const successCallback = (lat, lng, accuracy) => {
+        const successCallback = (lat, lng, accuracy) => {
         const list = getData('ek_delivery_persons', []);
         const idx = list.findIndex(x => x.id === session.id);
         if (idx !== -1) {
-          list[idx].latitude = lat;
-          list[idx].longitude = lng;
+          list[idx].latitude = parseFloat(lat);
+          list[idx].longitude = parseFloat(lng);
           list[idx].accuracy = accuracy || 15;
           list[idx].lastLiveUpdate = new Date().toISOString();
           saveData('ek_delivery_persons', list);
@@ -437,8 +437,8 @@ function updateRiderLiveLocation() {
 
           if (db) {
             db.collection('ek_delivery_persons').doc(session.id).set({
-              latitude: lat,
-              longitude: lng,
+              latitude: parseFloat(lat),
+              longitude: parseFloat(lng),
               accuracy: accuracy || 15,
               lastLiveUpdate: new Date().toISOString()
             }, { merge: true })
@@ -446,19 +446,43 @@ function updateRiderLiveLocation() {
             .catch(err => {
               console.warn("Cloud GPS update failed:", err);
               queueFailedSync('ek_delivery_persons', session.id, 'set', {
-                latitude: lat,
-                longitude: lng,
+                latitude: parseFloat(lat),
+                longitude: parseFloat(lng),
                 accuracy: accuracy || 15,
                 lastLiveUpdate: new Date().toISOString()
               });
             });
           } else {
             queueFailedSync('ek_delivery_persons', session.id, 'set', {
-              latitude: lat,
-              longitude: lng,
+              latitude: parseFloat(lat),
+              longitude: parseFloat(lng),
               accuracy: accuracy || 15,
               lastLiveUpdate: new Date().toISOString()
             });
+          }
+
+          // Also sync coordinates to active delivering orders so Customer tracking map updates immediately
+          const allOrders = getData('ek_orders', []);
+          let orderChanged = false;
+          allOrders.forEach(ord => {
+            const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
+            const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+            if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
+              ord.riderLatitude = parseFloat(lat);
+              ord.riderLongitude = parseFloat(lng);
+              ord.updatedAt = new Date().toISOString();
+              orderChanged = true;
+              if (db) {
+                db.collection('ek_orders').doc(ord.id).update({
+                  riderLatitude: parseFloat(lat),
+                  riderLongitude: parseFloat(lng),
+                  updatedAt: new Date().toISOString()
+                }).catch(e => console.warn("[Rider Tracker] Passive sync order error:", e));
+              }
+            }
+          });
+          if (orderChanged) {
+            saveData('ek_orders', allOrders);
           }
 
           const activeBtn = document.querySelector('#screen-delivery .admin-tab.active');
@@ -526,8 +550,8 @@ function updateRiderLiveLocation() {
         const list = getData('ek_delivery_persons', []);
         const idx = list.findIndex(x => x.id === session.id);
         if (idx !== -1) {
-          list[idx].latitude = lat;
-          list[idx].longitude = lng;
+          list[idx].latitude = parseFloat(lat);
+          list[idx].longitude = parseFloat(lng);
           list[idx].accuracy = accuracy || 15;
           list[idx].lastLiveUpdate = new Date().toISOString();
           saveData('ek_delivery_persons', list);
@@ -538,8 +562,8 @@ function updateRiderLiveLocation() {
 
           if (db) {
             db.collection('ek_delivery_persons').doc(session.id).set({
-              latitude: lat,
-              longitude: lng,
+              latitude: parseFloat(lat),
+              longitude: parseFloat(lng),
               accuracy: accuracy || 15,
               lastLiveUpdate: new Date().toISOString()
             }, { merge: true })
@@ -557,6 +581,30 @@ function updateRiderLiveLocation() {
           } else {
             showToast("Location updated locally (Offline)", "info");
             renderDeliveryScreen();
+          }
+
+          // Sync coordinates to active delivering orders
+          const allOrders = getData('ek_orders', []);
+          let orderChanged = false;
+          allOrders.forEach(ord => {
+            const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
+            const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+            if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
+              ord.riderLatitude = parseFloat(lat);
+              ord.riderLongitude = parseFloat(lng);
+              ord.updatedAt = new Date().toISOString();
+              orderChanged = true;
+              if (db) {
+                db.collection('ek_orders').doc(ord.id).update({
+                  riderLatitude: parseFloat(lat),
+                  riderLongitude: parseFloat(lng),
+                  updatedAt: new Date().toISOString()
+                }).catch(e => console.warn("[Manual GPS] Order sync warning:", e));
+              }
+            }
+          });
+          if (orderChanged) {
+            saveData('ek_orders', allOrders);
           }
         }
       };
@@ -1412,6 +1460,21 @@ function updateRiderLiveLocation() {
       orders[idx].status = nextStatus;
       orders[idx].updatedAt = new Date().toISOString();
 
+      const session = getData('ek_delivery_session', null);
+      if (nextStatus === 'delivering' && session) {
+        if (session.latitude && session.longitude) {
+          orders[idx].riderLatitude = parseFloat(session.latitude);
+          orders[idx].riderLongitude = parseFloat(session.longitude);
+        } else {
+          const list = getData('ek_delivery_persons', []);
+          const dp = list.find(x => x.id === session.id);
+          if (dp && dp.latitude && dp.longitude) {
+            orders[idx].riderLatitude = parseFloat(dp.latitude);
+            orders[idx].riderLongitude = parseFloat(dp.longitude);
+          }
+        }
+      }
+
       saveData('ek_orders', orders);
 
       try {
@@ -1442,6 +1505,21 @@ function updateRiderLiveLocation() {
           });
       } else {
         queueFailedSync('ek_orders', orderId, 'set', orders[idx]);
+      }
+
+      if (nextStatus === 'delivering') {
+        setTimeout(() => {
+          if (typeof startRealRiderGpsTracking === 'function' && window.activeRealGpsWatchId === null) {
+            startRealRiderGpsTracking();
+          }
+        }, 400);
+      } else if (nextStatus === 'delivered' || nextStatus === 'cancelled' || nextStatus === 'rejected') {
+        if (typeof stopRealRiderGpsTracking === 'function') {
+          stopRealRiderGpsTracking(false);
+        }
+        if (typeof stopRiderGpsSimulation === 'function') {
+          stopRiderGpsSimulation(false);
+        }
       }
 
       showToast(`Order status updated to ${nextStatus.toUpperCase()}!`, "success");
@@ -3029,30 +3107,51 @@ function updateRiderLiveLocation() {
         const list = getData('ek_delivery_persons', []);
         const idx = list.findIndex(e => e.id === session.id);
         if (idx !== -1) {
-          list[idx].latitude = simLat;
-          list[idx].longitude = simLng;
+          list[idx].latitude = parseFloat(simLat);
+          list[idx].longitude = parseFloat(simLng);
+          list[idx].accuracy = 10;
           list[idx].updatedAt = new Date().toISOString();
+          list[idx].lastLiveUpdate = new Date().toISOString();
           saveData('ek_delivery_persons', list);
 
           if (typeof db !== 'undefined' && db) {
-            db.collection('ek_delivery_persons').doc(session.id).set(list[idx])
+            db.collection('ek_delivery_persons').doc(session.id).set(list[idx], { merge: true })
               .then(() => {
                 debugLog("[Simulation GPS] Pushed simulation coords to rider profile:", simLat, simLng);
               })
               .catch(err => {
                 console.error("Simulation GPS push error for rider profile:", err);
               });
-
-            db.collection('ek_orders').doc(activeOrder.id).update({
-              riderLatitude: simLat,
-              riderLongitude: simLng,
-              updatedAt: new Date().toISOString()
-            }).then(() => {
-              debugLog("[Simulation GPS] Coords synchronized to active order:", simLat, simLng);
-            }).catch(err => {
-              console.warn("Simulation GPS push error for active order:", err);
-            });
           }
+        }
+
+        // Sync simulation coordinates to active delivering orders
+        const allOrders = getData('ek_orders', []);
+        let anyOrderUpdated = false;
+        allOrders.forEach(ord => {
+          const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
+          const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+          if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
+            ord.riderLatitude = parseFloat(simLat);
+            ord.riderLongitude = parseFloat(simLng);
+            ord.updatedAt = new Date().toISOString();
+            anyOrderUpdated = true;
+
+            if (typeof db !== 'undefined' && db) {
+              db.collection('ek_orders').doc(ord.id).update({
+                riderLatitude: parseFloat(simLat),
+                riderLongitude: parseFloat(simLng),
+                updatedAt: new Date().toISOString()
+              }).then(() => {
+                debugLog("[Simulation GPS] Coords synchronized to active order " + ord.id + ":", simLat, simLng);
+              }).catch(err => {
+                console.warn("Simulation GPS push error for active order:", err);
+              });
+            }
+          }
+        });
+        if (anyOrderUpdated) {
+          saveData('ek_orders', allOrders);
         }
 
         if (typeof currentScreen !== 'undefined' && currentScreen === 'screen-delivery') {
@@ -3210,30 +3309,51 @@ function updateRiderLiveLocation() {
           const list = getData('ek_delivery_persons', []);
           const idx = list.findIndex(e => e.id === session.id);
           if (idx !== -1) {
-            list[idx].latitude = simLat;
-            list[idx].longitude = simLng;
+            list[idx].latitude = parseFloat(simLat);
+            list[idx].longitude = parseFloat(simLng);
+            list[idx].accuracy = accuracy || 15;
             list[idx].updatedAt = new Date().toISOString();
+            list[idx].lastLiveUpdate = new Date().toISOString();
             saveData('ek_delivery_persons', list);
 
             if (typeof db !== 'undefined' && db) {
-              db.collection('ek_delivery_persons').doc(session.id).set(list[idx])
+              db.collection('ek_delivery_persons').doc(session.id).set(list[idx], { merge: true })
                 .then(() => {
                   debugLog("[Real GPS Push] Coords synchronized to rider profile:", simLat, simLng);
                 })
                 .catch(err => {
                   console.error("Firestore GPS update failure for rider profile:", err);
                 });
-
-              db.collection('ek_orders').doc(activeOrder.id).update({
-                riderLatitude: simLat,
-                riderLongitude: simLng,
-                updatedAt: new Date().toISOString()
-              }).then(() => {
-                debugLog("[Real GPS Push] Coords synchronized to active order:", simLat, simLng);
-              }).catch(err => {
-                console.warn("Firestore GPS update failure for active order:", err);
-              });
             }
+          }
+
+          // Update all active delivering orders assigned to this rider
+          const allOrders = getData('ek_orders', []);
+          let anyOrderUpdated = false;
+          allOrders.forEach(ord => {
+            const exec = typeof getOrderAssignedExecutive === 'function' ? getOrderAssignedExecutive(ord) : null;
+            const isAssigned = (exec && exec.id === session.id) || ord.assignedExecutiveId === session.id || ord.deliveryExecutiveId === session.id || ord.riderUid === session.id;
+            if (isAssigned && ['delivering', 'out_for_delivery', 'dispatch'].includes((ord.status || '').toLowerCase().trim())) {
+              ord.riderLatitude = parseFloat(simLat);
+              ord.riderLongitude = parseFloat(simLng);
+              ord.updatedAt = new Date().toISOString();
+              anyOrderUpdated = true;
+
+              if (typeof db !== 'undefined' && db) {
+                db.collection('ek_orders').doc(ord.id).update({
+                  riderLatitude: parseFloat(simLat),
+                  riderLongitude: parseFloat(simLng),
+                  updatedAt: new Date().toISOString()
+                }).then(() => {
+                  debugLog("[Real GPS Push] Coords synchronized to active order " + ord.id + ":", simLat, simLng);
+                }).catch(err => {
+                  console.warn("Firestore GPS update failure for active order:", err);
+                });
+              }
+            }
+          });
+          if (anyOrderUpdated) {
+            saveData('ek_orders', allOrders);
           }
 
           if (typeof currentScreen !== 'undefined' && currentScreen === 'screen-delivery') {

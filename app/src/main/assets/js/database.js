@@ -583,10 +583,10 @@
       if (splashTag) splashTag.innerText = isTa ? "தரமான இறைச்சி & காய்கறி — இல்லத்திற்கே விரைவான விநியோகம்" : "Fresh Meat & Vegetables, Delivered Fast";
 
       const loginH2 = document.querySelector('#screen-login h2');
-      if (loginH2) loginH2.innerText = isTa ? "எடப்பாடி கடை" : "Edappadi Kadai";
+      if (loginH2) loginH2.innerText = "Edappadi Kadai";
 
-      const loginP = document.querySelector('#screen-login p');
-      if (loginP && !loginP.closest('.card')) loginP.innerText = isTa ? "தரமான இறைச்சி மற்றும் காய்கறிகள் அனைத்தும் இல்லத்திற்கே!" : "Premium Quality Meat & Veg Delivery";
+      const loginP = document.querySelector('#screen-login p.auth-3d-subtitle');
+      if (loginP) loginP.innerText = "Premium Quality Meat & Veg Delivery";
 
       const tabSpans = document.querySelectorAll('#app-bottom-nav span[data-translate]');
       tabSpans.forEach(span => {
@@ -1830,7 +1830,8 @@
       try {
         if (typeof currentScreen !== 'undefined' && currentScreen === screenId) {
           const activeEl = document.getElementById(screenId);
-          if (activeEl && activeEl.classList.contains('active')) {
+          const otherActive = document.querySelector('.screen.active:not(#' + screenId + ')');
+          if (activeEl && activeEl.classList.contains('active') && !otherActive) {
             return;
           }
         }

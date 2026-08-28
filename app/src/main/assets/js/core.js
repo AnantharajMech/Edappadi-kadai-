@@ -370,6 +370,11 @@ window.setupCloudRealtimeListeners2 = function() {
             if (typeof window.recordCollectionSyncTime === 'function') window.recordCollectionSyncTime('settings');
             saveData('ek_settings_synced', true);
             saveData('ek_cloud_synced', true);
+
+            const oldSettingsJson = localStorage.getItem('ek_settings') || '';
+            const newSettingsJson = JSON.stringify(cloudData);
+            const hasSettingsChanged = oldSettingsJson !== newSettingsJson;
+
             saveData('ek_settings', cloudData);
             if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_settings');
 
@@ -389,14 +394,16 @@ window.setupCloudRealtimeListeners2 = function() {
               if (typeof _lastCategoryPillsHash !== 'undefined') _lastCategoryPillsHash = '';
             }
 
-            window._lastBannersHash = '';
-            window._lastDataSnapshotHash = '';
-            _lastDataSnapshotHash = null;
+            if (hasSettingsChanged) {
+              window._lastBannersHash = '';
+              window._lastDataSnapshotHash = '';
+              _lastDataSnapshotHash = null;
 
-            try { if (typeof renderAdminBannerList === 'function') renderAdminBannerList(false); } catch(e) {}
-            try { if (typeof updateHeaderUI === 'function') updateHeaderUI(); } catch(e) {}
-            try { if (typeof checkAppVersion === 'function') checkAppVersion(cloudData); } catch(e) {}
-            scheduleRealtimeHomeRender(false);
+              try { if (typeof renderAdminBannerList === 'function') renderAdminBannerList(false); } catch(e) {}
+              try { if (typeof updateHeaderUI === 'function') updateHeaderUI(); } catch(e) {}
+              try { if (typeof checkAppVersion === 'function') checkAppVersion(cloudData); } catch(e) {}
+              scheduleRealtimeHomeRender(false);
+            }
           }
         }
       }, err => console.warn("[Realtime Sync] Settings listener notice:", err));
@@ -428,24 +435,32 @@ window.setupCloudRealtimeListeners2 = function() {
           window._hasFreshCloudData = true;
           if (typeof window.recordCollectionSyncTime === 'function') window.recordCollectionSyncTime('categories');
           saveData('ek_cloud_synced', true);
+
+          const oldCatJson = localStorage.getItem('ek_categories') || '';
+          const newCatJson = JSON.stringify(list);
+          const hasCategoriesChanged = oldCatJson !== newCatJson;
+
           saveData('ek_categories', list);
           if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_categories');
-          window._lastCategoryPillsHash = '';
-          _lastCategoryPillsHash = '';
-          window._categoriesListCachedValue = null;
-          _categoriesListCachedValue = null;
-          window._lastDataSnapshotHash = '';
-          _lastDataSnapshotHash = '';
-          window._lastProductsHash = '';
-          _lastProductsHash = '';
 
-          const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
-          if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
-            scheduleRealtimeHomeRender(false);
-          } else if (curScreen === 'screen-admin') {
-            try { if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true); } catch(e) {}
+          if (hasCategoriesChanged) {
+            window._lastCategoryPillsHash = '';
+            _lastCategoryPillsHash = '';
+            window._categoriesListCachedValue = null;
+            _categoriesListCachedValue = null;
+            window._lastDataSnapshotHash = '';
+            _lastDataSnapshotHash = '';
+            window._lastProductsHash = '';
+            _lastProductsHash = '';
+
+            const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
+            if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
+              scheduleRealtimeHomeRender(false);
+            } else if (curScreen === 'screen-admin') {
+              try { if (typeof renderAdminCategoriesList === 'function') renderAdminCategoriesList(true); } catch(e) {}
+            }
+            try { if (typeof populateProductCategoryOptions === 'function') populateProductCategoryOptions(); } catch(e) {}
           }
-          try { if (typeof populateProductCategoryOptions === 'function') populateProductCategoryOptions(); } catch(e) {}
         }
       }, err => console.warn("[Realtime Sync] Categories listener notice:", err));
     } catch(e) {
@@ -513,26 +528,35 @@ window.setupCloudRealtimeListeners2 = function() {
           }
           saveData('ek_cloud_synced', true);
 
+          const oldProdJson = localStorage.getItem('ek_products') || '';
+          const newProdJson = JSON.stringify(list);
+          const hasProductsChanged = oldProdJson !== newProdJson;
+
           if (list && list.length > 0) {
             saveData('ek_products', list);
           }
           if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_products');
-          window._lastDataSnapshotHash = '';
-          window._lastProductsHash = '';
-          _lastDataSnapshotHash = null;
-          if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
+
+          if (hasProductsChanged) {
+            window._lastDataSnapshotHash = '';
+            window._lastProductsHash = '';
+            _lastDataSnapshotHash = null;
+            if (typeof _lastProductsHash !== 'undefined') _lastProductsHash = '';
+          }
 
           if (typeof updateCatalogSyncIndicator === 'function') {
             updateCatalogSyncIndicator(isFromCache);
           }
 
           const curScreen = (typeof currentScreen !== 'undefined' && currentScreen) ? currentScreen : '';
-          if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
-            scheduleRealtimeHomeRender(false);
-          }
-          if (curScreen === 'screen-admin') {
-            try { if (typeof renderAdminProducts === 'function') renderAdminProducts(); } catch(e) {}
-            try { if (typeof renderAdminProductList === 'function') renderAdminProductList(true); } catch(e) {}
+          if (hasProductsChanged) {
+            if (!curScreen || curScreen === 'screen-home' || curScreen === 'screen-splash' || curScreen === 'screen-products' || curScreen === 'screen-catalog') {
+              scheduleRealtimeHomeRender(false);
+            }
+            if (curScreen === 'screen-admin') {
+              try { if (typeof renderAdminProducts === 'function') renderAdminProducts(); } catch(e) {}
+              try { if (typeof renderAdminProductList === 'function') renderAdminProductList(true); } catch(e) {}
+            }
           }
           try { if (typeof updateCartBadge === 'function') updateCartBadge(); } catch(e) {}
         }
@@ -655,9 +679,15 @@ window.setupCloudRealtimeListeners2 = function() {
             snapshotList.forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
             const mergedList = Array.from(orderMap.values());
 
+            const oldOrdersJson = localStorage.getItem('ek_orders') || '';
+            const newOrdersJson = JSON.stringify(mergedList);
+            const hasOrdersChanged = oldOrdersJson !== newOrdersJson;
+
             saveData('ek_orders', mergedList);
             if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_orders');
             if (typeof window.recordCollectionSyncTime === 'function') window.recordCollectionSyncTime('orders');
+
+            if (!hasOrdersChanged) return;
 
             const curScreen = window.currentScreen || (typeof currentScreen !== 'undefined' ? currentScreen : '');
 

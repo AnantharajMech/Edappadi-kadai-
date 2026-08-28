@@ -191,6 +191,45 @@
 
     <!-- Independent fallback / bypass script -->
     <script>
+      function navigateHome() {
+        try {
+          if (typeof currentScreen !== 'undefined') {
+            currentScreen = 'screen-home';
+          }
+          if (typeof showTab === 'function') {
+            showTab('tab-home');
+          } else if (typeof showScreen === 'function') {
+            showScreen('screen-home');
+          }
+
+          // Direct DOM safety guarantee to ensure immediate visual transition
+          document.querySelectorAll('.screen').forEach(s => s.classList.remove('active', 'screen-transitioning'));
+          const homeEl = document.getElementById('screen-home');
+          if (homeEl) {
+            homeEl.classList.add('active');
+            homeEl.scrollTop = 0;
+          }
+          const bottomNav = document.getElementById('app-bottom-nav');
+          if (bottomNav) bottomNav.style.display = 'flex';
+          const homeTab = document.getElementById('nav-btn-home');
+          if (homeTab) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            homeTab.classList.add('active');
+          }
+          if (typeof renderHomeScreen === 'function') {
+            try { renderHomeScreen(); } catch(e) {}
+          }
+        } catch (err) {
+          console.error("navigateHome error:", err);
+          try {
+            if (typeof showScreen === 'function') {
+              showScreen('screen-home');
+            }
+          } catch(e) {}
+        }
+      }
+      window.navigateHome = navigateHome;
+
       function bypassSplashScreen() {
         console.warn("Direct bypass invoked from independent fallback script!");
         try {
@@ -372,11 +411,11 @@
     </div>
 
     <!-- SCREEN 2: LOGIN PAGE -->
-    <div id="screen-login" class="screen no-nav" style="justify-content: flex-start; padding-top: 16px; padding-bottom: 32px; min-height: 100%; position: relative; max-width: 480px; margin: 0 auto;">
-      <!-- Elegant Interactive Back Header Row -->
-      <div style="display: flex; align-items: center; justify-content: flex-start; margin-bottom: 24px; padding-top: 8px; width: 100%; box-sizing: border-box; flex-shrink: 0; z-index: 1000;">
-        <button onclick="showTab('tab-home')" style="background: rgba(30, 41, 59, 0.45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #ffffff; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45); transition: all 0.25s;" onmouseover="this.style.background='rgba(30,41,59,0.7)'" onmouseout="this.style.background='rgba(30,41,59,0.45)'" title="Back to Home / முகப்பு பக்கம்">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <div id="screen-login" class="screen no-nav" style="justify-content: flex-start; min-height: 100%; position: relative; max-width: 480px; margin: 0 auto;">
+      <!-- 3D Circular Back Button Header -->
+      <div style="display: flex; align-items: center; justify-content: flex-start; margin-bottom: 18px; padding-top: 4px; width: 100%; box-sizing: border-box; flex-shrink: 0; position: relative; z-index: 1000;">
+        <button type="button" id="btn-login-back" onclick="navigateHome()" class="auth-3d-back-btn" title="Back to Home" style="cursor: pointer; pointer-events: auto;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
@@ -387,12 +426,13 @@
         <button class="btn btn-secondary" style="width: auto; padding: 6px 12px; font-size: 12px;" onclick="toggleLang()">EN/தமிழ்</button>
       </div>
 
-      <div style="text-align: center; margin-bottom: 24px;">
-        <div class="brand-logo-container" style="transform: scale(0.85); margin-bottom: 8px; margin-top: -12px;">
+      <!-- 3D Brand Logo & Header Section -->
+      <div style="text-align: center; margin-bottom: 20px; position: relative; z-index: 2;">
+        <div class="brand-logo-container">
           <div class="brand-logo-card">
             <div class="brand-logo-glow"></div>
             <div class="brand-logo-ring"></div>
-            <div class="brand-logo-graphic" style="width: 125px; height: 125px;">
+            <div class="brand-logo-graphic" style="width: 110px; height: 110px;">
               <svg viewBox="0 0 140 140" style="width: 100%; height: 100%; display: block;">
                 <!-- Inner Ring in light green -->
                 <circle cx="70" cy="70" r="48" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.35"/>
@@ -404,7 +444,7 @@
                   <path id="textPath-edappadi-login" d="M 28,68 A 43,43 0 0,1 112,68" fill="none" />
                 </defs>
 
-                <!-- Arched Text "EDAPPADI KADAI" in elegant dark charcoal -->
+                <!-- Arched Text "EDAPPADI KADAI" -->
                 <text fill="#ffffff" font-family="'Poppins', sans-serif" font-size="9px" font-weight="900" letter-spacing="0.8px">
                   <textPath href="#textPath-edappadi-login" startOffset="50%" text-anchor="middle">EDAPPADI KADAI</textPath>
                 </text>
@@ -424,7 +464,7 @@
                   <path d="M 18,58 C 18,58 13,44 26,42 C 26,42 28,52 18,58 Z" stroke="#10b981" stroke-width="2.2" fill="none" />
                 </g>
 
-                <!-- Under the Bag: "எடப்பாடி கடை" in charcoal -->
+                <!-- Under the Bag: "எடப்பாடி கடை" -->
                 <text x="70" y="100" text-anchor="middle" fill="#ffffff" font-family="'Hind Madurai', sans-serif" font-size="11px" font-weight="900" letter-spacing="0.5px">எடப்பாடி கடை</text>
 
                 <!-- Description in soft grey green -->
@@ -438,157 +478,172 @@
             </div>
           </div>
         </div>
-        <h2 style="color: var(--accent-orange); font-weight: 700; margin-top: 8px;">Edappadi Kadai</h2>
-        <p style="color: var(--text-secondary); font-size: 12px; margin-top: 2px;">Premium Local Quality Meat & Veg Delivery</p>
+        <h2 class="auth-3d-title">Edappadi Kadai</h2>
+        <p class="auth-3d-subtitle">Premium Quality Meat & Veg Delivery</p>
       </div>
 
-      <div class="card" style="border: 1px solid var(--accent-orange) !important; background: var(--bg-card) !important; text-align: center; border-radius: 14px !important; padding: 12px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.02) !important; cursor: pointer; transition: all 0.2s; margin-bottom: 20px;" onclick="showScreen('screen-register')" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='none'">
-        <p style="color: var(--accent-orange); font-size: 13px; font-weight: 800; cursor: pointer; margin: 0;">New customer? Register Now →</p>
+      <!-- 3D New Customer Pill -->
+      <div class="auth-register-prompt-3d" onclick="showScreen('screen-register')">
+        <p class="auth-register-prompt-text">✨ New customer? Register Now →</p>
       </div>
 
       <!-- Quick Test Accounts section for instant mobile testing -->
-      <div id="quick-login-container" style="margin-bottom: 20px; display: none; background: rgba(255, 255, 255, 0.03); border: 1.5px dashed rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 12px; box-sizing: border-box; width: 100%;">
-        <p style="font-size: 11.5px; color: var(--accent-orange); font-weight: 700; margin: 0 0 8px 0; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;">சோதனை கணக்குகள் / Quick Test Accounts (Tap to Login):</p>
+      <div id="quick-login-container" style="margin-bottom: 16px; display: none; background: rgba(255, 255, 255, 0.03); border: 1.5px dashed rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 12px; box-sizing: border-box; width: 100%;">
+        <p style="font-size: 11.5px; color: var(--accent-orange); font-weight: 700; margin: 0 0 8px 0; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;">Quick Test Accounts (Tap to Login):</p>
         <div id="quick-login-list" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-height: 120px; overflow-y: auto; padding: 2px;"></div>
       </div>
 
-      <form id="login-form" onsubmit="handleLogin(event)">
-        <div class="form-group" id="login-identifier-wrapper">
-          <label data-translate="phone">Email or Phone Number</label>
-          <input type="text" id="login-identifier" class="form-control" placeholder="Enter your registered phone or email" data-translate-placeholder="phonePlaceholder" required>
-        </div>
-
-        <div class="form-group" id="admin-selector-wrapper" style="display: none;">
-          <label style="color: var(--accent-orange); font-weight: 600;">Choose Admin Character 👑</label>
-          <select id="admin-selector" class="form-control" style="background: #111; color: #fff; border: 1.5px solid var(--accent-orange); font-weight: bold; padding: 12px; border-radius: 8px; width: 100%;" onchange="updateAdminPasswordFromSelection()">
-            <option value="8778148899">👑 Anantharaj (Super Admin)</option>
-            <option value="9999999998">📦 Karthick (Stock Manager)</option>
-            <option value="9999999997">🚚 Prakash (Dispatcher)</option>
-            <option value="9999999996">💵 Senthil (Billings)</option>
-            <option value="9999999995">⚡ Mani (Logistics)</option>
-          </select>
-        </div>
-
-        <div class="form-group" id="delivery-selector-wrapper" style="display: none;">
-          <label style="color: var(--accent-orange); font-weight: 600;">டெலிவரி நபர் தேர்வு செய்க / Choose Delivery Partner 🏍️</label>
-          <select id="delivery-selector" class="form-control" style="background: #111; color: #fff; border: 1.5px solid var(--accent-orange); font-weight: bold; padding: 12px; border-radius: 8px; width: 100%;" onchange="updateDeliveryPasswordFromSelection()">
-            <!-- Dynamically populated via JS -->
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label data-translate="password">Password</label>
-          <div style="position: relative; display: flex; align-items: center;">
-            <input type="password" id="login-password" class="form-control" placeholder="••••••" style="padding-right: 44px !important;" required>
-            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 18px; cursor: pointer; color: var(--text-muted); z-index: 5; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;" onclick="togglePasswordVisibility('login-password', this)" title="Toggle Password">👁️</span>
+      <!-- 3D Glassmorphic Form Card -->
+      <div class="auth-3d-form-card">
+        <form id="login-form" onsubmit="handleLogin(event)">
+          <div class="form-group" id="login-identifier-wrapper">
+            <label>Email or Phone Number</label>
+            <input type="text" id="login-identifier" class="form-control" placeholder="Enter your registered phone or email" required>
           </div>
-        </div>
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; min-height: 48px;">
-          <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; margin: 0; padding: 12px 0; min-height: 48px; user-select: none;">
-            <input type="checkbox" id="login-remember" style="accent-color: var(--accent-orange); width: 18px; height: 18px;" checked>
-            <span data-translate="rememberMe" style="display: inline-block; vertical-align: middle;">Remember Me</span>
-          </label>
-          <a href="#" onclick="openForgotPasswordModal(event); return false;" style="font-size: 13px; color: var(--accent-orange); text-decoration: none; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 12px; margin-right: -12px;" data-translate="forgotPassword">Forgot Password?</a>
-        </div>
 
-        <button type="submit" class="btn btn-primary" style="padding: 14px;">Login</button>
-      </form>
+          <div class="form-group" id="admin-selector-wrapper" style="display: none;">
+            <label style="color: #f59e0b; font-weight: 700; font-size: 11.5px; margin-bottom: 6px; display: block;">👑 Choose Admin Account</label>
+            <select id="admin-selector" class="form-control" style="font-weight: bold;" onchange="updateAdminPasswordFromSelection()">
+              <option value="8778148899">👑 Anantharaj (Super Admin)</option>
+              <option value="9999999998">📦 Karthick (Stock Manager)</option>
+              <option value="9999999997">🚚 Prakash (Dispatcher)</option>
+              <option value="9999999996">💵 Senthil (Billings)</option>
+              <option value="9999999995">⚡ Mani (Logistics)</option>
+            </select>
+          </div>
 
-      <div style="text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
-        <span id="btn-toggle-customer-mode" onclick="enterCustomerLogin()" style="color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline; display: none;">👤 Customer Login</span>
-        <span id="btn-toggle-admin-mode" onclick="enterAdminLogin()" style="color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline;">👑 Admin Login</span>
-        <span id="btn-toggle-delivery-mode" onclick="enterDeliveryLogin()" style="color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline;">🏍️ Delivery</span>
+          <div class="form-group" id="delivery-selector-wrapper" style="display: none;">
+            <label style="color: #f59e0b; font-weight: 700; font-size: 11.5px; margin-bottom: 6px; display: block;">🏍️ Choose Delivery Partner</label>
+            <select id="delivery-selector" class="form-control" style="font-weight: bold;" onchange="updateDeliveryPasswordFromSelection()">
+              <!-- Dynamically populated via JS -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Password</label>
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="password" id="login-password" class="form-control" placeholder="••••••" style="padding-right: 44px !important;" required>
+              <span class="auth-3d-eye-btn" onclick="togglePasswordVisibility('login-password', this)" title="Toggle Password">👁️</span>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+            <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: #cbd5e1; cursor: pointer; margin: 0; user-select: none;">
+              <input type="checkbox" id="login-remember" style="accent-color: #10b981; width: 16px; height: 16px;" checked>
+              <span>Remember Me</span>
+            </label>
+            <a href="#" onclick="openForgotPasswordModal(event); return false;" style="font-size: 12px; color: #ff9d2e; text-decoration: none; font-weight: 700; cursor: pointer;">Forgot Password?</a>
+          </div>
+
+          <button type="submit" class="btn-login-3d" id="btn-login-submit">
+            <span>Login</span>
+            <span style="font-size: 14px;">➔</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Subtle, Minimalist Admin / Delivery Links at Bottom -->
+      <div class="auth-3d-role-switch-container">
+        <span id="btn-toggle-admin-mode" class="auth-role-subtle-link" onclick="toggleAdminLogin()">👑 Admin Login</span>
+        <span class="auth-role-subtle-divider">•</span>
+        <span id="btn-toggle-delivery-mode" class="auth-role-subtle-link" onclick="toggleDeliveryLogin()">🏍️ Delivery</span>
       </div>
     </div>
 
     <!-- SCREEN 3: REGISTER PAGE -->
-    <div id="screen-register" class="screen no-nav" style="overflow-y: auto;">
-      <!-- Elegant Interactive Back Header Row -->
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-top: 8px;">
-        <button onclick="showTab('tab-home')" style="background: #ffffff; border: 1px solid var(--border-color); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-primary); box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: all 0.2s;" title="Back to Home / முகப்பு">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <div id="screen-register" class="screen no-nav" style="overflow-y: auto; max-width: 480px; margin: 0 auto;">
+      <!-- 3D Header Row -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; padding-top: 4px; position: relative; z-index: 1000;">
+        <button type="button" id="btn-register-back" onclick="navigateHome()" class="auth-3d-back-btn" title="Back to Home" style="cursor: pointer; pointer-events: auto;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
         </button>
-        <span onclick="showTab('tab-home')" style="font-size: 11px; color: var(--accent-green); font-weight: 700; cursor: pointer; letter-spacing: 0.3px; text-transform: uppercase; background: rgba(30,130,76,0.04); padding: 5px 12px; border-radius: 12px; border: 1.5px solid rgba(30,130,76,0.25);">Skip to Shop / முகப்பு</span>
+        <span onclick="navigateHome()" class="auth-role-3d-pill" style="color: #10b981; border-color: rgba(16, 185, 129, 0.35); cursor: pointer;">Skip to Shop / முகப்பு ➔</span>
       </div>
 
-      <h2 style="color: var(--accent-orange); font-weight: 700; margin-bottom: 4px;">Create Account</h2>
-      <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 20px;">Join Edappadi Kadai & earn welcome discount points!</p>
+      <div style="margin-bottom: 16px;">
+        <h2 class="auth-3d-title">Create Account</h2>
+        <p class="auth-3d-subtitle">Join Edappadi Kadai & earn welcome discount points!</p>
+      </div>
 
-      <form id="register-form" onsubmit="handleRegister(event)">
-        <div class="form-group">
-          <label>Full Name *</label>
-          <input type="text" id="reg-name" class="form-control" placeholder="For example: Rajenthiran" required>
-        </div>
-        <div class="form-group">
-          <label>Phone Number (10 digits) *</label>
-          <input type="tel" id="reg-phone" class="form-control" placeholder="8778148899" pattern="\d{10}" title="Must be a 10-digit Indian mobile number" required>
-        </div>
-        <div class="form-group">
-          <label>Email Address * / மின்னஞ்சல் முகவரி *</label>
-          <input type="email" id="reg-email" class="form-control" placeholder="email@example.com" required>
-          <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px; margin-bottom: 8px; line-height: 1.4;">
-            <span class="lang-en">Use an active email address that you can access. It is required for secure login and password recovery.</span>
-            <span class="lang-ta">நீங்கள் அணுகக்கூடிய சரியான மின்னஞ்சல் முகவரியை உள்ளிடுங்கள். பாதுகாப்பான உள்நுழைவு மற்றும் கடவுச்சொல் மீட்டமைப்பிற்கு இது அவசியம்.</span>
-          </p>
+      <div class="auth-3d-form-card">
+        <form id="register-form" onsubmit="handleRegister(event)">
+          <div class="form-group">
+            <label>Full Name *</label>
+            <input type="text" id="reg-name" class="form-control" placeholder="For example: Rajenthiran" required>
+          </div>
+          <div class="form-group">
+            <label>Phone Number (10 digits) *</label>
+            <input type="tel" id="reg-phone" class="form-control" placeholder="8778148899" pattern="\d{10}" title="Must be a 10-digit Indian mobile number" required>
+          </div>
+          <div class="form-group">
+            <label>Email Address * / மின்னஞ்சல் முகவரி *</label>
+            <input type="email" id="reg-email" class="form-control" placeholder="email@example.com" required>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px; margin-bottom: 8px; line-height: 1.4;">
+              <span class="lang-en">Use an active email address that you can access. It is required for secure login and password recovery.</span>
+              <span class="lang-ta">நீங்கள் அணுகக்கூடிய சரியான மின்னஞ்சல் முகவரியை உள்ளிடுங்கள். பாதுகாப்பான உள்நுழைவு மற்றும் கடவுச்சொல் மீட்டமைப்பிற்கு இது அவசியம்.</span>
+            </p>
 
-          <!-- Bilingual Email-Security Notice Box -->
-          <div class="email-security-notice" style="margin-top: 10px; margin-bottom: 4px; padding: 12px; background: rgba(249, 115, 22, 0.04); border: 1.5px dashed rgba(249, 115, 22, 0.25); border-radius: 12px; font-size: 11.5px; line-height: 1.5; text-align: left;">
-            <div style="display: flex; align-items: flex-start; gap: 8px;">
-              <span style="font-size: 16px; line-height: 1.1; margin-top: 1px;">🔐</span>
-              <div style="flex: 1;">
-                <p style="font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0;" class="lang-en">Important: Use Your Own Email</p>
-                <p style="font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0;" class="lang-ta">முக்கியம்: உங்கள் சொந்த மின்னஞ்சலை பயன்படுத்துங்கள்</p>
+            <!-- Bilingual Email-Security Notice Box -->
+            <div class="email-security-notice" style="margin-top: 10px; margin-bottom: 4px; padding: 12px; background: rgba(249, 115, 22, 0.06); border: 1.2px dashed rgba(249, 115, 22, 0.3); border-radius: 12px; font-size: 11.5px; line-height: 1.5; text-align: left;">
+              <div style="display: flex; align-items: flex-start; gap: 8px;">
+                <span style="font-size: 16px; line-height: 1.1; margin-top: 1px;">🔐</span>
+                <div style="flex: 1;">
+                  <p style="font-weight: 700; color: #f59e0b; margin: 0 0 4px 0;" class="lang-en">Important: Use Your Own Email</p>
+                  <p style="font-weight: 700; color: #f59e0b; margin: 0 0 4px 0;" class="lang-ta">முக்கியம்: உங்கள் சொந்த மின்னஞ்சலை பயன்படுத்துங்கள்</p>
 
-                <p style="color: var(--text-secondary); margin: 0; line-height: 1.4;" class="lang-en">Enter a valid email address that you can access. This email is required to log in securely and to reset your password later through the Forgot Password option.</p>
-                <p style="color: var(--text-secondary); margin: 0; line-height: 1.4;" class="lang-ta">நீங்கள் அணுகக்கூடிய சரியான மின்னஞ்சல் முகவரியை உள்ளிடுங்கள். பாதுகாப்பான உள்நுழைவு மற்றும் எதிர்காலத்தில் “கடவுச்சொல் மறந்துவிட்டதா?” மூலம் கடவுச்சொல்லை மீட்டமைக்க இந்த மின்னஞ்சல் அவசியம்.</p>
+                  <p style="color: #cbd5e1; margin: 0; line-height: 1.4;" class="lang-en">Enter a valid email address that you can access. This email is required to log in securely and to reset your password later through the Forgot Password option.</p>
+                  <p style="color: #cbd5e1; margin: 0; line-height: 1.4;" class="lang-ta">நீங்கள் அணுகக்கூடிய சரியான மின்னஞ்சல் முகவரியை உள்ளிடுங்கள். பாதுகாப்பான உள்நுழைவு மற்றும் எதிர்காலத்தில் “கடவுச்சொல் மறந்துவிட்டதா?” மூலம் கடவுச்சொல்லை மீட்டமைக்க இந்த மின்னஞ்சல் அவசியம்.</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        <div class="form-group">
-          <label>Delivery Address / விநியோக முகவரி *</label>
-          <textarea id="reg-address" class="form-control" rows="2" placeholder="Kavandampatti, Idappadi, Salem, pincode..." required></textarea>
-          <div style="display: flex; gap: 6px; margin-top: 6px;">
-            <button type="button" class="btn btn-secondary" onclick="openMapAddressPicker('reg-address')" style="background: rgba(249, 115, 22, 0.1); border-color: rgba(249, 115, 22, 0.25); color: var(--accent-orange); flex: 1.1; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; padding: 8px; font-weight: 700; cursor: pointer; border-radius: 8px;">
-              🗺️ Map Picker / வரைபடம்
-            </button>
-            <button type="button" class="btn btn-secondary" onclick="autoDetectCoordinatesForTarget('reg-address', this)" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.25); color: #10b981; flex: 0.9; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; padding: 8px; font-weight: 700; cursor: pointer; border-radius: 8px;">
-              🛰️ Auto GPS / ஜிபிஎஸ்
-            </button>
+          <div class="form-group">
+            <label>Delivery Address / விநியோக முகவரி *</label>
+            <textarea id="reg-address" class="form-control" rows="2" placeholder="Kavandampatti, Idappadi, Salem, pincode..." style="height: auto !important; padding: 8px 12px !important;" required></textarea>
+            <div style="display: flex; gap: 6px; margin-top: 6px;">
+              <button type="button" class="btn btn-secondary" onclick="openMapAddressPicker('reg-address')" style="background: rgba(249, 115, 22, 0.12); border-color: rgba(249, 115, 22, 0.3); color: #f59e0b; flex: 1.1; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; padding: 8px; font-weight: 700; cursor: pointer; border-radius: 8px;">
+                🗺️ Map Picker / வரைபடம்
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="autoDetectCoordinatesForTarget('reg-address', this)" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.3); color: #10b981; flex: 0.9; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; padding: 8px; font-weight: 700; cursor: pointer; border-radius: 8px;">
+                🛰️ Auto GPS / ஜிபிஎஸ்
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="form-group">
-          <label>Create Password (min 6 characters) *</label>
-          <div style="position: relative;">
-            <input type="password" id="reg-password" class="form-control" placeholder="••••••" minlength="6" required style="padding-right: 40px;">
-            <span style="position: absolute; right: 14px; top: 12px; font-size: 16px; cursor: pointer; color: var(--text-muted);" onclick="togglePasswordVisibility('reg-password', this)">👁️</span>
+          <div class="form-group">
+            <label>Create Password (min 6 characters) *</label>
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="password" id="reg-password" class="form-control" placeholder="••••••" minlength="6" required style="padding-right: 44px !important;">
+              <span class="auth-3d-eye-btn" onclick="togglePasswordVisibility('reg-password', this)">👁️</span>
+            </div>
           </div>
-        </div>
-        <div class="form-group">
-          <label>Confirm Password *</label>
-          <div style="position: relative;">
-            <input type="password" id="reg-confirm" class="form-control" placeholder="••••••" minlength="6" required style="padding-right: 40px;">
-            <span style="position: absolute; right: 14px; top: 12px; font-size: 16px; cursor: pointer; color: var(--text-muted);" onclick="togglePasswordVisibility('reg-confirm', this)">👁️</span>
+          <div class="form-group">
+            <label>Confirm Password *</label>
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="password" id="reg-confirm" class="form-control" placeholder="••••••" minlength="6" required style="padding-right: 44px !important;">
+              <span class="auth-3d-eye-btn" onclick="togglePasswordVisibility('reg-confirm', this)">👁️</span>
+            </div>
           </div>
-        </div>
-        <div class="form-group" style="margin-top: 10px;">
-          <label>Referral Code / பரிந்துரை குறியீடு (Optional)</label>
-          <input type="text" id="reg-referral" class="form-control" placeholder="e.g. CUST_12345 or 123456" style="text-transform: uppercase;">
-        </div>
-        <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; margin-top: 10px;">
-            <input type="checkbox" id="reg-whatsapp" style="accent-color: var(--accent-green); width: 18px; height: 18px;" checked> Subscribe to WhatsApp updates
-          </label>
-        </div>
+          <div class="form-group" style="margin-top: 10px;">
+            <label>Referral Code / பரிந்துரை குறியீடு (Optional)</label>
+            <input type="text" id="reg-referral" class="form-control" placeholder="e.g. CUST_12345 or 123456" style="text-transform: uppercase;">
+          </div>
+          <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #cbd5e1; cursor: pointer; margin-top: 8px;">
+              <input type="checkbox" id="reg-whatsapp" style="accent-color: #10b981; width: 16px; height: 16px;" checked> Subscribe to WhatsApp updates
+            </label>
+          </div>
 
-        <button type="submit" class="btn btn-success" style="padding: 14px; margin-top: 10px;">Create Account ✓</button>
-      </form>
+          <button type="submit" class="btn-login-3d" style="margin-top: 10px;">
+            <span>Create Account / கணக்கை உருவாக்கு ✓</span>
+          </button>
+        </form>
+      </div>
 
-      <p style="text-align: center; margin-top: 20px; font-size: 13px; color: var(--text-muted);">
-        Already have an account? <span onclick="showScreen('screen-login')" style="color: var(--accent-orange); font-weight: 600; cursor: pointer; text-decoration: underline;">Login Here</span>
+      <p style="text-align: center; margin-top: 16px; font-size: 12.5px; color: #94a3b8;">
+        Already have an account? <span onclick="showScreen('screen-login')" style="color: #f59e0b; font-weight: 700; cursor: pointer; text-decoration: underline;">Login Here</span>
       </p>
     </div>
 
@@ -4043,26 +4098,64 @@
               <!-- ADD NEW CATEGORY FORM -->
               <form onsubmit="handleCreateCategory(event)" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 12px; margin-bottom: 14px;">
                 <p style="font-weight: 800; font-size: 11px; text-transform: uppercase; color: #4ade80; margin-bottom: 10px;">➕ புதிய வகைப்பாடு சேர்க்க / Add New Category</p>
+                
+                <!-- ROW 1: Names -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                   <div>
                     <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">English Name *</label>
-                    <input type="text" id="new-cat-en" class="form-control" placeholder="e.g. Sea Fish" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;" required>
+                    <input type="text" id="new-cat-en" class="form-control" placeholder="e.g. Sea Fish" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;" oninput="updateNewCatLivePreview()" required>
                   </div>
                   <div>
                     <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Tamil Name (தமிழ்) *</label>
-                    <input type="text" id="new-cat-ta" class="form-control" placeholder="எ.கா: கடல் மீன்" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;" required>
+                    <input type="text" id="new-cat-ta" class="form-control" placeholder="எ.கா: கடல் மீன்" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;" oninput="updateNewCatLivePreview()" required>
                   </div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+
+                <!-- ROW 2: Icon & Color Picker Row -->
+                <div style="display: grid; grid-template-columns: 80px 1fr; gap: 8px; margin-bottom: 10px;">
                   <div>
                     <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Icon / Emoji</label>
-                    <input type="text" id="new-cat-icon" class="form-control" placeholder="e.g. 🐟" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important; text-align: center;">
+                    <input type="text" id="new-cat-icon" class="form-control" placeholder="e.g. 🐟" style="height: 36px; font-size: 14px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important; text-align: center;" oninput="updateNewCatLivePreview()">
                   </div>
+
                   <div>
-                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Accent Color (Hex)</label>
-                    <input type="text" id="new-cat-accent" class="form-control" placeholder="#2E7D32" value="#2E7D32" style="height: 36px; font-size: 12px; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important;">
+                    <label style="font-size: 10px; color: var(--text-secondary, #94a3b8); font-weight: 700; display: block; margin-bottom: 3px;">Category Color / நிறம்</label>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <!-- HTML5 Native Color Picker Box -->
+                      <input type="color" id="new-cat-color-picker" value="#10B981" style="width: 38px; height: 36px; padding: 2px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.2); background: #0f172a; cursor: pointer; flex-shrink: 0;" oninput="onNewCatColorPickerChange(this.value)">
+                      
+                      <!-- Hex Text Input -->
+                      <input type="text" id="new-cat-accent" class="form-control" placeholder="#10B981" value="#10B981" style="height: 36px; font-size: 12px; font-weight: 700; background: #1e293b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.2) !important; flex: 1; min-width: 80px;" oninput="onNewCatHexInputChange(this.value)">
+                    </div>
                   </div>
                 </div>
+
+                <!-- Color Palette Presets -->
+                <div style="margin-bottom: 12px;">
+                  <label style="font-size: 9.5px; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 5px; text-transform: uppercase;">🎨 Preset Palette / முன்னிருப்பு வண்ணங்கள்</label>
+                  <div class="cat-palette-row" id="new-cat-palette-container">
+                    <button type="button" class="cat-palette-swatch active" style="background: #10B981;" onclick="setNewCatColor('#10B981')" title="Emerald Green"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #2E7D32;" onclick="setNewCatColor('#2E7D32')" title="Forest Green"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #0288D1;" onclick="setNewCatColor('#0288D1')" title="Ocean Blue"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #C62828;" onclick="setNewCatColor('#C62828')" title="Ruby Red"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #F59E0B;" onclick="setNewCatColor('#F59E0B')" title="Amber Orange"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #8B5CF6;" onclick="setNewCatColor('#8B5CF6')" title="Purple"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #EC4899;" onclick="setNewCatColor('#EC4899')" title="Pink"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #008080;" onclick="setNewCatColor('#008080')" title="Teal"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #8D6E63;" onclick="setNewCatColor('#8D6E63')" title="Warm Brown"></button>
+                    <button type="button" class="cat-palette-swatch" style="background: #64748B;" onclick="setNewCatColor('#64748B')" title="Slate Grey"></button>
+                  </div>
+                </div>
+
+                <!-- Real-time Live Preview Badge -->
+                <div style="background: rgba(0,0,0,0.4); border: 1.5px dashed rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                  <span style="font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">👁️ Live Preview / முன்னோட்டம்:</span>
+                  <div id="new-cat-live-preview" class="cat-live-preview-badge" style="background: rgba(16, 185, 129, 0.15); border: 1.5px solid #10B981; color: #ffffff; box-shadow: 0 2px 10px rgba(16, 185, 129, 0.25);">
+                    <span id="new-cat-preview-icon" style="font-size: 16px;">🐟</span>
+                    <span id="new-cat-preview-text" style="font-size: 12px; font-weight: 800;">New Category</span>
+                  </div>
+                </div>
+
                 <button type="submit" class="btn btn-primary" style="width: 100%; height: 38px; font-size: 12px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; border-radius: 8px; cursor: pointer;">
                   ✨ உருவாக்கு / Create Category
                 </button>

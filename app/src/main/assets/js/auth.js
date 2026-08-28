@@ -1,4 +1,85 @@
 
+    function navigateHome() {
+      try {
+        if (typeof currentScreen !== 'undefined') {
+          currentScreen = 'screen-home';
+        }
+        if (typeof showTab === 'function') {
+          showTab('tab-home');
+        } else if (typeof showScreen === 'function') {
+          showScreen('screen-home');
+        }
+
+        // Direct DOM safety guarantee to ensure immediate visual transition
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active', 'screen-transitioning'));
+        const homeEl = document.getElementById('screen-home');
+        if (homeEl) {
+          homeEl.classList.add('active');
+          homeEl.scrollTop = 0;
+        }
+        const bottomNav = document.getElementById('app-bottom-nav');
+        if (bottomNav) bottomNav.style.display = 'flex';
+        const homeTab = document.getElementById('nav-btn-home');
+        if (homeTab) {
+          document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+          homeTab.classList.add('active');
+        }
+        if (typeof renderHomeScreen === 'function') {
+          try { renderHomeScreen(); } catch(e) {}
+        }
+      } catch (err) {
+        console.error("navigateHome error:", err);
+        try {
+          if (typeof showScreen === 'function') {
+            showScreen('screen-home');
+          }
+        } catch(e) {}
+      }
+    }
+    window.navigateHome = navigateHome;
+
+    function initAuthBackButtons() {
+      try {
+        const loginBackBtn = document.getElementById('btn-login-back') || document.querySelector('#screen-login .auth-3d-back-btn');
+        if (loginBackBtn) {
+          loginBackBtn.onclick = function(e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            navigateHome();
+          };
+          loginBackBtn.addEventListener('pointerdown', function(e) {
+            if (e) { e.stopPropagation(); }
+          });
+          loginBackBtn.addEventListener('touchend', function(e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            navigateHome();
+          }, { passive: false });
+        }
+
+        const regBackBtn = document.getElementById('btn-register-back') || document.querySelector('#screen-register .auth-3d-back-btn');
+        if (regBackBtn) {
+          regBackBtn.onclick = function(e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            navigateHome();
+          };
+          regBackBtn.addEventListener('pointerdown', function(e) {
+            if (e) { e.stopPropagation(); }
+          });
+          regBackBtn.addEventListener('touchend', function(e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            navigateHome();
+          }, { passive: false });
+        }
+      } catch (e) {
+        console.warn("[initAuthBackButtons error]", e);
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initAuthBackButtons);
+    } else {
+      setTimeout(initAuthBackButtons, 10);
+    }
+    window.initAuthBackButtons = initAuthBackButtons;
+
     function showTab(tabName) {
       document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
       if (tabName === 'tab-home') {
@@ -2484,14 +2565,16 @@ async function verifyOtpAndResetPassword() {
       prefillLoginCredentials();
 
       const btnToggleAdmin = document.getElementById('btn-toggle-admin-mode');
-      const btnToggleCustomer = document.getElementById('btn-toggle-customer-mode');
       const btnToggleDelivery = document.getElementById('btn-toggle-delivery-mode');
 
-      if (btnToggleAdmin) btnToggleAdmin.style.display = 'inline-block';
-      if (btnToggleCustomer) btnToggleCustomer.style.display = 'inline-block';
-      if (btnToggleDelivery) btnToggleDelivery.style.display = 'none';
-
-      showToast(currentLang === 'ta' ? "டெலிவரி லாகின் மோடுக்கு மாற்றப்பட்டது! 🔐" : "Switched to Delivery Executive Login Mode! 🔐", "info");
+      if (btnToggleAdmin) {
+        btnToggleAdmin.style.display = 'inline-flex';
+        btnToggleAdmin.style.color = '#64748b';
+      }
+      if (btnToggleDelivery) {
+        btnToggleDelivery.style.display = 'inline-flex';
+        btnToggleDelivery.style.color = '#10b981';
+      }
     }
 
     function populateDeliveryLoginFormSelector() {
@@ -2558,13 +2641,15 @@ async function verifyOtpAndResetPassword() {
       prefillLoginCredentials();
 
       const btnToggleAdmin = document.getElementById('btn-toggle-admin-mode');
-      const btnToggleCustomer = document.getElementById('btn-toggle-customer-mode');
       const btnToggleDelivery = document.getElementById('btn-toggle-delivery-mode');
-      if (btnToggleAdmin) btnToggleAdmin.style.display = 'none';
-      if (btnToggleCustomer) btnToggleCustomer.style.display = 'inline-block';
-      if (btnToggleDelivery) btnToggleDelivery.style.display = 'inline-block';
-
-      showToast("Switched to Admin Login Mode. Choose your character and enter password! 🔐", "info");
+      if (btnToggleAdmin) {
+        btnToggleAdmin.style.display = 'inline-flex';
+        btnToggleAdmin.style.color = '#f59e0b';
+      }
+      if (btnToggleDelivery) {
+        btnToggleDelivery.style.display = 'inline-flex';
+        btnToggleDelivery.style.color = '#64748b';
+      }
     }
 
     function enterCustomerLogin() {
@@ -2582,8 +2667,7 @@ async function verifyOtpAndResetPassword() {
         loginIdWrap.style.display = 'block';
         const label = loginIdWrap.querySelector('label');
         if (label) {
-          label.setAttribute('data-translate', 'phone');
-          label.innerText = currentLang === 'ta' ? "மின்னஞ்சல் அல்லது மொபைல் எண் / Email or Phone Number" : "Email or Phone Number";
+          label.innerText = "Email or Phone Number";
         }
       }
       if (adminSelWrap) adminSelWrap.style.display = 'none';
@@ -2595,7 +2679,6 @@ async function verifyOtpAndResetPassword() {
       if (loginIdInput) {
         loginIdInput.setAttribute('required', 'true');
         loginIdInput.setAttribute('placeholder', 'Enter your registered phone or email');
-        loginIdInput.setAttribute('data-translate-placeholder', 'phonePlaceholder');
       }
       if (adminSelector) adminSelector.removeAttribute('required');
       if (deliverySelector) deliverySelector.removeAttribute('required');
@@ -2603,14 +2686,34 @@ async function verifyOtpAndResetPassword() {
       prefillLoginCredentials();
 
       const btnToggleAdmin = document.getElementById('btn-toggle-admin-mode');
-      const btnToggleCustomer = document.getElementById('btn-toggle-customer-mode');
       const btnToggleDelivery = document.getElementById('btn-toggle-delivery-mode');
-      if (btnToggleAdmin) btnToggleAdmin.style.display = 'inline-block';
-      if (btnToggleCustomer) btnToggleCustomer.style.display = 'none';
-      if (btnToggleDelivery) btnToggleDelivery.style.display = 'inline-block';
-
-      showToast("Switched to Customer Login Mode.", "info");
+      if (btnToggleAdmin) {
+        btnToggleAdmin.style.display = 'inline-flex';
+        btnToggleAdmin.style.color = '#64748b';
+      }
+      if (btnToggleDelivery) {
+        btnToggleDelivery.style.display = 'inline-flex';
+        btnToggleDelivery.style.color = '#64748b';
+      }
     }
+
+    function toggleAdminLogin() {
+      if (currentLoginMode === 'admin') {
+        enterCustomerLogin();
+      } else {
+        enterAdminLogin();
+      }
+    }
+    window.toggleAdminLogin = toggleAdminLogin;
+
+    function toggleDeliveryLogin() {
+      if (currentLoginMode === 'delivery') {
+        enterCustomerLogin();
+      } else {
+        enterDeliveryLogin();
+      }
+    }
+    window.toggleDeliveryLogin = toggleDeliveryLogin;
 
     async function handleRegister(event) {
       event.preventDefault();

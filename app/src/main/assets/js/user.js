@@ -2325,8 +2325,8 @@
 
       const catList = getCategoriesList();
       const matched = catList.find(c => String(c.id).toLowerCase().trim() === cid);
-      if (matched && matched.accentColor) {
-        return { color: matched.accentColor, icon: matched.icon || '📦' };
+      if (matched && (matched.accentColor || matched.color)) {
+        return { color: matched.accentColor || matched.color, icon: matched.icon || '📦' };
       }
 
       if (cid.includes('fruit')) return { color: '#2E7D32', icon: '🍎' }; // green

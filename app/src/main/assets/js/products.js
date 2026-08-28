@@ -1,4 +1,154 @@
 
+    // Category Color Picker helpers & Palette constants
+    const CATEGORY_COLOR_PALETTE = [
+      { hex: '#10B981', label: 'Emerald Green' },
+      { hex: '#2E7D32', label: 'Forest Green' },
+      { hex: '#0288D1', label: 'Ocean Blue' },
+      { hex: '#C62828', label: 'Ruby Red' },
+      { hex: '#F59E0B', label: 'Amber Orange' },
+      { hex: '#8B5CF6', label: 'Purple' },
+      { hex: '#EC4899', label: 'Pink' },
+      { hex: '#008080', label: 'Teal' },
+      { hex: '#8D6E63', label: 'Warm Brown' },
+      { hex: '#64748B', label: 'Slate Grey' }
+    ];
+
+    function updateNewCatLivePreview() {
+      try {
+        const enVal = (document.getElementById('new-cat-en')?.value || '').trim();
+        const taVal = (document.getElementById('new-cat-ta')?.value || '').trim();
+        const iconVal = (document.getElementById('new-cat-icon')?.value || '').trim() || '📦';
+        const colorVal = (document.getElementById('new-cat-accent')?.value || '').trim() || '#10B981';
+
+        const previewBadge = document.getElementById('new-cat-live-preview');
+        const iconSpan = document.getElementById('new-cat-preview-icon');
+        const textSpan = document.getElementById('new-cat-preview-text');
+
+        if (iconSpan) iconSpan.textContent = iconVal;
+        if (textSpan) {
+          const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+          textSpan.textContent = isTa ? (taVal || enVal || 'New Category') : (enVal || taVal || 'New Category');
+        }
+        if (previewBadge) {
+          previewBadge.style.borderColor = colorVal;
+          previewBadge.style.background = `${colorVal}22`;
+          previewBadge.style.boxShadow = `0 4px 14px ${colorVal}33, inset 0 1px 2px rgba(255,255,255,0.2)`;
+          if (textSpan) textSpan.style.color = '#ffffff';
+        }
+      } catch(e) {
+        console.warn("updateNewCatLivePreview error:", e);
+      }
+    }
+    window.updateNewCatLivePreview = updateNewCatLivePreview;
+
+    function setNewCatColor(hexColor) {
+      if (!hexColor) return;
+      const cleanHex = hexColor.startsWith('#') ? hexColor : ('#' + hexColor);
+      const accentInput = document.getElementById('new-cat-accent');
+      const colorPicker = document.getElementById('new-cat-color-picker');
+      if (accentInput) accentInput.value = cleanHex;
+      if (colorPicker) colorPicker.value = cleanHex;
+
+      // Update palette swatches active class
+      document.querySelectorAll('#new-cat-palette-container .cat-palette-swatch').forEach(btn => {
+        const bg = btn.getAttribute('onclick') || '';
+        if (bg.toLowerCase().includes(cleanHex.toLowerCase())) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+
+      updateNewCatLivePreview();
+    }
+    window.setNewCatColor = setNewCatColor;
+
+    function onNewCatColorPickerChange(hexValue) {
+      const accentInput = document.getElementById('new-cat-accent');
+      if (accentInput) accentInput.value = hexValue;
+      setNewCatColor(hexValue);
+    }
+    window.onNewCatColorPickerChange = onNewCatColorPickerChange;
+
+    function onNewCatHexInputChange(hexValue) {
+      if (!hexValue) return;
+      let val = hexValue.trim();
+      if (!val.startsWith('#') && val.length > 0) val = '#' + val;
+      const colorPicker = document.getElementById('new-cat-color-picker');
+      if (colorPicker && /^#([0-9A-F]{3}){1,2}$/i.test(val)) {
+        colorPicker.value = val;
+      }
+      setNewCatColor(val);
+    }
+    window.onNewCatHexInputChange = onNewCatHexInputChange;
+
+    function updateEditCatLivePreview(catId) {
+      try {
+        const enVal = (document.getElementById(`edit-cat-en-${catId}`)?.value || '').trim();
+        const taVal = (document.getElementById(`edit-cat-ta-${catId}`)?.value || '').trim();
+        const iconVal = (document.getElementById(`edit-cat-icon-${catId}`)?.value || '').trim() || '📦';
+        const colorVal = (document.getElementById(`edit-cat-accent-${catId}`)?.value || '').trim() || '#10B981';
+
+        const previewBadge = document.getElementById(`edit-cat-live-preview-${catId}`);
+        const iconSpan = document.getElementById(`edit-cat-preview-icon-${catId}`);
+        const textSpan = document.getElementById(`edit-cat-preview-text-${catId}`);
+
+        if (iconSpan) iconSpan.textContent = iconVal;
+        if (textSpan) {
+          const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+          textSpan.textContent = isTa ? (taVal || enVal || 'Category') : (enVal || taVal || 'Category');
+        }
+        if (previewBadge) {
+          previewBadge.style.borderColor = colorVal;
+          previewBadge.style.background = `${colorVal}22`;
+          previewBadge.style.boxShadow = `0 4px 14px ${colorVal}33, inset 0 1px 2px rgba(255,255,255,0.2)`;
+        }
+      } catch(e) {
+        console.warn("updateEditCatLivePreview error:", e);
+      }
+    }
+    window.updateEditCatLivePreview = updateEditCatLivePreview;
+
+    function setEditCatColor(catId, hexColor) {
+      if (!catId || !hexColor) return;
+      const cleanHex = hexColor.startsWith('#') ? hexColor : ('#' + hexColor);
+      const accentInput = document.getElementById(`edit-cat-accent-${catId}`);
+      const colorPicker = document.getElementById(`edit-cat-color-picker-${catId}`);
+      if (accentInput) accentInput.value = cleanHex;
+      if (colorPicker) colorPicker.value = cleanHex;
+
+      document.querySelectorAll(`#edit-cat-palette-container-${catId} .cat-palette-swatch`).forEach(btn => {
+        const bg = btn.getAttribute('onclick') || '';
+        if (bg.toLowerCase().includes(cleanHex.toLowerCase())) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+
+      updateEditCatLivePreview(catId);
+    }
+    window.setEditCatColor = setEditCatColor;
+
+    function onEditCatColorPickerChange(catId, hexValue) {
+      const accentInput = document.getElementById(`edit-cat-accent-${catId}`);
+      if (accentInput) accentInput.value = hexValue;
+      setEditCatColor(catId, hexValue);
+    }
+    window.onEditCatColorPickerChange = onEditCatColorPickerChange;
+
+    function onEditCatHexInputChange(catId, hexValue) {
+      if (!hexValue) return;
+      let val = hexValue.trim();
+      if (!val.startsWith('#') && val.length > 0) val = '#' + val;
+      const colorPicker = document.getElementById(`edit-cat-color-picker-${catId}`);
+      if (colorPicker && /^#([0-9A-F]{3}){1,2}$/i.test(val)) {
+        colorPicker.value = val;
+      }
+      setEditCatColor(catId, val);
+    }
+    window.onEditCatHexInputChange = onEditCatHexInputChange;
+
     function renderAdminCategoriesList(force = false) {
       const container = document.getElementById('admin-categories-list');
       if (!container) return;
@@ -67,25 +217,48 @@
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; width: 100%; box-sizing: border-box;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">English Name</label>
-                  <input type="text" id="edit-cat-en-${c.id}" value="${c.nameEn || c.en || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;">
+                  <input type="text" id="edit-cat-en-${c.id}" value="${c.nameEn || c.en || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;" oninput="updateEditCatLivePreview('${c.id}')">
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Tamil Name (தமிழ்)</label>
-                  <input type="text" id="edit-cat-ta-${c.id}" value="${c.nameTa || c.ta || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;">
+                  <input type="text" id="edit-cat-ta-${c.id}" value="${c.nameTa || c.ta || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;" oninput="updateEditCatLivePreview('${c.id}')">
                 </div>
               </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; width: 100%; box-sizing: border-box;">
+
+              <div style="display: grid; grid-template-columns: 80px 1fr 90px; gap: 10px; width: 100%; box-sizing: border-box;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Icon / Emoji</label>
-                  <input type="text" id="edit-cat-icon-${c.id}" value="${c.icon || ''}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; text-align: center; width: 100%; box-sizing: border-box;">
+                  <input type="text" id="edit-cat-icon-${c.id}" value="${c.icon || ''}" class="form-control" style="font-size: 14px; height: 38px; padding: 6px 8px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; text-align: center; width: 100%; box-sizing: border-box;" oninput="updateEditCatLivePreview('${c.id}')">
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Accent (Hex)</label>
-                  <input type="text" id="edit-cat-accent-${c.id}" value="${c.accentColor || '#2E7D32'}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;" placeholder="#2E7D32">
+                  <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Category Color</label>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <input type="color" id="edit-cat-color-picker-${c.id}" value="${c.accentColor || '#10B981'}" style="width: 38px; height: 38px; padding: 2px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.2); background: #0f172a; cursor: pointer; flex-shrink: 0;" oninput="onEditCatColorPickerChange('${c.id}', this.value)">
+                    <input type="text" id="edit-cat-accent-${c.id}" value="${c.accentColor || '#10B981'}" class="form-control" style="font-size: 12px; font-weight: 700; height: 38px; padding: 6px 10px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;" placeholder="#10B981" oninput="onEditCatHexInputChange('${c.id}', this.value)">
+                  </div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <label style="font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); display: block; text-transform: uppercase;">Sort Order</label>
                   <input type="number" id="edit-cat-order-${c.id}" value="${c.order ?? index}" class="form-control" style="font-size: 12.5px; height: 38px; padding: 6px 12px; background: var(--bg-input, #0f172a); border: 1.5px solid var(--border-color, rgba(255,255,255,0.18)); color: var(--text-primary, #ffffff); border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+              </div>
+
+              <!-- Palette Preset Swatches in Edit Form -->
+              <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; box-sizing: border-box;">
+                <label style="font-size: 9.5px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">🎨 Quick Colors / வண்ணங்கள்:</label>
+                <div class="cat-palette-row" id="edit-cat-palette-container-${c.id}">
+                  ${CATEGORY_COLOR_PALETTE.map(p => `
+                    <button type="button" class="cat-palette-swatch ${(c.accentColor || '#10B981').toUpperCase() === p.hex.toUpperCase() ? 'active' : ''}" style="background: ${p.hex};" onclick="setEditCatColor('${c.id}', '${p.hex}')" title="${p.label}"></button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- Live Preview Badge in Edit Form -->
+              <div style="background: rgba(0,0,0,0.4); border: 1.5px dashed rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <span style="font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">👁️ Live Preview / முன்னோட்டம்:</span>
+                <div id="edit-cat-live-preview-${c.id}" class="cat-live-preview-badge" style="background: ${c.accentColor || '#10B981'}22; border: 1.5px solid ${c.accentColor || '#10B981'}; color: #ffffff; box-shadow: 0 4px 14px ${(c.accentColor || '#10B981')}33, inset 0 1px 2px rgba(255,255,255,0.2);">
+                  <span id="edit-cat-preview-icon-${c.id}" style="font-size: 16px;">${c.icon || '📦'}</span>
+                  <span id="edit-cat-preview-text-${c.id}" style="font-size: 12px; font-weight: 800;">${c.nameTa || c.ta || c.nameEn || c.en || 'Category'}</span>
                 </div>
               </div>
 
@@ -461,7 +634,11 @@
       enInput.value = '';
       taInput.value = '';
       iconInput.value = '';
-      if (accentInput) accentInput.value = '';
+      if (accentInput) accentInput.value = '#10B981';
+      const newCatColorPicker = document.getElementById('new-cat-color-picker');
+      if (newCatColorPicker) newCatColorPicker.value = '#10B981';
+      if (typeof setNewCatColor === 'function') setNewCatColor('#10B981');
+      if (typeof updateNewCatLivePreview === 'function') updateNewCatLivePreview();
 
       showToast("🎉 New category created successfully!", "success");
       showAdminSuccessModal(
@@ -1166,6 +1343,12 @@ function renderHomeScreen(forceReRender = false) {
         console.error("renderHomeScreenProducts failed:", productsRenderErr);
       }
 
+      try {
+        if (typeof setupHomeCategorySwipeListeners === 'function') {
+          setupHomeCategorySwipeListeners();
+        }
+      } catch (swipeInitErr) {}
+
       const settings = (typeof getDataCached === 'function' ? getDataCached('ek_settings', DEFAULT_SETTINGS) : getData('ek_settings', DEFAULT_SETTINGS)) || DEFAULT_SETTINGS || {};
 
       const custSession = getActiveSession();
@@ -1261,79 +1444,179 @@ function renderHomeScreen(forceReRender = false) {
 
     let homeSwipeStartX = 0;
     let homeSwipeStartY = 0;
+    let homeSwipeStartTime = 0;
+    let homeSwipePointerActive = false;
+
+    function getAvailableHomeCategoriesForSwipe() {
+      if (Array.isArray(window._currentHomeCategories) && window._currentHomeCategories.length > 0) {
+        return window._currentHomeCategories;
+      }
+      const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+      const catList = typeof getCategoriesList === 'function' ? getCategoriesList() : (typeof getData === 'function' ? getData('ek_categories', []) : []);
+      const visibleCategories = (catList || []).filter(c => c && !c.isHidden && (c.isScheduled ? c.isAvailable === true : true));
+      
+      const list = [
+        { id: 'all', name: isTa ? 'அனைத்தும்' : 'All Items', icon: '🍽️' }
+      ];
+
+      try {
+        let allProducts = typeof getDataCached === 'function' ? getDataCached('ek_products', []) : getData('ek_products', []);
+        const favCount = (allProducts || []).filter(p => p && !p.isHidden && typeof isProductFavorite === 'function' && isProductFavorite(p.id)).length;
+        if (favCount > 0) {
+          list.push({ id: 'favorites', name: isTa ? 'என் விருப்பங்கள்' : 'Favourites', icon: '❤️' });
+        }
+      } catch(e) {}
+
+      visibleCategories.forEach(c => {
+        if (c && c.id) {
+          list.push({
+            id: String(c.id),
+            name: isTa ? (c.nameTa || c.ta || c.nameEn || c.en || c.id) : (c.nameEn || c.en || c.id),
+            icon: c.icon || '📦'
+          });
+        }
+      });
+      return list;
+    }
+    window.getAvailableHomeCategoriesForSwipe = getAvailableHomeCategoriesForSwipe;
 
     function handleHomeCategorySwipe(direction) {
-      const catList = Array.isArray(window._currentHomeCategories) && window._currentHomeCategories.length > 0
-        ? window._currentHomeCategories
-        : [{ id: 'all' }];
+      try {
+        const catList = getAvailableHomeCategoriesForSwipe();
+        if (!catList || catList.length <= 1) return;
 
-      if (!catList || catList.length === 0) return;
+        const currentCatLower = String(activeCategory || 'all').toLowerCase().trim();
+        let currentIndex = catList.findIndex(c => String(c.id || '').toLowerCase().trim() === currentCatLower);
+        if (currentIndex === -1) currentIndex = 0;
 
-      const currentIndex = catList.findIndex(c => String(c.id) === String(activeCategory));
-      if (currentIndex === -1) return;
+        let targetIndex = currentIndex;
+        if (direction === 'next') {
+          targetIndex = currentIndex + 1;
+        } else if (direction === 'prev') {
+          targetIndex = currentIndex - 1;
+        }
 
-      let targetIndex = currentIndex;
-      if (direction === 'next') {
-        targetIndex = currentIndex + 1;
-      } else if (direction === 'prev') {
-        targetIndex = currentIndex - 1;
+        if (targetIndex < 0 || targetIndex >= catList.length) return;
+
+        const targetCategory = catList[targetIndex];
+        if (!targetCategory || targetCategory.id === undefined) return;
+
+        const grid = document.getElementById('home-product-grid');
+        if (grid) {
+          const slideOut = direction === 'next' ? '-18px' : '18px';
+          const slideIn = direction === 'next' ? '18px' : '-18px';
+          grid.style.transition = 'transform 0.12s ease-out, opacity 0.12s ease-out';
+          grid.style.transform = `translateX(${slideOut})`;
+          grid.style.opacity = '0.3';
+          
+          setTimeout(() => {
+            filterHomeProducts(String(targetCategory.id));
+            if (grid) {
+              grid.style.transition = 'none';
+              grid.style.transform = `translateX(${slideIn})`;
+              grid.style.opacity = '0.4';
+              // Force reflow
+              void grid.offsetWidth;
+              grid.style.transition = 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.18s ease-in';
+              grid.style.transform = 'translateX(0)';
+              grid.style.opacity = '1';
+            }
+          }, 120);
+        } else {
+          filterHomeProducts(String(targetCategory.id));
+        }
+      } catch (swipeErr) {
+        console.error("handleHomeCategorySwipe error:", swipeErr);
       }
-
-      if (targetIndex < 0 || targetIndex >= catList.length) return;
-
-      const targetCategory = catList[targetIndex];
-      if (!targetCategory || targetCategory.id === undefined) return;
-
-      const grid = document.getElementById('home-product-grid');
-      if (grid) {
-        grid.style.transition = 'opacity 0.15s ease-in-out';
-        grid.style.opacity = '0.35';
-        setTimeout(() => {
-          grid.style.opacity = '1';
-        }, 150);
-      }
-
-      filterHomeProducts(String(targetCategory.id));
     }
+    window.handleHomeCategorySwipe = handleHomeCategorySwipe;
 
     function setupHomeCategorySwipeListeners() {
-      const targets = [
-        document.getElementById('home-product-grid'),
-        document.getElementById('home-search-wrapper')
-      ].filter(Boolean);
+      const homeScreen = document.getElementById('screen-home');
+      if (!homeScreen) return;
+      if (homeScreen.dataset.swipeInitialized === 'true') return;
+      homeScreen.dataset.swipeInitialized = 'true';
 
-      targets.forEach(target => {
-        target.addEventListener('touchstart', function(e) {
-          if (typeof currentScreen !== 'undefined' && currentScreen !== 'screen-home') return;
-          if (e.touches && e.touches.length === 1) {
-            homeSwipeStartX = e.touches[0].clientX;
-            homeSwipeStartY = e.touches[0].clientY;
+      function shouldIgnoreSwipeTarget(target) {
+        if (!target) return false;
+        if (target.closest('#carousel-outer-wrapper, #specials-collapse-wrapper, .scroller, .filter-pills, .category-pill-container, .horizontal-scroll-container, input, textarea, select, .modal-backdrop, .modal, .quantity-controls, .btn-ripple, button')) {
+          return true;
+        }
+        return false;
+      }
+
+      function onTouchStart(e) {
+        if (typeof currentScreen !== 'undefined' && currentScreen !== 'screen-home') return;
+        if (e.target && shouldIgnoreSwipeTarget(e.target)) return;
+        if (e.touches && e.touches.length === 1) {
+          homeSwipeStartX = e.touches[0].clientX;
+          homeSwipeStartY = e.touches[0].clientY;
+          homeSwipeStartTime = Date.now();
+          homeSwipePointerActive = true;
+        }
+      }
+
+      function onTouchEnd(e) {
+        if (!homeSwipePointerActive) return;
+        homeSwipePointerActive = false;
+        if (typeof currentScreen !== 'undefined' && currentScreen !== 'screen-home') return;
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const elapsed = Date.now() - homeSwipeStartTime;
+
+        if (elapsed > 800) return; // Ignore long presses/drags
+
+        const deltaX = endX - homeSwipeStartX;
+        const deltaY = endY - homeSwipeStartY;
+
+        const absX = Math.abs(deltaX);
+        const absY = Math.abs(deltaY);
+
+        // 40px minimum horizontal swipe, with horizontal angle dominance
+        if (absX >= 40 && absX > 1.15 * absY) {
+          if (deltaX < 0) {
+            handleHomeCategorySwipe('next');
+          } else {
+            handleHomeCategorySwipe('prev');
           }
-        }, { passive: true });
+        }
+      }
 
-        target.addEventListener('touchend', function(e) {
+      homeScreen.addEventListener('touchstart', onTouchStart, { passive: true });
+      homeScreen.addEventListener('touchend', onTouchEnd, { passive: true });
+      homeScreen.addEventListener('touchcancel', () => { homeSwipePointerActive = false; }, { passive: true });
+
+      // Support pointer down/up for desktop/emulator drag testing
+      homeScreen.addEventListener('pointerdown', function(e) {
+        if (e.pointerType === 'mouse' && e.button === 0) {
           if (typeof currentScreen !== 'undefined' && currentScreen !== 'screen-home') return;
-          if (!e.changedTouches || e.changedTouches.length === 0) return;
+          if (e.target && shouldIgnoreSwipeTarget(e.target)) return;
+          homeSwipeStartX = e.clientX;
+          homeSwipeStartY = e.clientY;
+          homeSwipeStartTime = Date.now();
+          homeSwipePointerActive = true;
+        }
+      }, { passive: true });
 
-          const endX = e.changedTouches[0].clientX;
-          const endY = e.changedTouches[0].clientY;
-
-          const deltaX = endX - homeSwipeStartX;
-          const deltaY = endY - homeSwipeStartY;
-
-          const absX = Math.abs(deltaX);
-          const absY = Math.abs(deltaY);
-
-          if (absX >= 60 && absX >= 1.5 * absY) {
+      homeScreen.addEventListener('pointerup', function(e) {
+        if (e.pointerType === 'mouse' && homeSwipePointerActive) {
+          homeSwipePointerActive = false;
+          const deltaX = e.clientX - homeSwipeStartX;
+          const deltaY = e.clientY - homeSwipeStartY;
+          const elapsed = Date.now() - homeSwipeStartTime;
+          if (elapsed < 800 && Math.abs(deltaX) >= 40 && Math.abs(deltaX) > 1.15 * Math.abs(deltaY)) {
             if (deltaX < 0) {
               handleHomeCategorySwipe('next');
             } else {
               handleHomeCategorySwipe('prev');
             }
           }
-        }, { passive: true });
-      });
+        }
+      }, { passive: true });
     }
+    window.setupHomeCategorySwipeListeners = setupHomeCategorySwipeListeners;
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', setupHomeCategorySwipeListeners);
@@ -1642,7 +1925,7 @@ function renderHomeScreen(forceReRender = false) {
                 const favHeart = `<span class="fav-heart-btn" data-id="${pidStr}" onclick="event.stopPropagation(); toggleFavoriteProduct('${pidStr}', event)" style="position: absolute; top: 10px; right: 10px; cursor: pointer; font-size: 13px; padding: 3px; display: inline-flex; align-items: center; justify-content: center; height: 24px; width: 24px; border-radius: 50%; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 2px 6px rgba(0,0,0,0.15); z-index: 10;" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}">${isFav ? '❤️' : '🤍'}</span>`;
 
                 const cardHtml = `
-                  <div class="special-card" id="card-special-${pidStr}" style="height: 182px; width: 142px; flex: 0 0 142px; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
+                  <div class="special-card" id="card-special-${pidStr}" style="--card-cat-color: ${categoryConfig.color}; height: 182px; width: 142px; flex: 0 0 142px; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
                     ${overlayHtml}
                     ${favHeart}
                     ${specImgHtml}
@@ -1790,7 +2073,7 @@ function renderHomeScreen(forceReRender = false) {
 
         const categoryOrdersHash = catListForSorting.map(c => `${c.id}:${c.order}`).join(',');
         const favsHash = (String(activeCategory) === 'favorites') ? '::favs:' + (getData('ek_customer_favorites', []) || []).join(',') : '';
-        const filterKey = String(activeCategory) + '::' + searchQuery + '::' + categoryOrdersHash + favsHash;
+        const filterKey = (typeof currentLang !== 'undefined' ? currentLang : 'en') + '::' + String(activeCategory) + '::' + searchQuery + '::' + categoryOrdersHash + favsHash;
         const dataHash = filtered.map(p => `${p ? p.id : ''}:${p ? p.stockKg : ''}:${p ? p.isOutOfStock : ''}:${p ? p.pricePerKg : ''}:${p ? String(p.imageUrl || '').trim() : ''}:${p ? String(p.englishName || '').trim() : ''}:${p ? (p.sellingUnit || p.unit || '') : ''}:${p ? String(p.category || '') : ''}:${p ? !!p.isHidden : ''}`).join('|');
         const combinedKey = filterKey + '::' + dataHash;
         if (filtered.length === 0) {
@@ -1938,7 +2221,7 @@ function renderHomeScreen(forceReRender = false) {
 
             const cardDelay = Math.min((i - startIdx) * 35, 280);
             const cardHtml = `
-              <div class="product-grid-card product-grid-card-entrance" id="card-prod-${pidStr}" data-image-url="${imgUrl}" style="animation-delay: ${cardDelay}ms;" onclick="openProductModalDetail('${pidStr}')">
+              <div class="product-grid-card product-grid-card-entrance" id="card-prod-${pidStr}" data-image-url="${imgUrl}" style="--card-cat-color: ${categoryConfig.color}; animation-delay: ${cardDelay}ms;" onclick="openProductModalDetail('${pidStr}')">
                 ${overlayHtml}
                 ${imgHtml}
                 <div class="product-card-details" style="display: flex !important; flex-direction: column !important; justify-content: center !important; gap: 2px !important; flex-grow: 1 !important; min-width: 0 !important; min-height: 90px !important; height: auto !important; padding: 0 !important;">
@@ -1965,6 +2248,7 @@ function renderHomeScreen(forceReRender = false) {
             `;
             const existingCard = document.getElementById('card-prod-' + pidStr);
             if (existingCard) {
+              existingCard.style.setProperty('--card-cat-color', categoryConfig.color);
               const oldImgUrl = existingCard.getAttribute('data-image-url') || '';
               if (oldImgUrl !== imgUrl) {
                 existingCard.setAttribute('data-image-url', imgUrl);
@@ -2883,6 +3167,7 @@ function renderHomeScreen(forceReRender = false) {
       const isCategoryUnavailable = unavailableCategoriesSet.has(prod.category);
       const isOutOfStock = prod.isOutOfStock || prod.stockKg <= 0 || (prod.isScheduled && prod.isAvailable === false) || isCategoryUnavailable;
 
+      const catConfig = typeof getCategoryConfig === 'function' ? getCategoryConfig(prod.category) : { color: '#2E7D32' };
       const cartBtn = document.getElementById('modal-add-to-cart-btn');
       if (cartBtn) {
         if (isOutOfStock) {
@@ -2891,17 +3176,20 @@ function renderHomeScreen(forceReRender = false) {
           cartBtn.style.background = 'rgba(239,68,68,0.2)';
           cartBtn.style.color = 'var(--accent-red)';
           cartBtn.style.borderColor = 'rgba(239,68,68,0.4)';
+          cartBtn.style.boxShadow = 'none';
         } else {
           cartBtn.disabled = false;
           cartBtn.innerText = currentLang === 'ta' ? 'கார்ட்டில் சேர் →' : 'Add to Cart →';
-          cartBtn.style.background = '';
-          cartBtn.style.color = '';
-          cartBtn.style.borderColor = '';
+          cartBtn.style.background = `linear-gradient(135deg, ${catConfig.color} 0%, color-mix(in srgb, ${catConfig.color} 65%, #000) 100%)`;
+          cartBtn.style.color = '#ffffff';
+          cartBtn.style.borderColor = `color-mix(in srgb, ${catConfig.color} 50%, rgba(255,255,255,0.3))`;
+          cartBtn.style.boxShadow = `0 4px 14px color-mix(in srgb, ${catConfig.color} 40%, rgba(0,0,0,0.5))`;
         }
       }
 
       const backdrop = document.getElementById('product-detail-modal');
       if (backdrop) {
+        backdrop.style.setProperty('--modal-cat-color', catConfig.color);
         backdrop.style.display = 'flex';
         backdrop.style.zIndex = '10005';
         backdrop.style.opacity = '1';

@@ -217,8 +217,9 @@
       const trackerMapBox = document.getElementById('tracker-map-box');
       if (!mapContainer || !trackerMapBox) return;
 
-      const showStatuses = ['pending', 'ready', 'delivering'];
-      if (!order || !showStatuses.includes(order.status)) {
+      const showStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'delivering', 'out_for_delivery', 'dispatch'];
+      const orderStatusNorm = (order && order.status ? String(order.status).toLowerCase().trim() : '');
+      if (!order || !showStatuses.includes(orderStatusNorm)) {
         trackerMapBox.style.display = 'none';
         clearRiderAnimation();
         return;
@@ -644,18 +645,25 @@
       }
 
       const list = getData('ek_delivery_persons', []);
-      const exe = list.find(dp => dp.id === (order.assignedExecutiveId || order.deliveryExecutiveId));
-      if (exe && exe.latitude && exe.longitude) {
+      const exe = list.find(dp => dp.id === (order.assignedExecutiveId || order.deliveryExecutiveId || order.riderUid));
+      const effectiveLat = (order.riderLatitude && !isNaN(parseFloat(order.riderLatitude))) 
+        ? parseFloat(order.riderLatitude) 
+        : (exe && exe.latitude && !isNaN(parseFloat(exe.latitude)) ? parseFloat(exe.latitude) : null);
+      const effectiveLng = (order.riderLongitude && !isNaN(parseFloat(order.riderLongitude))) 
+        ? parseFloat(order.riderLongitude) 
+        : (exe && exe.longitude && !isNaN(parseFloat(exe.longitude)) ? parseFloat(exe.longitude) : null);
+
+      if (effectiveLat !== null && effectiveLng !== null) {
         if (lastRiderLat !== null && lastRiderLng !== null) {
-          const latDiff = Math.abs(exe.latitude - lastRiderLat);
-          const lngDiff = Math.abs(exe.longitude - lastRiderLng);
-          if (latDiff < 0.000025 && lngDiff < 0.000025) {
+          const latDiff = Math.abs(effectiveLat - lastRiderLat);
+          const lngDiff = Math.abs(effectiveLng - lastRiderLng);
+          if (latDiff < 0.00001 && lngDiff < 0.00001) {
             debugLog("[Map Optim] Rider coordinate change is extremely minor. Skipping redundant heavy redraw.");
             return;
           }
         }
-        lastRiderLat = exe.latitude;
-        lastRiderLng = exe.longitude;
+        lastRiderLat = effectiveLat;
+        lastRiderLng = effectiveLng;
       }
 
       trackerMapUpdateTimeout = setTimeout(() => {
@@ -694,7 +702,8 @@
       let showRider = false;
       let calculatedF = 0;
 
-      if (order.status === 'delivering') {
+      const isDelivering = ['delivering', 'out_for_delivery', 'dispatch'].includes((order.status || '').toLowerCase().trim());
+      if (isDelivering) {
         showRider = true;
 
         const list = getData('ek_delivery_persons', []);
@@ -702,17 +711,21 @@
 
         let initialLat = storePos[0];
         let initialLng = storePos[1];
-        if (order.riderLatitude && order.riderLongitude) {
-          initialLat = order.riderLatitude;
-          initialLng = order.riderLongitude;
-        } else if (exe && exe.latitude && exe.longitude) {
-          initialLat = exe.latitude;
-          initialLng = exe.longitude;
+        if (order.riderLatitude && order.riderLongitude && !isNaN(parseFloat(order.riderLatitude)) && !isNaN(parseFloat(order.riderLongitude))) {
+          initialLat = parseFloat(order.riderLatitude);
+          initialLng = parseFloat(order.riderLongitude);
+        } else if (exe && exe.latitude && exe.longitude && !isNaN(parseFloat(exe.latitude)) && !isNaN(parseFloat(exe.longitude))) {
+          initialLat = parseFloat(exe.latitude);
+          initialLng = parseFloat(exe.longitude);
         }
 
         if (!riderMarker) {
-          riderMarker = L.marker([initialLat, initialLng], { icon: riderIcon }).addTo(trackerLeafletMap)
+          riderMarker = L.marker([initialLat, initialLng], { icon: riderIcon, zIndexOffset: 1000 }).addTo(trackerLeafletMap)
             .bindPopup("<strong>Delivery Executive</strong><br>உங்கள் விநியோக நபர் 🏍️");
+        } else {
+          if (!trackerLeafletMap.hasLayer(riderMarker)) {
+            riderMarker.addTo(trackerLeafletMap);
+          }
         }
 
         const updatedMs = new Date(order.updatedAt || new Date()).getTime();
@@ -720,14 +733,21 @@
 
         let lastCacheRead = 0;
         let cachedExe = null;
+        let currentActiveOrder = order;
 
         function interpolateRiderFrame() {
-          if (!riderMarker || order.status !== 'delivering') return;
+          if (!riderMarker) return;
+          const statusNorm = (currentActiveOrder.status || '').toLowerCase().trim();
+          if (!['delivering', 'out_for_delivery', 'dispatch'].includes(statusNorm)) return;
 
           const nowTime = Date.now();
-          if (nowTime - lastCacheRead > 1200 || !cachedExe) {
+          if (nowTime - lastCacheRead > 1000 || !cachedExe) {
+            const currentOrders = getData('ek_orders', []);
+            const freshOrder = currentOrders.find(o => o.id === currentActiveOrder.id);
+            if (freshOrder) currentActiveOrder = freshOrder;
+
             const currentList = getData('ek_delivery_persons', []);
-            cachedExe = currentList.find(dp => dp.id === (order.assignedExecutiveId || order.deliveryExecutiveId || order.riderUid)) || null;
+            cachedExe = currentList.find(dp => dp.id === (currentActiveOrder.assignedExecutiveId || currentActiveOrder.deliveryExecutiveId || currentActiveOrder.riderUid)) || null;
             lastCacheRead = nowTime;
           }
           const currentExe = cachedExe;
@@ -735,19 +755,19 @@
           let targetLat, targetLng;
           const totalDist = utils_calcLatLonDistanceKm(storePos[0], storePos[1], custPos[0], custPos[1]);
 
-          if (order.riderLatitude && order.riderLongitude) {
-            targetLat = order.riderLatitude;
-            targetLng = order.riderLongitude;
-          } else if (currentExe && currentExe.latitude && currentExe.longitude) {
-            targetLat = currentExe.latitude;
-            targetLng = currentExe.longitude;
+          if (currentActiveOrder.riderLatitude && currentActiveOrder.riderLongitude && !isNaN(parseFloat(currentActiveOrder.riderLatitude)) && !isNaN(parseFloat(currentActiveOrder.riderLongitude))) {
+            targetLat = parseFloat(currentActiveOrder.riderLatitude);
+            targetLng = parseFloat(currentActiveOrder.riderLongitude);
+          } else if (currentExe && currentExe.latitude && currentExe.longitude && !isNaN(parseFloat(currentExe.latitude)) && !isNaN(parseFloat(currentExe.longitude))) {
+            targetLat = parseFloat(currentExe.latitude);
+            targetLng = parseFloat(currentExe.longitude);
           } else {
             targetLat = storePos[0];
             targetLng = storePos[1];
           }
 
           const currentLatLng = riderMarker.getLatLng();
-          const filterCoeff = 0.05; // Custom filter speed coefficient for smooth lag transition
+          const filterCoeff = 0.08; // Smooth interpolation coefficient
           const interpLat = currentLatLng.lat + (targetLat - currentLatLng.lat) * filterCoeff;
           const interpLng = currentLatLng.lng + (targetLng - currentLatLng.lng) * filterCoeff;
 
@@ -756,7 +776,7 @@
           const currentRiderDist = utils_calcLatLonDistanceKm(interpLat, interpLng, custPos[0], custPos[1]);
           const currentF = totalDist > 0 ? Math.max(0, Math.min(1 - (currentRiderDist / totalDist), 0.98)) : 0.5;
 
-          updateCustomerMapHUD(order, storePos, custPos, currentF);
+          updateCustomerMapHUD(currentActiveOrder, storePos, custPos, currentF);
 
           riderAnimationFrameId = requestAnimationFrame(interpolateRiderFrame);
         }
@@ -1043,11 +1063,55 @@
             }, 3000);
           });
         }
+
+        // Realtime listener for assigned delivery partner location updates
+        const riderId = latestTrackable.assignedExecutiveId || latestTrackable.deliveryExecutiveId || latestTrackable.riderUid;
+        if (riderId) {
+          if (window.activeTrackedRiderIdListener !== riderId) {
+            if (typeof window.activeTrackedRiderUnsubscribe === 'function') {
+              try { window.activeTrackedRiderUnsubscribe(); } catch(e) {}
+            }
+            window.activeTrackedRiderIdListener = riderId;
+            debugLog(`[Realtime Tracker] Listening to delivery partner: ${riderId}`);
+            window.activeTrackedRiderUnsubscribe = db.collection('ek_delivery_persons').doc(riderId).onSnapshot((rDoc) => {
+              if (rDoc.exists) {
+                const rData = normalizeFirestoreData(rDoc.data());
+                if (rData) {
+                  const list = getData('ek_delivery_persons', []);
+                  const rIdx = list.findIndex(r => r.id === riderId || r.uid === riderId);
+                  if (rIdx !== -1) {
+                    list[rIdx] = { ...list[rIdx], ...rData };
+                  } else {
+                    list.push(rData);
+                  }
+                  saveData('ek_delivery_persons', list);
+
+                  if (currentScreen === 'screen-track') {
+                    renderTrackerScreen();
+                  }
+                }
+              }
+            }, (rErr) => {
+              console.warn(`[Realtime Tracker] Rider listener warning:`, rErr);
+            });
+          }
+        } else {
+          if (typeof window.activeTrackedRiderUnsubscribe === 'function') {
+            try { window.activeTrackedRiderUnsubscribe(); } catch(e) {}
+            window.activeTrackedRiderUnsubscribe = null;
+            window.activeTrackedRiderIdListener = null;
+          }
+        }
       } else {
         if (typeof window.activeTrackedOrderUnsubscribe === 'function') {
           try { window.activeTrackedOrderUnsubscribe(); } catch(e) {}
           window.activeTrackedOrderUnsubscribe = null;
           window.activeTrackedOrderIdListener = null;
+        }
+        if (typeof window.activeTrackedRiderUnsubscribe === 'function') {
+          try { window.activeTrackedRiderUnsubscribe(); } catch(e) {}
+          window.activeTrackedRiderUnsubscribe = null;
+          window.activeTrackedRiderIdListener = null;
         }
       }
 
