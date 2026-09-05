@@ -1754,7 +1754,7 @@ function getActiveLyoProposalMsg() {
 
     function computeLyoDeliveryCharge(subtotal = 0, cartItems = []) {
       const settings = (typeof getSettings === 'function') ? getSettings() : ((typeof getData === 'function') ? getData('ek_settings', {}) : {});
-      let deliveryCharge = parseFloat(settings.deliveryCharge) || 40;
+      let deliveryCharge = (settings.deliveryCharge !== undefined && settings.deliveryCharge !== '' && !isNaN(Number(settings.deliveryCharge))) ? Number(settings.deliveryCharge) : 40;
 
       if (typeof getDynamicDeliveryCharge === 'function') {
         const u = (typeof getActiveUser === 'function') ? getActiveUser() : null;
@@ -1969,9 +1969,11 @@ function getActiveLyoProposalMsg() {
           let itemsSubtotal = 0;
           items.forEach(it => itemsSubtotal += (it.itemTotal || 0));
           const activeUser = (typeof getActiveUser === 'function') ? getActiveUser() : null;
+          const fallbackSettings = (typeof getSettings === 'function') ? getSettings() : ((typeof getData === 'function') ? getData('ek_settings', {}) : {});
+          const baseDelCharge = (fallbackSettings && fallbackSettings.deliveryCharge !== undefined && fallbackSettings.deliveryCharge !== '' && !isNaN(Number(fallbackSettings.deliveryCharge))) ? Number(fallbackSettings.deliveryCharge) : 40;
           const financials = (typeof calculateOrderFinancials === 'function')
             ? calculateOrderFinancials(itemsSubtotal, activeUser, '', false, items)
-            : { subtotal: itemsSubtotal, deliveryFee: 15, grandTotal: itemsSubtotal + 15 };
+            : { subtotal: itemsSubtotal, deliveryFee: baseDelCharge, grandTotal: itemsSubtotal + baseDelCharge };
           const delFee = financials.deliveryFee;
           const grandTotal = financials.grandTotal;
           const minReq = (typeof getSettings === 'function' && getSettings().minOrderAmount) ? parseFloat(getSettings().minOrderAmount) : 0;
@@ -2174,9 +2176,11 @@ function getActiveLyoProposalMsg() {
       const appliedCode = (typeof appliedCouponCode !== "undefined") ? appliedCouponCode : null;
       const useLoyalty = document.getElementById('cart-use-loyalty')?.checked || false;
 
+      const fallbackSettings = (typeof getSettings === 'function') ? getSettings() : ((typeof getData === 'function') ? getData('ek_settings', {}) : {});
+      const baseDelCharge = (fallbackSettings && fallbackSettings.deliveryCharge !== undefined && fallbackSettings.deliveryCharge !== '' && !isNaN(Number(fallbackSettings.deliveryCharge))) ? Number(fallbackSettings.deliveryCharge) : 40;
       const financials = (typeof calculateOrderFinancials === "function")
         ? calculateOrderFinancials(itemsSubtotal, activeUser, appliedCode, useLoyalty, items)
-        : { subtotal: itemsSubtotal, deliveryFee: 0, grandTotal: itemsSubtotal };
+        : { subtotal: itemsSubtotal, deliveryFee: baseDelCharge, grandTotal: itemsSubtotal + baseDelCharge };
 
       const isTa = (typeof currentLang !== "undefined" && currentLang === "ta");
       if (titleEl) {

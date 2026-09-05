@@ -1539,6 +1539,8 @@ function updateRiderLiveLocation() {
 
       const oldStatus = orders[idx].status || 'delivering';
       orders[idx].status = 'delivered';
+      orders[idx].paymentStatus = 'PAID';
+      orders[idx].paymentCollectedAt = new Date().toISOString();
       orders[idx].customerSignature = "Quick delivered by Delivery Partner";
       orders[idx].updatedAt = new Date().toISOString();
 
@@ -1848,6 +1850,9 @@ function updateRiderLiveLocation() {
       if (verifyType === 'gpay') {
         orders[idx].paymentMethod = 'Online Paid';
       }
+      orders[idx].paymentStatus = 'PAID';
+      orders[idx].paymentCollectedAt = new Date().toISOString();
+      orders[idx].paymentCollectedVia = verifyType === 'gpay' ? 'Online / UPI' : 'Cash';
 
       orders[idx].status = 'delivered';
       orders[idx].customerSignature = sigData || "Signed digitally";
@@ -2530,7 +2535,7 @@ function updateRiderLiveLocation() {
 
       // If distance still unavailable, use first zone charge as standard baseline rate
       const firstZone = sortedZones[0];
-      const baseCharge = firstZone ? (parseFloat(firstZone.charge) || 20) + rainAdd : (parseFloat(settings.deliveryCharge) || 40) + rainAdd;
+      const baseCharge = firstZone ? (parseFloat(firstZone.charge) || 20) + rainAdd : ((settings.deliveryCharge !== undefined && settings.deliveryCharge !== '' && !isNaN(Number(settings.deliveryCharge))) ? Number(settings.deliveryCharge) : 40) + rainAdd;
       const zoneTitle = firstZone ? (firstZone.nameTa || firstZone.nameEn || 'Zone 1') + (rainAdd > 0 ? ' 🌧️ (Rain Surge)' : '') : 'Flat Rate';
       return { charge: baseCharge, distance: null, zoneName: zoneTitle };
     }

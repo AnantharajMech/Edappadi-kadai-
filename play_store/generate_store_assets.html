@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Play Store Assets Generator - Edappadi Kadai</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&family=Noto+Sans+Tamil:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: #121826;
+      --accent-green: #00ff88;
+      --accent-orange: #f59e0b;
+      --text: #f8fafc;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      padding: 30px 20px 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 30px;
+      text-align: center;
+      max-width: 600px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 30px;
+      width: 100%;
+      max-width: 1100px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .card-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: var(--accent-orange);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    canvas {
+      max-width: 100%;
+      height: auto;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      background: #000;
+    }
+    .btn {
+      margin-top: 18px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(16,185,129,0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>📱 Google Play Store Asset Generator</h1>
+  <p class="subtitle">எடப்பாடி கடை அப்ளிகேஷனுக்கான கூகுள் ப்ளே ஸ்டோர் <strong>512x512 Icon</strong> மற்றும் <strong>1024x500 Feature Graphic</strong> படங்களை கீழே உள்ள பொத்தான்கள் மூலம் பதிவிறக்கம் செய்துகொள்ளலாம்.</p>
+
+  <div class="grid">
+    <!-- Asset 1: 512x512 High-Res App Icon -->
+    <div class="card">
+      <div class="card-title">✨ High-Resolution App Icon (512 x 512 px)</div>
+      <div class="card-desc">Required by Google Play Console Store Listing (32-bit PNG with alpha).</div>
+      <canvas id="iconCanvas" width="512" height="512" style="width: 256px; height: 256px;"></canvas>
+      <button class="btn" onclick="downloadCanvas('iconCanvas', 'play_store_icon_512x512.png')">
+        📥 Download 512x512 Icon (PNG)
+      </button>
+    </div>
+
+    <!-- Asset 2: 1024x500 Feature Graphic -->
+    <div class="card">
+      <div class="card-title">🖼️ Store Feature Graphic (1024 x 500 px)</div>
+      <div class="card-desc">Featured banner displayed on top of the Google Play Store app page.</div>
+      <canvas id="bannerCanvas" width="1024" height="500" style="width: 512px; height: 250px;"></canvas>
+      <button class="btn" onclick="downloadCanvas('bannerCanvas', 'play_store_feature_graphic_1024x500.png')">
+        📥 Download 1024x500 Banner (PNG)
+      </button>
+    </div>
+  </div>
+
+  <script>
+    function renderIcon() {
+      const c = document.getElementById('iconCanvas');
+      const ctx = c.getContext('2d');
+      const w = 512, h = 512;
+
+      // Dark background gradient
+      const bgGrad = ctx.createRadialGradient(w/2, h/2, 40, w/2, h/2, 320);
+      bgGrad.addColorStop(0, '#151f33');
+      bgGrad.addColorStop(0.7, '#0b101c');
+      bgGrad.addColorStop(1, '#05070d');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Subtle outer rounded squircle glow
+      ctx.strokeStyle = 'rgba(0, 255, 136, 0.4)';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(w/2, h/2, 210, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.5)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(w/2, h/2, 222, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Shopping bag handle
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(w/2, 210, 48, Math.PI, 0, false);
+      ctx.stroke();
+
+      // Bag Body
+      const bagGrad = ctx.createLinearGradient(160, 210, 350, 390);
+      bagGrad.addColorStop(0, '#1a273e');
+      bagGrad.addColorStop(1, '#0d1522');
+      ctx.fillStyle = bagGrad;
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 10;
+      ctx.lineJoin = 'round';
+
+      ctx.beginPath();
+      ctx.moveTo(170, 210);
+      ctx.lineTo(342, 210);
+      ctx.lineTo(326, 380);
+      ctx.lineTo(186, 380);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Green Leaf & Fresh Glow Icon
+      ctx.fillStyle = '#00ff88';
+      ctx.beginPath();
+      ctx.ellipse(w/2, 285, 45, 24, -Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Leaf stem
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(225, 315);
+      ctx.quadraticCurveTo(256, 285, 290, 255);
+      ctx.stroke();
+
+      // Small chicken / meat icon badge
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(310, 340, 26, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🍗', 310, 340);
+
+      // App Brand Name at bottom
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 34px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('EDAPPADI KADAI', w/2, 440);
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = 'bold 20px "Noto Sans Tamil", sans-serif';
+      ctx.fillText('எடப்பாடி கடை', w/2, 474);
+    }
+
+    function renderBanner() {
+      const c = document.getElementById('bannerCanvas');
+      const ctx = c.getContext('2d');
+      const w = 1024, h = 500;
+
+      // Dark lush gradient background
+      const bgGrad = ctx.createLinearGradient(0, 0, w, h);
+      bgGrad.addColorStop(0, '#060b14');
+      bgGrad.addColorStop(0.5, '#0e172a');
+      bgGrad.addColorStop(1, '#05101a');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Decorative glowing circles
+      const glow1 = ctx.createRadialGradient(850, 150, 20, 850, 150, 300);
+      glow1.addColorStop(0, 'rgba(0, 255, 136, 0.25)');
+      glow1.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow1;
+      ctx.fillRect(0, 0, w, h);
+
+      const glow2 = ctx.createRadialGradient(150, 350, 20, 150, 350, 280);
+      glow2.addColorStop(0, 'rgba(245, 158, 11, 0.2)');
+      glow2.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow2;
+      ctx.fillRect(0, 0, w, h);
+
+      // Left Column: Brand & Typography
+      // Top Tag badge
+      ctx.fillStyle = 'rgba(0, 255, 136, 0.15)';
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, 60, 50, 330, 36, 18, true, true);
+
+      ctx.fillStyle = '#00ff88';
+      ctx.font = 'bold 14px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('⚡ 100% FRESH & HYGIENIC DELIVERY', 80, 73);
+
+      // Title
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 48px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('EDAPPADI KADAI', 60, 140);
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '900 32px "Noto Sans Tamil", sans-serif';
+      ctx.fillText('எடப்பாடி கடை 🛍️', 60, 185);
+
+      // Subtitle
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '600 20px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('Fresh Meat • Country Chicken • Fish • Vegetables', 60, 230);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '500 16px "Noto Sans Tamil", sans-serif';
+      ctx.fillText('புதிய ஆட்டுக்கறி, நாட்டுக் கோழி, மீன் மற்றும் காய்கறிகள் உங்கள் வீட்டிற்கே!', 60, 262);
+
+      // Category Pill Badges
+      const categories = [
+        { name: '🍗 Fresh Chicken', color: '#10b981' },
+        { name: '🥩 Tender Mutton', color: '#ef4444' },
+        { name: '🐟 Fresh River Fish', color: '#0ea5e9' },
+        { name: '🥦 Farm Vegetables', color: '#84cc16' }
+      ];
+
+      let pillX = 60;
+      categories.forEach(cat => {
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1;
+        const pillWidth = ctx.measureText(cat.name).width + 30;
+        roundRect(ctx, pillX, 300, pillWidth, 34, 17, true, true);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.fillText(cat.name, pillX + 15, 322);
+        pillX += pillWidth + 12;
+      });
+
+      // Bottom Guarantee Strip
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText('🚀 30-45 Mins Express Delivery | 📍 Edappadi & Surrounding Villages', 60, 420);
+
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillText('📞 WhatsApp & Call Order: +91 87781 48899', 60, 450);
+
+      // Right Column: Visual Shopping Basket Display
+      const cx = 820, cy = 250;
+      // Ambient glow ring
+      ctx.strokeStyle = 'rgba(0, 255, 136, 0.4)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 140, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Big bag illustration
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 30, 36, Math.PI, 0, false);
+      ctx.stroke();
+
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(cx - 75, cy - 30);
+      ctx.lineTo(cx + 75, cy - 30);
+      ctx.lineTo(cx + 60, cy + 90);
+      ctx.lineTo(cx - 60, cy + 90);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Center leaf
+      ctx.fillStyle = '#00ff88';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 25, 35, 18, -Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Emoji floating satellites
+      drawFloatingBadge(ctx, cx - 110, cy - 60, '🍗', '#f59e0b');
+      drawFloatingBadge(ctx, cx + 110, cy - 60, '🐟', '#0284c7');
+      drawFloatingBadge(ctx, cx + 90, cy + 80, '🥬', '#10b981');
+      drawFloatingBadge(ctx, cx - 90, cy + 80, '🥩', '#dc2626');
+    }
+
+    function drawFloatingBadge(ctx, x, y, emoji, borderCol) {
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = borderCol;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, 28, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(emoji, x, y);
+    }
+
+    function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+
+    function downloadCanvas(canvasId, filename) {
+      const canvas = document.getElementById(canvasId);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    window.onload = function() {
+      renderIcon();
+      renderBanner();
+    };
+  </script>
+</body>
+</html>

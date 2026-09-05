@@ -502,6 +502,23 @@
           showScreen('screen-login');
           return;
         }
+
+        const custPhone = (customerProfile.phone || "").trim().replace(/\D/g, '');
+        if (!custPhone || custPhone.length < 10) {
+          showToast(
+            currentLang === 'ta'
+              ? "ஆர்டரை டெலிவரி செய்ய உங்கள் மொபைல் எண் தேவை (Mobile number required for delivery)"
+              : "Mobile number required for delivery. Please update contact details.",
+            "error"
+          );
+          window.isPlacingOrder = false;
+          window._pendingOrderAfterContactSave = true;
+          if (typeof openSimpleAddressEditor === 'function') {
+            openSimpleAddressEditor();
+          }
+          return;
+        }
+
         const addressTextarea = document.getElementById('cart-delivery-address');
       const address = addressTextarea ? addressTextarea.value.trim() : "";
       if (!address || address === 'Salem, Tamil Nadu') {
@@ -638,7 +655,9 @@
         deliveryLongitude: sanitizedLng,
         needsManualLocationPin: needsManualLocationPin,
         deliveryTimeSlot: selectedDeliverySlot,
-        paymentMethod: selectedPaymentMethod,
+        paymentMethod: selectedPaymentMethod === 'COD' ? 'Cash on Delivery (COD)' : selectedPaymentMethod,
+        paymentStatus: selectedPaymentMethod === 'COD' ? 'UNPAID' : 'PENDING',
+        needsPaymentVerification: false,
         category: primaryCategory,
         orderCategory: primaryCategory,
         orderStage: 'Received',
@@ -930,6 +949,7 @@ function parseAndroidUpiPaymentResult(statusString) {
       const isPaid = parseAndroidUpiPaymentResult(status);
       const normStatus = (status || "").trim().toUpperCase();
       const isExplicitCancel = normStatus === 'CANCELLED' || normStatus === 'CANCEL' || normStatus === 'FAILED' || normStatus === 'FAILURE';
+      const isBankPending = hasRealTxnRef && (upiStatusMsg.toUpperCase() === 'PENDING' || upiStatusMsg.toUpperCase() === 'SUBMITTED' || upiResponseCode === 'U30' || upiResponseCode === '92');
 
       if (isPaid && hasRealTxnRef) {
         debugLog("[UPI Payment] Confirmed payment successful with verified Txn Ref!");
@@ -966,27 +986,26 @@ function parseAndroidUpiPaymentResult(statusString) {
           window.pendingUpiOrderData = null;
           removeData('ek_pending_upi_order_data');
         }
-      } else if (!isExplicitCancel) {
-        // Callback received without real transaction ID / approval reference number (e.g. SUCCESS_NO_RESPONSE_DATA)
-        // Mark as payment_pending_verification instead of confirmed paid state.
-        debugLog("[UPI Payment] Unverified callback received (lacking real Txn ID/Ref). Marking order as payment_pending_verification.");
+      } else if (isBankPending) {
+        // Genuine Bank Pending status with actual transaction reference
+        debugLog("[UPI Payment] Bank Pending status with real Txn Ref. Marking order as payment_pending_verification.");
 
-        orderData.order.upiTxnId = upiTxnId || "NO_TXN_REF";
-        orderData.order.upiApprovalRefNo = upiApprovalRefNo || "NO_APPROVAL_REF";
-        orderData.order.upiResponseCode = upiResponseCode || "PENDING_VERIFICATION";
+        orderData.order.upiTxnId = upiTxnId;
+        orderData.order.upiApprovalRefNo = upiApprovalRefNo;
+        orderData.order.upiResponseCode = upiResponseCode || "PENDING";
         orderData.order.upiStatus = "PENDING_VERIFICATION";
         orderData.order.paymentStatus = "PENDING_VERIFICATION";
-        orderData.order.paymentMethod = "UPI Payment (Unverified)";
+        orderData.order.paymentMethod = "UPI Payment (Pending Verification)";
         orderData.order.status = "payment_pending_verification";
         orderData.order.needsPaymentVerification = true;
 
         showToast(currentLang === 'ta'
-          ? "யுபிஐ கட்டணம் பெறப்பட்டது. கடை நிர்வாகி சரிபார்க்கிறார்... ⏳"
-          : "UPI payment callback received. Verification pending with shop admin... ⏳", "warning");
+          ? "வங்கி பரிவர்த்தனை நிலுவையில் உள்ளது. கடை நிர்வாகி சரிபார்க்கிறார்... ⏳"
+          : "Bank transaction pending. Verification pending with shop admin... ⏳", "warning");
 
         showLyoTransitLoader(currentLang === 'ta'
           ? "கட்டண விபரம் சரிபார்க்கப்படுகிறது... 🥩🥦"
-          : "Verifying payment confirmation... 🥩🥦", 1800);
+          : "Verifying payment status... 🥩🥦", 1800);
 
         try {
           await completeOrderPlacement(
@@ -1009,7 +1028,7 @@ function parseAndroidUpiPaymentResult(statusString) {
           removeData('ek_pending_upi_order_data');
         }
       } else {
-        console.warn("[UPI Payment] Payment was cancelled or failed. Status:", status);
+        console.warn("[UPI Payment] Payment was cancelled, failed, or lacking valid transaction reference. Status:", status);
 
         // Automated Failover System to backup UPI ID if primary fails
         const attempt = window.currentUpiAttemptAccount || 'primary';
@@ -1806,7 +1825,9 @@ function parseAndroidUpiPaymentResult(statusString) {
         deliveryLatitude: finalLat,
         deliveryLongitude: finalLng,
         deliveryTimeSlot: "Instant Delivery / விரைவான விநியோகம்",
-        paymentMethod: quickOrderPaymentMethod,
+        paymentMethod: quickOrderPaymentMethod === 'CASH' ? 'Cash on Delivery (COD)' : quickOrderPaymentMethod,
+        paymentStatus: quickOrderPaymentMethod === 'CASH' ? 'UNPAID' : 'PENDING',
+        needsPaymentVerification: false,
         items: quickOrderCart.map(item => ({
           productId: item.productId,
           name: item.name,
@@ -1876,7 +1897,7 @@ function parseAndroidUpiPaymentResult(statusString) {
         saveData('ek_pending_upi_order_data', pendingOrderData);
 
         const upiSettings = settings.upiSettings || { upiEnabled: true, currency: 'INR' };
-        let upiMerchantId = settings.merchantUpiId || 'einsteinananth24@okaxis';
+        let upiMerchantId = settings.merchantUpiId || '8778148899@ptyes';
         let upiMerchantName = "Edappadi Kadai";
         let upiTxnNote = `Order ${order.id} - Edappadi Kadai`;
         let upiCurrency = upiSettings.currency || 'INR';
@@ -2097,7 +2118,7 @@ function parseAndroidUpiPaymentResult(statusString) {
       }
 
       try {
-        const LATEST_VERSION = "2.2.0";
+        const LATEST_VERSION = "8.0.0";
         const lastVersion = localStorage.getItem('ek_app_version');
         if (lastVersion !== LATEST_VERSION) {
           debugLog("[Cache Buster] Version mismatch. Upgrading from " + lastVersion + " to " + LATEST_VERSION);
@@ -3544,7 +3565,7 @@ recoverPendingUpiOrder();
       // 7. Delivery Charge Calculator
       DeliveryChargeCalculator: {
         calculateDelivery(subtotal, cartItems, settings = {}) {
-          let deliveryCharge = parseInt(settings.deliveryCharge) || 40;
+          let deliveryCharge = (settings.deliveryCharge !== undefined && settings.deliveryCharge !== '' && !isNaN(Number(settings.deliveryCharge))) ? Number(settings.deliveryCharge) : 40;
           let distance = null;
           let zoneName = 'Flat Rate';
 

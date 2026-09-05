@@ -168,7 +168,10 @@
         settings.announcement = msg;
         saveData('ek_settings', settings);
 
-        await db.collection('ek_settings').doc('store_settings').set(settings, { merge: true });
+        await Promise.all([
+          db.collection('ek_settings').doc('store_settings').set(settings, { merge: true }).catch(() => {}),
+          db.collection('ek_settings').doc('global_config').set({ announcement: msg }, { merge: true }).catch(() => {})
+        ]);
 
         await db.collection('ek_broadcast_requests').add({
           titleEn: '📢 Edappadi Kadai',
@@ -179,7 +182,7 @@
           createdAt: new Date().toISOString(),
           createdBy: 'admin',
           status: 'completed'
-        });
+        }).catch(e => console.warn('[Broadcast Save] Error:', e));
 
         let usersSnap = null;
         try {
@@ -193,12 +196,16 @@
         let enqueuedCount = 0;
         const promises = [];
 
-        // Write ONE document to ek_topic_broadcast_requests to reach ALL installed customer devices (including non-logged-in / guest installs)
+        // Write to ek_topic_broadcast_requests to reach ALL installed customer devices (including non-logged-in / guest installs)
         promises.push(
           db.collection('ek_topic_broadcast_requests').add({
             topic: "all_customers",
             title: currentLang === 'ta' ? '📢 எடப்பாடி கடை' : '📢 Edappadi Kadai',
+            titleTa: '📢 எடப்பாடி கடை',
+            titleEn: '📢 Edappadi Kadai',
             body: msg,
+            bodyTa: msg,
+            bodyEn: msg,
             createdAt: new Date().toISOString(),
             processed: false
           }).catch(e => console.warn('[Topic Broadcast Request] Error:', e))
@@ -496,7 +503,11 @@
             db.collection('ek_topic_broadcast_requests').add({
               topic: topicName,
               title: item.title,
+              titleTa: item.title,
+              titleEn: item.title,
               body: item.body,
+              bodyTa: item.body,
+              bodyEn: item.body,
               createdAt: new Date().toISOString(),
               notificationId: item.id || ''
             }).catch(e => console.warn('[Topic Broadcast Queue Error]:', e))
@@ -1103,26 +1114,73 @@
     }
 
     function adjustUserPoints(userId, diff) {
-      const users = getData('ek_users');
+      const users = getData('ek_users') || [];
       const idx = users.findIndex(u => u.id === userId);
       if (idx === -1) return;
 
-      users[idx].loyaltyPoints = Math.max(0, users[idx].loyaltyPoints + diff);
+      const oldPoints = users[idx].loyaltyPoints || 0;
+      users[idx].loyaltyPoints = Math.max(0, oldPoints + diff);
       users[idx].tier = computeLoyaltyTier(users[idx].loyaltyPoints);
+      users[idx].updatedAt = new Date().toISOString();
 
       saveData('ek_users', users);
+      if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_users');
+
+      const targetUser = users[idx];
+      const targetPhone = targetUser.phone || '';
+      const newPoints = Math.round(targetUser.loyaltyPoints);
+      const pointsDiff = Math.round(diff);
+
+      const titleTa = pointsDiff > 0 ? "🎁 வாலட் புள்ளிகள் வரவு வைக்கப்பட்டது!" : "🔔 வாலட் புள்ளிகள் மாற்றப்பட்டது";
+      const titleEn = pointsDiff > 0 ? "🎁 Wallet Points Credited!" : "🔔 Wallet Points Adjusted";
+      const bodyTa = pointsDiff > 0
+        ? `நிர்வாகியால் உங்கள் வாலட்டில் +${pointsDiff} புள்ளிகள் சேர்க்கப்பட்டுள்ளது! தற்போதைய இருப்பு: ${newPoints} pts.`
+        : `நிர்வாகியால் உங்கள் வாலட்டில் ${pointsDiff} புள்ளிகள் சரிசெய்யப்பட்டுள்ளது. தற்போதைய இருப்பு: ${newPoints} pts.`;
+      const bodyEn = pointsDiff > 0
+        ? `Admin credited +${pointsDiff} points to your wallet! Current balance: ${newPoints} pts.`
+        : `Admin adjusted ${pointsDiff} points in your wallet. Current balance: ${newPoints} pts.`;
 
       if (typeof db !== 'undefined' && db && db.collection) {
         db.collection('ek_users').doc(userId).set(users[idx], { merge: true })
           .then(() => debugLog(`[Points Sync] Instantly synced adjusted points to Cloud for user: ${userId}`))
           .catch(err => console.error("[Points Sync] Cloud points sync failed:", err));
+
+        // Real-time notification dispatched directly to customer in Firestore
+        db.collection('ek_customer_notifications').add({
+          targetUserId: userId,
+          targetPhone: targetPhone,
+          titleTa: titleTa,
+          titleEn: titleEn,
+          bodyTa: bodyTa,
+          bodyEn: bodyEn,
+          type: "points_update",
+          pointsDiff: pointsDiff,
+          currentPoints: newPoints,
+          createdAt: new Date().toISOString(),
+          read: false
+        }).catch(err => console.warn("[Customer Notif Queue] Points notification write failed:", err));
+      }
+
+      // If customer is active in current session (e.g. testing in same app)
+      const currentActive = typeof getActiveUser === 'function' ? getActiveUser() : null;
+      if (currentActive && (currentActive.id === userId || (targetPhone && currentActive.phone === targetPhone))) {
+        currentActive.loyaltyPoints = users[idx].loyaltyPoints;
+        currentActive.tier = users[idx].tier;
+        saveData('ek_active_user', currentActive);
+        const sess = getData('ek_customer_session');
+        if (sess) {
+          sess.loyaltyPoints = currentActive.loyaltyPoints;
+          saveData('ek_customer_session', sess);
+        }
+        if (typeof window.addNotification === 'function') {
+          window.addNotification(titleTa, titleEn, bodyTa, bodyEn, '🎁');
+        }
       }
 
       renderAdminCustomers();
 
-      if (diff > 0) {
-        showToast(`Adjusted points! Current: ${Math.round(users[idx].loyaltyPoints)} pts`, "success");
-      }
+      const actionText = pointsDiff > 0 ? `+${pointsDiff}` : `${pointsDiff}`;
+      showToast(`Adjusted points (${actionText}) for ${targetUser.name || 'customer'}! Current: ${newPoints} pts`, "success");
     }
 
     let _customerSearchDebounceTimer = null;
@@ -1143,7 +1201,16 @@
       }
 
       const orders = typeof getDataCached === 'function' ? getDataCached('ek_orders', []) : (getData('ek_orders') || []);
-      const myOrders = orders.filter(o => o && (o.customerId === u.id || o.userId === u.id || (u.phone && o.customerPhone === u.phone)));
+      const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
+      const myOrders = orders.filter(o => {
+        if (!o) return false;
+        if (o.customerId === u.id || o.userId === u.id) return true;
+        if (uPhoneDigits && uPhoneDigits.length >= 10) {
+          const oPhone = String(o.customerPhone || o.phone || '').replace(/\D/g, '');
+          if (oPhone && oPhone.includes(uPhoneDigits.slice(-10))) return true;
+        }
+        return false;
+      });
       const spent = myOrders.reduce((sum, o) => sum + (o.totalAmount || o.price || 0), 0);
 
       const uName = u.name || 'Anonymous Customer';
@@ -1152,6 +1219,9 @@
       const uAddress = u.address || 'N/A';
       const uTier = u.tier || 'bronze';
       const uPoints = u.loyaltyPoints || 0;
+      const isGoogle = !!u.isGoogleAuth;
+      const regDate = u.createdAt || u.joinedAt || u.registeredAt;
+      const joinedStr = regDate ? new Date(regDate).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
 
       let historyHtml = '';
       if (myOrders.length === 0) {
@@ -1179,17 +1249,40 @@
 
       showCustomAlert("வாடிக்கையாளர் விவரங்கள் & ஆர்டர் வரலாறு / Customer Details & History", `
         <div style="text-align:left; font-size:12.5px; line-height:1.6; font-family:'Poppins', sans-serif; max-height:70vh; overflow-y:auto; padding-right:4px;">
-          <div style="font-size:15px; font-weight:800; border-bottom:1px dashed rgba(255,255,255,0.15); padding-bottom:8px; margin-bottom:12px; display:flex; align-items:center; gap:8px; color:var(--accent-orange);">
-            👤 ${escapeHtml(uName)}
+          <div style="font-size:15px; font-weight:800; border-bottom:1px dashed rgba(255,255,255,0.15); padding-bottom:8px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; color:var(--accent-orange);">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span>👤 ${escapeHtml(uName)}</span>
+            </div>
+            ${isGoogle ? '<span style="font-size:10px; font-weight:700; background:rgba(66,133,244,0.15); color:#60a5fa; padding:2px 8px; border-radius:6px; border:1px solid rgba(66,133,244,0.3);">🌐 Google User</span>' : '<span style="font-size:10px; font-weight:700; background:rgba(16,185,129,0.15); color:#34d399; padding:2px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.3);">📱 Mobile User</span>'}
           </div>
-          <p style="margin:4px 0;"><strong>ID:</strong> <span style="font-family:monospace; color:#888;">${u.id || ''}</span></p>
-          <p style="margin:4px 0;"><strong>Phone:</strong> +91 ${uPhone}</p>
-          <p style="margin:4px 0;"><strong>Email:</strong> ${uEmail}</p>
-          <p style="margin:4px 0;"><strong>Address:</strong> ${uAddress}</p>
-          <p style="margin:4px 0;"><strong>Landmark Tier:</strong> <span style="text-transform:uppercase; font-size:9.5px; padding:2px 6px; font-weight:800; background:#f59e0b; color:#000; border-radius:4px; margin-left:4px;">${uTier.toUpperCase()}</span></p>
+          <p style="margin:4px 0;"><strong>Firebase UID:</strong> <span style="font-family:monospace; color:#94a3b8; font-size:11px; word-break:break-all;">${u.id || ''}</span></p>
+          <p style="margin:4px 0;"><strong>Phone:</strong> ${uPhone ? '+91 ' + escapeHtml(uPhone) : '<span style="color:#94a3b8;">Not provided yet</span>'}</p>
+          <p style="margin:4px 0;"><strong>Email:</strong> ${escapeHtml(uEmail)}</p>
+          <p style="margin:4px 0;"><strong>Address:</strong> ${escapeHtml(uAddress)}</p>
+          ${(u.latitude && u.longitude) ? `<p style="margin:4px 0;"><strong>GPS Coordinates:</strong> <span style="color:#60a5fa; font-family:monospace;">${u.latitude.toFixed(5)}, ${u.longitude.toFixed(5)}</span></p>` : ''}
+          <p style="margin:4px 0;"><strong>Registered At:</strong> <span style="color:#e2e8f0;">${joinedStr}</span></p>
+          <p style="margin:4px 0;"><strong>Loyalty Tier:</strong> <span style="text-transform:uppercase; font-size:9.5px; padding:2px 6px; font-weight:800; background:#f59e0b; color:#000; border-radius:4px; margin-left:4px;">${uTier.toUpperCase()}</span></p>
           <p style="margin:4px 0;"><strong>Wallet Points:</strong> <span style="color:#10b981; font-weight:bold;">${Math.round(uPoints)} pts</span></p>
-          <p style="margin:4px 0;"><strong>Concluded Orders:</strong> ${myOrders.length}</p>
+          <p style="margin:4px 0;"><strong>Total Orders:</strong> ${myOrders.length}</p>
           <p style="margin:4px 0;"><strong>Gross Turnout:</strong> <span style="color:var(--accent-orange); font-weight:bold;">₹${spent}</span></p>
+
+          <!-- Admin Quick Customer Support Actions -->
+          <div style="margin-top:10px; border-top:1px dashed rgba(255,255,255,0.15); padding-top:10px; display:flex; flex-direction:column; gap:8px;">
+            <h5 style="font-size:11px; font-weight:800; color:var(--accent-orange); margin:0; text-transform:uppercase; letter-spacing:0.5px;">🛠️ வாடிக்கையாளர் உதவி / Quick Actions:</h5>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              ${(uEmail && !uEmail.endsWith('@app.com')) ? `
+              <button type="button" onclick="adminSendCustomerPasswordReset('${escapeHtml(uEmail)}', '${escapeHtml(uName)}')" style="flex:1; min-width:140px; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.35); padding:8px 10px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                <span>🔑</span> Reset Password Email
+              </button>` : ''}
+              ${uPhone ? `
+              <a href="https://wa.me/91${uPhone.replace(/\\D/g, '').slice(-10)}?text=${encodeURIComponent('வணக்கம் ' + uName + ', எடப்பாடி கடை சார்பாக தொடர்பு கொள்கிறோம்.')}" target="_blank" style="flex:1; min-width:90px; background:#25D366; color:#fff; text-decoration:none; padding:8px 10px; border-radius:8px; font-size:11.5px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px;">
+                <span>💬</span> WhatsApp
+              </a>
+              <a href="tel:${uPhone.replace(/\\D/g, '').slice(-10)}" style="flex:1; min-width:80px; background:#0284c7; color:#fff; text-decoration:none; padding:8px 10px; border-radius:8px; font-size:11.5px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px;">
+                <span>📞</span> Call
+              </a>` : ''}
+            </div>
+          </div>
 
           <div style="margin-top:14px; border-top:1px dashed rgba(255,255,255,0.15); padding-top:10px;">
             <h5 style="font-size:12px; font-weight:800; color:#fff; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.5px;">📦 ஆர்டர் வரலாறு / Order History (${myOrders.length})</h5>
@@ -1324,44 +1417,74 @@
       );
     }
 
+    async function adminSendCustomerPasswordReset(email, name) {
+      if (!email) {
+        showToast("Customer email address is not available.", "error");
+        return;
+      }
+      try {
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          await firebase.auth().sendPasswordResetEmail(email);
+          showToast(`✅ கடவுச்சொல் மீட்டமைப்பு மின்னஞ்சல் (${email}) வாடிக்கையாளருக்கு அனுப்பப்பட்டது!`, "success");
+        } else {
+          showToast("Firebase Auth is not available.", "error");
+        }
+      } catch (err) {
+        console.error("Admin sendPasswordResetEmail error:", err);
+        showToast("Error sending reset email: " + err.message, "error");
+      }
+    }
+
     function renderAdminCustomers() {
       const searchInput = document.getElementById('customer-search-input');
       const search = searchInput ? searchInput.value.toLowerCase().trim() : '';
       const container = document.getElementById('admin-customer-list');
       if (!container) return;
 
-      if (typeof db !== 'undefined' && db && !window._fetchingAdminCustomers) {
-        window._fetchingAdminCustomers = true;
-        db.collection('ek_users').get().then(snap => {
-          window._fetchingAdminCustomers = false;
-          if (snap && !snap.empty) {
-            const cloudUsers = [];
-            snap.forEach(doc => {
-              cloudUsers.push({ id: doc.id, ...doc.data() });
-            });
-            if (cloudUsers.length > 0) {
-              saveData('ek_users', cloudUsers);
-              if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_users');
-              const searchInp = document.getElementById('customer-search-input');
-              const currentSearch = searchInp ? searchInp.value.trim() : '';
-              if (!currentSearch) {
-                renderAdminCustomers();
+      if (typeof db !== 'undefined' && db && !window._adminCustomersListenerAttached) {
+        window._adminCustomersListenerAttached = true;
+        try {
+          db.collection('ek_users').onSnapshot(snap => {
+            if (snap && !snap.empty) {
+              const cloudUsers = [];
+              snap.forEach(doc => {
+                cloudUsers.push({ id: doc.id, ...doc.data() });
+              });
+              if (cloudUsers.length > 0) {
+                saveData('ek_users', cloudUsers);
+                if (typeof invalidateDataCache === 'function') invalidateDataCache('ek_users');
+                const searchInp = document.getElementById('customer-search-input');
+                const currentSearch = searchInp ? searchInp.value.trim() : '';
+                if (!currentSearch) {
+                  renderAdminCustomers();
+                }
               }
             }
-          }
-        }).catch(err => {
-          window._fetchingAdminCustomers = false;
-          console.warn("[renderAdminCustomers] Cloud sync notice:", err);
-        });
+          }, err => {
+            console.warn("[renderAdminCustomers] Live Firestore listener notice:", err);
+          });
+        } catch (lErr) {
+          console.warn("[renderAdminCustomers] Live listener attach skipped:", lErr);
+        }
       }
 
       container.innerHTML = '';
 
-      const users = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : (getData('ek_users') || []);
-      let filtered = users;
+      const allUsers = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : (getData('ek_users') || []);
+      // Strictly filter out Admins and Riders so only real customers are displayed in Admin Customer management
+      const customersOnly = allUsers.filter(u => {
+        if (!u) return false;
+        const role = String(u.role || '').toLowerCase();
+        const id = String(u.id || '').toLowerCase();
+        if (role === 'admin' || role === 'superadmin' || role === 'rider' || role === 'delivery') return false;
+        if (id.startsWith('admin_') || id.startsWith('rider_')) return false;
+        return true;
+      });
+
+      let filtered = customersOnly;
       if (search) {
         const cleanSearch = search.replace(/\D/g, '');
-        filtered = users.filter(u => {
+        filtered = customersOnly.filter(u => {
           if (!u) return false;
           const uName = (u.name || '').toLowerCase();
           const uPhone = (u.phone || '').replace(/\D/g, '');
@@ -1370,7 +1493,7 @@
         });
       }
 
-      const orders = getDataCached('ek_orders', []);
+      const orders = typeof getDataCached === 'function' ? getDataCached('ek_orders', []) : (getData('ek_orders') || []);
 
       if (filtered.length === 0) {
         container.innerHTML = `<div style="text-align:center; padding: 24px; color: var(--text-muted); font-size: 13px;">No customer records found.</div>`;
@@ -1382,9 +1505,10 @@
         if (!u) return;
         const uId = u.id || '';
         const uName = u.name || 'Anonymous Customer';
-        const uPhone = u.phone || 'N/A';
+        const uPhone = u.phone || '';
         const uTier = u.tier || 'bronze';
         const uPoints = u.loyaltyPoints || 0;
+        const isGoogle = !!u.isGoogleAuth;
         const regDate = u.createdAt || u.joinedAt || u.registeredAt;
         const joinedStr = regDate ? new Date(regDate).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : 'Registered User';
         const isVerified = Boolean(u.isPhoneVerified || u.fcmToken || u.realFcmToken || u.phone);
@@ -1392,7 +1516,20 @@
           ? `<span style="font-size:10px; font-weight:700; background:rgba(16,185,129,0.15); color:#34d399; padding:2px 6px; border-radius:4px; border:1px solid rgba(16,185,129,0.3);">🟢 ACTIVE</span>`
           : `<span style="font-size:10px; font-weight:700; background:rgba(245,158,11,0.15); color:#fbbf24; padding:2px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.3);">🟡 UNVERIFIED</span>`;
 
-        const myOrders = orders.filter(o => o && (o.customerId === uId || o.userId === uId));
+        const googleBadge = isGoogle
+          ? `<span style="font-size:10px; font-weight:700; background:rgba(66,133,244,0.15); color:#60a5fa; padding:1px 6px; border-radius:4px; border:1px solid rgba(66,133,244,0.3);">🌐 GOOGLE</span>`
+          : `<span style="font-size:10px; font-weight:700; background:rgba(16,185,129,0.1); color:#34d399; padding:1px 6px; border-radius:4px; border:1px solid rgba(16,185,129,0.2);">📱 MOBILE</span>`;
+
+        const uPhoneDigits = uPhone.replace(/\D/g, '');
+        const myOrders = orders.filter(o => {
+          if (!o) return false;
+          if (o.customerId === uId || o.userId === uId) return true;
+          if (uPhoneDigits && uPhoneDigits.length >= 10) {
+            const oPhone = String(o.customerPhone || o.phone || '').replace(/\D/g, '');
+            if (oPhone && oPhone.includes(uPhoneDigits.slice(-10))) return true;
+          }
+          return false;
+        });
         const spent = myOrders.reduce((sum, o) => sum + (o.totalAmount || o.price || 0), 0);
 
         const card = `
@@ -1403,8 +1540,9 @@
                   <h4 style="color:#fff; font-size:14px; font-weight: 700; margin:0;">👤 ${escapeHtml(uName)}</h4>
                   <span class="badge" style="background:#222d3a; color:var(--accent-orange); font-size:10px; border: 1px solid rgba(245,158,11,0.3); padding: 1px 6px;">${uTier.toUpperCase()}</span>
                   ${statusBadge}
+                  ${googleBadge}
                 </div>
-                <p style="font-size:11.5px; color:var(--accent-orange); margin-top:3px; font-weight:600;">📞 +91 ${escapeHtml(uPhone)}</p>
+                <p style="font-size:11.5px; color:var(--accent-orange); margin-top:3px; font-weight:600;">📞 ${uPhone ? '+91 ' + escapeHtml(uPhone) : '<span style="color:#94a3b8; font-weight:normal;">No phone added</span>'}</p>
                 <div style="font-size:11px; color:#94a3b8; margin-top:4px; display:flex; gap:10px; flex-wrap:wrap;">
                   <span>📅 Joined: <strong style="color:#e2e8f0;">${joinedStr}</strong></span>
                   <span>📦 Orders: <strong style="color:#e2e8f0;">${myOrders.length}</strong></span>

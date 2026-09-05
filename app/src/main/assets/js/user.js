@@ -65,6 +65,17 @@
           }
         }
       }
+      if (!user && session.email) {
+        user = users.find(u => u.email && u.email.toLowerCase() === session.email.toLowerCase());
+        if (user) {
+          session.userId = user.id;
+          if (getData('ek_customer_session', null)) {
+            saveData('ek_customer_session', session);
+          } else if (sessionStorage.getItem('ek_customer_session_temp')) {
+            sessionStorage.setItem('ek_customer_session_temp', JSON.stringify(session));
+          }
+        }
+      }
 
       if (!user) {
         if (session.userId && (session.userId.startsWith('admin_') || session.userId.includes('admin') || session.userId.startsWith('rider_') || session.userId.includes('rider') || session.userId.includes('deliv'))) {
@@ -463,9 +474,35 @@
           <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 20px;">📍</span>
-              <h3 style="color: #ffffff; font-size: 15px; font-weight: 800; margin: 0; font-family: 'Poppins', sans-serif; letter-spacing: 0.3px;">DELIVERY ADDRESS</h3>
+              <h3 style="color: #ffffff; font-size: 15px; font-weight: 800; margin: 0; font-family: 'Poppins', 'Hind Madurai', sans-serif; letter-spacing: 0.3px;">
+                ${currentLang === 'ta' ? 'தொடர்பு & விநியோக முகவரி' : 'CONTACT & DELIVERY DETAILS'}
+              </h3>
             </div>
             <button onclick="closeSimpleAddressEditor()" style="background: transparent; border: none; color: #9ca3af; font-size: 18px; cursor: pointer; padding: 4px;">✕</button>
+          </div>
+
+          <!-- Customer Contact Name & Phone Row -->
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px; background: rgba(255,255,255,0.02); border: 1.2px solid rgba(255,255,255,0.08); border-radius: 16px;">
+            <div style="font-size: 11px; font-weight: 800; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <span>👤</span> <span>${currentLang === 'ta' ? 'வாடிக்கையாளர் தொடர்பு விவரங்கள்' : 'Customer Contact Details'}</span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <div style="flex: 1.2;">
+                <label style="font-size: 11px; font-weight: 700; color: #9ca3af; margin-bottom: 4px; display: block;">
+                  ${currentLang === 'ta' ? 'பெயர் (Name) *' : 'Full Name *'}
+                </label>
+                <input type="text" id="addr-field-name" value="${escapeHtml(user.name || '')}" placeholder="e.g. Rajenthiran" style="width: 100%; height: 42px; background: rgba(255,255,255,0.03); border: 1.2px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 0 12px; color: #ffffff; font-size: 13px; font-weight: 600; box-sizing: border-box; outline: none;" onfocus="this.style.borderColor='var(--accent-orange)'" onblur="this.style.borderColor='rgba(255,255,255,0.08)'" />
+              </div>
+              <div style="flex: 1.2;">
+                <label style="font-size: 11px; font-weight: 700; color: #10b981; margin-bottom: 4px; display: block;">
+                  ${currentLang === 'ta' ? 'மொபைல் எண் *' : 'Mobile Number *'}
+                </label>
+                <div style="display: flex; align-items: center; background: rgba(255,255,255,0.03); border: 1.2px solid ${!user.phone || user.phone.length < 10 ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.08)'}; border-radius: 12px; padding: 0 8px; box-sizing: border-box;">
+                  <span style="font-size: 12px; font-weight: 700; color: #9ca3af; margin-right: 4px;">+91</span>
+                  <input type="tel" id="addr-field-phone" value="${(user.phone || '').replace(/\D/g, '').slice(-10)}" placeholder="8778148899" maxlength="10" style="flex: 1; height: 42px; background: transparent; border: none; color: #ffffff; font-size: 13px; font-weight: 700; outline: none;" onfocus="this.parentElement.style.borderColor='var(--accent-orange)'" onblur="this.parentElement.style.borderColor='rgba(255,255,255,0.08)'" />
+                </div>
+              </div>
+            </div>
           </div>
 
           ${savedAddressesListHtml}
@@ -698,6 +735,20 @@
     }
 
     function saveSimpleAddressFields() {
+      const nameInput = document.getElementById('addr-field-name');
+      const phoneInput = document.getElementById('addr-field-phone');
+      const name = nameInput ? nameInput.value.trim() : '';
+      const phone = phoneInput ? phoneInput.value.replace(/\D/g, '').slice(-10) : '';
+
+      if (nameInput && !name) {
+        showToast(currentLang === 'ta' ? "தயவுசெய்து உங்கள் பெயரை உள்ளிடவும்!" : "Please enter your name!", "error");
+        return;
+      }
+      if (phoneInput && (!phone || phone.length !== 10)) {
+        showToast(currentLang === 'ta' ? "தயவுசெய்து 10 இலக்க மொபைல் எண்ணை உள்ளிடவும்!" : "Please enter a valid 10-digit mobile number!", "error");
+        return;
+      }
+
       const houseNo = document.getElementById('addr-field-house').value.trim();
       const street = document.getElementById('addr-field-street').value.trim();
       const area = document.getElementById('addr-field-area').value.trim();
@@ -726,6 +777,32 @@
         return;
       }
 
+      // Update user details
+      const user = getActiveUser() || {};
+      if (name) user.name = name;
+      if (phone) user.phone = phone;
+
+      const users = getData('ek_users', []) || [];
+      const uIdx = users.findIndex(u => u && u.id === user.id);
+      if (uIdx !== -1) {
+        if (name) users[uIdx].name = name;
+        if (phone) users[uIdx].phone = phone;
+        saveData('ek_users', users);
+      }
+
+      const session = getActiveSession() || {};
+      if (name) session.name = name;
+      if (phone) session.phone = phone;
+      saveData('ek_customer_session', session);
+
+      if (typeof db !== 'undefined' && db && user.id) {
+        db.collection('ek_users').doc(user.id).update({
+          name: user.name,
+          phone: user.phone,
+          updatedAt: new Date().toISOString()
+        }).catch(() => null);
+      }
+
       const fields = { houseNo, street, area, landmark, city, pincode };
       const fullAddress = buildAddressString(fields);
 
@@ -735,11 +812,73 @@
 
       syncPrimaryUserAddress(fullAddress, lat, lng);
       renderAllAddressCards();
+      renderCartCustomerContactCard();
+
+      // Update quick order review if visible
+      const quickPhone = document.getElementById('quick-order-review-phone');
+      if (quickPhone && phone) quickPhone.innerText = phone;
+      const quickAddr = document.getElementById('quick-order-review-address');
+      if (quickAddr) quickAddr.innerText = fullAddress;
+
       closeSimpleAddressEditor();
-      showToast("Address saved successfully!", "success");
+      showToast(currentLang === 'ta' ? "விவரங்கள் வெற்றிகரமாக சேமிக்கப்பட்டன! ✅" : "Details saved successfully! ✅", "success");
+
+      if (window._pendingOrderAfterContactSave) {
+        window._pendingOrderAfterContactSave = false;
+        if (typeof actualPlaceOrder === 'function') {
+          setTimeout(actualPlaceOrder, 300);
+        }
+      }
     }
 
+    window.openOrderDetailsEditor = openSimpleAddressEditor;
+
+    function renderCartCustomerContactCard() {
+      const container = document.getElementById('cart-customer-contact-card');
+      if (!container) return;
+      const user = getActiveUser();
+      if (!user) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+      }
+      container.style.display = 'block';
+
+      const name = user.name || "Customer";
+      const phone = (user.phone || "").trim().replace(/\D/g, '');
+      const hasPhone = phone.length >= 10;
+      const photo = user.photoUrl;
+
+      const phoneBadge = hasPhone
+        ? `<span style="color: #10b981; font-weight: 700; font-size: 12.5px; display: inline-flex; align-items: center; gap: 4px;">📞 +91 ${phone.slice(-10)}</span>`
+        : `<span style="color: #f59e0b; font-weight: 700; font-size: 11px; background: rgba(245, 158, 11, 0.12); padding: 3px 8px; border-radius: 8px; border: 1px dashed rgba(245, 158, 11, 0.4); display: inline-flex; align-items: center; gap: 4px;">⚠️ ${currentLang === 'ta' ? 'மொபைல் எண் சேர்க்கவும்' : 'Add Mobile Number'}</span>`;
+
+      container.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+            <div style="width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(249, 115, 22, 0.05) 100%); border: 1.5px solid var(--accent-orange); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; overflow: hidden;">
+              ${photo ? `<img src="${photo}" style="width: 100%; height: 100%; object-fit: cover;" alt="User">` : '👤'}
+            </div>
+            <div style="min-width: 0;">
+              <div style="font-size: 13px; font-weight: 800; color: #ffffff; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Poppins', 'Hind Madurai', sans-serif;">
+                ${escapeHtml(name)}
+              </div>
+              <div style="margin-top: 2px;">
+                ${phoneBadge}
+              </div>
+            </div>
+          </div>
+          <button type="button" onclick="openSimpleAddressEditor()" style="background: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.35); color: var(--accent-orange); border-radius: 10px; padding: 6px 12px; font-size: 11.5px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: 'Poppins', 'Hind Madurai', sans-serif; transition: all 0.2s;" onmouseover="this.style.background='rgba(249,115,22,0.2)'" onmouseout="this.style.background='rgba(249,115,22,0.1)'">
+            <span>✏️</span> <span>${currentLang === 'ta' ? 'விவரங்களை திருத்து' : 'Edit Details'}</span>
+          </button>
+        </div>
+      `;
+    }
+
+    window.renderCartCustomerContactCard = renderCartCustomerContactCard;
+
     function renderAllAddressCards() {
+      renderCartCustomerContactCard();
       const user = getActiveUser() || {};
       const currentAddress = user.address || '';
 

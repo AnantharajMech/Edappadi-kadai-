@@ -318,7 +318,9 @@ let _realtimeUnsubscribers = {
   products: null,
   orders: null,
   broadcasts: null,
-  deliveryZones: null
+  deliveryZones: null,
+  customerProfile: null,
+  customerNotifications: null
 };
 
 let _realtimeHomeRenderTimer = null;
@@ -406,7 +408,13 @@ window.setupCloudRealtimeListeners2 = function() {
             }
           }
         }
-      }, err => console.warn("[Realtime Sync] Settings listener notice:", err));
+      }, err => {
+        if (err && (err.code === 'resource-exhausted' || (err.message && err.message.includes('Quota exceeded')))) {
+          console.warn("[Realtime Sync] Settings listener offline quota fallback active.");
+          return;
+        }
+        console.warn("[Realtime Sync] Settings listener notice:", err);
+      });
     } catch(e) {
       console.warn("[Realtime Sync] Settings subscription skipped:", e);
     }
@@ -462,7 +470,13 @@ window.setupCloudRealtimeListeners2 = function() {
             try { if (typeof populateProductCategoryOptions === 'function') populateProductCategoryOptions(); } catch(e) {}
           }
         }
-      }, err => console.warn("[Realtime Sync] Categories listener notice:", err));
+      }, err => {
+        if (err && (err.code === 'resource-exhausted' || (err.message && err.message.includes('Quota exceeded')))) {
+          console.warn("[Realtime Sync] Categories listener offline quota fallback active.");
+          return;
+        }
+        console.warn("[Realtime Sync] Categories listener notice:", err);
+      });
     } catch(e) {
       console.warn("[Realtime Sync] Categories subscription skipped:", e);
     }
@@ -557,10 +571,21 @@ window.setupCloudRealtimeListeners2 = function() {
               try { if (typeof renderAdminProducts === 'function') renderAdminProducts(); } catch(e) {}
               try { if (typeof renderAdminProductList === 'function') renderAdminProductList(true); } catch(e) {}
             }
+            try {
+              if (typeof window.refreshActiveProductModalIfOpen === 'function') {
+                window.refreshActiveProductModalIfOpen();
+              }
+            } catch(e) {}
           }
           try { if (typeof updateCartBadge === 'function') updateCartBadge(); } catch(e) {}
         }
-      }, err => console.warn("[Realtime Sync] Products listener notice:", err));
+      }, err => {
+        if (err && (err.code === 'resource-exhausted' || (err.message && err.message.includes('Quota exceeded')))) {
+          console.warn("[Realtime Sync] Products listener offline quota fallback active.");
+          return;
+        }
+        console.warn("[Realtime Sync] Products listener notice:", err);
+      });
     } catch(e) {
       console.warn("[Realtime Sync] Products subscription skipped:", e);
     }
@@ -594,7 +619,13 @@ window.setupCloudRealtimeListeners2 = function() {
               try { if (typeof initAdminZonesMap === 'function') initAdminZonesMap(); } catch(e) {}
             }
           }
-        }, err => console.warn("[Realtime Sync] Delivery zones listener notice:", err));
+        }, err => {
+          if (err && (err.code === 'resource-exhausted' || (err.message && err.message.includes('Quota exceeded')))) {
+            console.warn("[Realtime Sync] Delivery zones listener offline quota fallback active.");
+            return;
+          }
+          console.warn("[Realtime Sync] Delivery zones listener notice:", err);
+        });
       } catch(e) {
         console.warn("[Realtime Sync] Delivery zones subscription skipped:", e);
       }
@@ -739,11 +770,19 @@ window.setupCloudRealtimeListeners2 = function() {
         };
 
         _realtimeUnsubscribers.orders = ordersQuery.onSnapshot(handleOrdersSnapshot, err => {
+          if (err && (err.code === 'resource-exhausted' || (err.message && err.message.includes('Quota exceeded')))) {
+            console.warn("[Realtime Sync] Scoped orders listener offline quota fallback active.");
+            return;
+          }
           console.warn("[Realtime Sync] Scoped orders listener notice:", err);
           // Fallback query without orderBy or filter
           try {
             if (_realtimeUnsubscribers.orders) _realtimeUnsubscribers.orders();
             _realtimeUnsubscribers.orders = db.collection('ek_orders').limit(200).onSnapshot(handleOrdersSnapshot, fallbackErr => {
+              if (fallbackErr && (fallbackErr.code === 'resource-exhausted' || (fallbackErr.message && fallbackErr.message.includes('Quota exceeded')))) {
+                console.warn("[Realtime Sync] Fallback orders listener offline quota fallback active.");
+                return;
+              }
               console.warn("[Realtime Sync] Fallback orders listener failed:", fallbackErr);
             });
           } catch(fallbackErr) {
@@ -758,28 +797,240 @@ window.setupCloudRealtimeListeners2 = function() {
     // 5. TOPIC BROADCASTS REALTIME LISTENER
     if (!_realtimeUnsubscribers.broadcasts) {
       try {
-        _realtimeUnsubscribers.broadcasts = db.collection('ek_topic_broadcast_requests')
-          .orderBy('createdAt', 'desc')
-          .limit(1)
-          .onSnapshot(snapshot => {
-            if (snapshot && !snapshot.empty) {
-              const doc = snapshot.docs[0];
-              const data = doc.data();
-              const lastSeenBroadcastId = localStorage.getItem('last_seen_broadcast_id');
+        const processIncomingBroadcast = function(doc) {
+          if (!doc) return;
+          const data = doc.data();
+          if (!data) return;
+          const lastSeenBroadcastId = localStorage.getItem('last_seen_broadcast_id');
 
-              if (data && doc.id !== lastSeenBroadcastId) {
-                const createdTime = new Date(data.createdAt).getTime();
-                if (!isNaN(createdTime) && (Date.now() - createdTime < 600000)) {
-                  localStorage.setItem('last_seen_broadcast_id', doc.id);
-                  if (typeof showToast === 'function') {
-                    showToast(`📢 ${data.title || 'அறிவிப்பு'}: ${data.body}`, 'info', 8000);
-                  }
+          if (doc.id !== lastSeenBroadcastId) {
+            const createdTime = new Date(data.createdAt || Date.now()).getTime();
+            // Process announcements created within the last 24 hours
+            if (!isNaN(createdTime) && (Date.now() - createdTime < 86400000)) {
+              localStorage.setItem('last_seen_broadcast_id', doc.id);
+
+              const titleTa = data.titleTa || data.title || '📢 எடப்பாடி கடை';
+              const titleEn = data.titleEn || data.title || '📢 Edappadi Kadai';
+              const bodyTa = data.bodyTa || data.body || '';
+              const bodyEn = data.bodyEn || data.body || '';
+              const displayTitle = (typeof currentLang !== 'undefined' && currentLang === 'ta') ? titleTa : titleEn;
+              const displayBody = (typeof currentLang !== 'undefined' && currentLang === 'ta') ? bodyTa : bodyEn;
+
+              // 1. Add to Customer Notification Center (Bell icon 🔔)
+              if (typeof window.addNotification === 'function') {
+                window.addNotification(titleTa, titleEn, bodyTa, bodyEn, '📢');
+              } else if (typeof addNotification === 'function') {
+                addNotification(titleTa, titleEn, bodyTa, bodyEn, '📢');
+              }
+
+              // 2. Update Bell Badge
+              if (typeof window.updateNotificationUnreadCount === 'function') {
+                window.updateNotificationUnreadCount();
+              }
+
+              // 3. Re-render notification list if modal is open
+              if (typeof renderNotificationsList === 'function') {
+                try { renderNotificationsList(); } catch(e) {}
+              }
+
+              // 4. Play chime sound
+              if (typeof playLyoChimeSound === 'function') {
+                try { playLyoChimeSound(); } catch(e) {}
+              }
+
+              // 5. In-App Toast
+              if (typeof showToast === 'function') {
+                showToast(`📢 ${displayTitle}: ${displayBody}`, 'info', 8000);
+              }
+
+              // 6. Native Android Status Bar Push Notification
+              if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.showNativeNotification === 'function') {
+                try {
+                  AndroidStorage.showNativeNotification(displayTitle, displayBody);
+                } catch(notifErr) {
+                  console.warn('[Native Notification Notice]:', notifErr);
                 }
               }
             }
-          }, err => console.warn("[Realtime Sync] Broadcast listener notice:", err));
+          }
+        };
+
+        const setupBroadcastListener = function() {
+          try {
+            _realtimeUnsubscribers.broadcasts = db.collection('ek_topic_broadcast_requests')
+              .orderBy('createdAt', 'desc')
+              .limit(5)
+              .onSnapshot(snapshot => {
+                if (snapshot && !snapshot.empty) {
+                  snapshot.docs.forEach(doc => processIncomingBroadcast(doc));
+                }
+              }, err => {
+                if (err && (err.code === 'resource-exhausted' || (err.message && err.message.includes('Quota exceeded')))) {
+                  console.warn("[Realtime Sync] Broadcast listener offline quota fallback active.");
+                  return;
+                }
+                console.warn("[Realtime Sync] Indexed broadcast listener failed, falling back to unordered listener:", err);
+                try {
+                  if (_realtimeUnsubscribers.broadcasts) _realtimeUnsubscribers.broadcasts();
+                  _realtimeUnsubscribers.broadcasts = db.collection('ek_topic_broadcast_requests')
+                    .limit(10)
+                    .onSnapshot(snap => {
+                      if (snap && !snap.empty) {
+                        snap.docs.forEach(doc => processIncomingBroadcast(doc));
+                      }
+                    }, fallbackErr => {
+                      if (fallbackErr && (fallbackErr.code === 'resource-exhausted' || (fallbackErr.message && fallbackErr.message.includes('Quota exceeded')))) {
+                        console.warn("[Realtime Sync] Fallback broadcast listener offline quota fallback active.");
+                        return;
+                      }
+                      console.warn("[Realtime Sync] Fallback broadcast listener error:", fallbackErr);
+                    });
+                } catch(fErr) {
+                  console.warn("[Realtime Sync] Fallback broadcast setup error:", fErr);
+                }
+              });
+          } catch(err) {
+            console.warn("[Realtime Sync] Primary broadcast setup error:", err);
+          }
+        };
+
+        setupBroadcastListener();
       } catch(e) {
         console.warn("[Realtime Sync] Broadcast subscription skipped:", e);
+      }
+    }
+
+    // 6. CUSTOMER PROFILE REAL-TIME LISTENER (Wallet points, profile changes, tier updates)
+    if (targetRole === 'customer' && !_realtimeUnsubscribers.customerProfile) {
+      try {
+        const custSess = getData('ek_customer_session') || (typeof getActiveUser === 'function' ? getActiveUser() : null);
+        const custId = custSess ? (custSess.userId || custSess.id || custSess.uid) : null;
+        if (custId) {
+          _realtimeUnsubscribers.customerProfile = db.collection('ek_users').doc(String(custId)).onSnapshot(doc => {
+            if (doc && doc.exists) {
+              const cloudUser = doc.data();
+              if (cloudUser) {
+                const localUsers = getData('ek_users', []) || [];
+                const idx = localUsers.findIndex(u => u && (u.id === custId || (cloudUser.phone && u.phone === cloudUser.phone)));
+                const prevPoints = idx !== -1 ? (localUsers[idx].loyaltyPoints || 0) : (cloudUser.loyaltyPoints || 0);
+
+                if (idx !== -1) {
+                  localUsers[idx] = { ...localUsers[idx], ...cloudUser };
+                } else {
+                  localUsers.push({ id: doc.id, ...cloudUser });
+                }
+                saveData('ek_users', localUsers);
+
+                const currentActive = typeof getActiveUser === 'function' ? getActiveUser() : null;
+                if (currentActive && (currentActive.id === custId || (cloudUser.phone && currentActive.phone === cloudUser.phone))) {
+                  const newPoints = cloudUser.loyaltyPoints !== undefined ? cloudUser.loyaltyPoints : currentActive.loyaltyPoints;
+                  const pointsDiff = newPoints - prevPoints;
+
+                  currentActive.loyaltyPoints = newPoints;
+                  if (cloudUser.tier) currentActive.tier = cloudUser.tier;
+                  if (cloudUser.name) currentActive.name = cloudUser.name;
+                  if (cloudUser.address) currentActive.address = cloudUser.address;
+                  if (cloudUser.phone) currentActive.phone = cloudUser.phone;
+                  saveData('ek_active_user', currentActive);
+
+                  const sess = getData('ek_customer_session');
+                  if (sess) {
+                    sess.loyaltyPoints = newPoints;
+                    if (cloudUser.name) sess.name = cloudUser.name;
+                    if (cloudUser.phone) sess.phone = cloudUser.phone;
+                    saveData('ek_customer_session', sess);
+                  }
+
+                  if (window._initialProfileLoadDone && Math.abs(pointsDiff) >= 1) {
+                    const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+                    const msg = pointsDiff > 0
+                      ? (isTa ? `🎁 உங்கள் வாலட்டில் +${Math.round(pointsDiff)} புள்ளிகள் சேர்க்கப்பட்டுள்ளன! இருப்பு: ${Math.round(newPoints)} pts` : `🎁 +${Math.round(pointsDiff)} points credited to your wallet! Balance: ${Math.round(newPoints)} pts`)
+                      : (isTa ? `🔔 உங்கள் வாலட் புள்ளிகள் புதுப்பிக்கப்பட்டன. இருப்பு: ${Math.round(newPoints)} pts` : `🔔 Wallet points updated. Balance: ${Math.round(newPoints)} pts`);
+                    if (typeof showToast === 'function') showToast(msg, 'success', 6000);
+                    if (typeof playLyoChimeSound === 'function') { try { playLyoChimeSound(); } catch(e) {} }
+                  }
+                  window._initialProfileLoadDone = true;
+
+                  try { if (typeof renderProfileData === 'function') renderProfileData(); } catch(e) {}
+                  try { if (typeof updateHeaderUI === 'function') updateHeaderUI(); } catch(e) {}
+                  try { if (typeof renderCartCustomerContactCard === 'function') renderCartCustomerContactCard(); } catch(e) {}
+                }
+              }
+            }
+          }, err => {
+            console.warn("[Realtime Sync] Customer profile listener notice:", err);
+          });
+        }
+      } catch (e) {
+        console.warn("[Realtime Sync] Customer profile listener setup error:", e);
+      }
+    }
+
+    // 7. PERSONAL CUSTOMER NOTIFICATIONS REAL-TIME LISTENER (Direct admin messages, order status push, wallet alerts)
+    if (targetRole === 'customer' && !_realtimeUnsubscribers.customerNotifications) {
+      try {
+        const custSess = getData('ek_customer_session') || (typeof getActiveUser === 'function' ? getActiveUser() : null);
+        const custId = custSess ? (custSess.userId || custSess.id || custSess.uid) : null;
+        if (custId) {
+          const handleNotificationDoc = function(doc) {
+            if (!doc) return;
+            const data = doc.data();
+            if (!data) return;
+            const notifKey = 'processed_cnotif_' + doc.id;
+            if (localStorage.getItem(notifKey)) return;
+            localStorage.setItem(notifKey, 'true');
+
+            const createdTime = new Date(data.createdAt || Date.now()).getTime();
+            if (!isNaN(createdTime) && (Date.now() - createdTime < 172800000)) {
+              const titleTa = data.titleTa || '📢 அறிவிப்பு';
+              const titleEn = data.titleEn || '📢 Notification';
+              const bodyTa = data.bodyTa || '';
+              const bodyEn = data.bodyEn || '';
+              const icon = data.type === 'points_update' ? '🎁' : (data.type === 'support_chat_reply' ? '💬' : '📦');
+
+              if (typeof window.addNotification === 'function') {
+                window.addNotification(titleTa, titleEn, bodyTa, bodyEn, icon);
+              }
+              if (typeof window.updateNotificationUnreadCount === 'function') {
+                window.updateNotificationUnreadCount();
+              }
+              if (typeof renderNotificationsList === 'function') {
+                try { renderNotificationsList(); } catch(e) {}
+              }
+
+              const isTa = (typeof currentLang !== 'undefined' && currentLang === 'ta');
+              const dispTitle = isTa ? titleTa : titleEn;
+              const dispBody = isTa ? bodyTa : bodyEn;
+
+              if (typeof showToast === 'function') {
+                showToast(`${icon} ${dispTitle}: ${dispBody}`, 'info', 7000);
+              }
+              if (typeof playLyoChimeSound === 'function') {
+                try { playLyoChimeSound(); } catch(e) {}
+              }
+              if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.showNativeNotification === 'function') {
+                try { AndroidStorage.showNativeNotification(dispTitle, dispBody); } catch(ne) {}
+              }
+            }
+          };
+
+          _realtimeUnsubscribers.customerNotifications = db.collection('ek_customer_notifications')
+            .where('targetUserId', '==', String(custId))
+            .limit(20)
+            .onSnapshot(snapshot => {
+              if (snapshot && !snapshot.empty) {
+                snapshot.docChanges().forEach(change => {
+                  if (change.type === 'added') {
+                    handleNotificationDoc(change.doc);
+                  }
+                });
+              }
+            }, err => {
+              console.warn("[Realtime Sync] Customer notification listener error:", err);
+            });
+        }
+      } catch (e) {
+        console.warn("[Realtime Sync] Customer notification listener setup error:", e);
       }
     }
   }, 750);
@@ -800,6 +1051,8 @@ window.teardownLiveListeners = function() {
       });
     }
     window._currentOrdersSubKey = null;
+    window._initialProfileLoadDone = false;
+    window._adminCustomersListenerAttached = false;
     debugLog("[Realtime Sync] All live Firestore listeners torn down cleanly.");
   } catch(e) {
     console.warn("[Realtime Sync] Error during teardownLiveListeners:", e);
@@ -1358,7 +1611,8 @@ window.runTimeScheduler = window.runTimeScheduler || function() {};
         db = firebase.firestore();
         try {
           db.settings({
-            experimentalAutoDetectLongPolling: true
+            experimentalAutoDetectLongPolling: true,
+            cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
           });
         } catch (settingsErr) {
           debugLog("Firestore settings configuration notice: " + (settingsErr && settingsErr.message));

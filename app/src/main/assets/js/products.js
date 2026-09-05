@@ -1063,9 +1063,11 @@ function addNewSlidingBanner() {
 
   if (typeof db !== 'undefined' && db) {
     try {
-      db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings))
-        .then(() => debugLog('[Banner Admin] Saved banner settings to Firestore'))
+      db.collection('ek_settings').doc('global_config').set(cleanFirestoreData(settings), { merge: true })
+        .then(() => debugLog('[Banner Admin] Saved banner settings to Firestore global_config'))
         .catch(err => console.error('[Banner Admin] Firestore save error:', err));
+      db.collection('ek_settings').doc('global').set(cleanFirestoreData(settings), { merge: true })
+        .catch(() => {});
     } catch(e) {}
   }
 
@@ -3202,6 +3204,56 @@ function renderHomeScreen(forceReRender = false) {
       }
     };
 
+    window.refreshActiveProductModalIfOpen = function() {
+      const backdrop = document.getElementById('product-detail-modal');
+      if (!backdrop || backdrop.style.display === 'none' || !backdrop.classList.contains('active')) return;
+      if (!activeProduct || !activeProduct.id) return;
+
+      let products = (typeof getDataCached === 'function' ? getDataCached('ek_products', []) : []) || [];
+      if (!products || products.length === 0) products = (typeof getData === 'function' ? getData('ek_products', []) : []);
+      const updatedProd = products.find(p => p && String(p.id) === String(activeProduct.id));
+      if (!updatedProd) {
+        closeProductModalDetail();
+        return;
+      }
+
+      activeProduct = updatedProd;
+      const engNameEl = document.getElementById('modal-english-name');
+      if (engNameEl) engNameEl.innerText = cleanProductName(updatedProd.englishName) || '';
+      const tamNameEl = document.getElementById('modal-tamil-name');
+      if (tamNameEl) tamNameEl.innerText = updatedProd.tamilName || '';
+      const priceKgEl = document.getElementById('calc-price-kg');
+      if (priceKgEl) priceKgEl.innerText = getProductPriceText(updatedProd, currentLang);
+      const imgEl = document.getElementById('modal-product-img');
+      if (imgEl) imgEl.src = getImageUrlWithCacheBuster(getProductFullImageUrl(updatedProd), updatedProd.updatedAt);
+
+      const catList = getCategoriesList();
+      const unavailableCategoriesSet = new Set(catList.filter(c => c.isScheduled && c.isAvailable === false).map(c => c.id));
+      const isCategoryUnavailable = unavailableCategoriesSet.has(updatedProd.category);
+      const isOutOfStock = updatedProd.isOutOfStock || updatedProd.stockKg <= 0 || (updatedProd.isScheduled && updatedProd.isAvailable === false) || isCategoryUnavailable;
+
+      const catConfig = typeof getCategoryConfig === 'function' ? getCategoryConfig(updatedProd.category) : { color: '#2E7D32' };
+      const cartBtn = document.getElementById('modal-add-to-cart-btn');
+      if (cartBtn) {
+        if (isOutOfStock) {
+          cartBtn.disabled = true;
+          cartBtn.innerText = currentLang === 'ta' ? 'இல்லை (Out of Stock)' : 'Out of Stock 🔴';
+          cartBtn.style.background = 'rgba(239,68,68,0.2)';
+          cartBtn.style.color = 'var(--accent-red)';
+          cartBtn.style.borderColor = 'rgba(239,68,68,0.4)';
+          cartBtn.style.boxShadow = 'none';
+        } else {
+          cartBtn.disabled = false;
+          cartBtn.innerText = currentLang === 'ta' ? 'கார்ட்டில் சேர் →' : 'Add to Cart →';
+          cartBtn.style.background = `linear-gradient(135deg, ${catConfig.color} 0%, color-mix(in srgb, ${catConfig.color} 65%, #000) 100%)`;
+          cartBtn.style.color = '#ffffff';
+          cartBtn.style.borderColor = `color-mix(in srgb, ${catConfig.color} 50%, rgba(255,255,255,0.3))`;
+          cartBtn.style.boxShadow = `0 4px 14px color-mix(in srgb, ${catConfig.color} 40%, rgba(0,0,0,0.5))`;
+        }
+      }
+      updateSelectedWeightCalculation();
+    };
+
     function closeProductModalDetail() {
       const backdrop = document.getElementById('product-detail-modal');
       if (backdrop) {
@@ -4078,16 +4130,26 @@ function renderHomeScreen(forceReRender = false) {
       const currentCart = Array.isArray(cartItems) ? cartItems : (typeof cart !== 'undefined' ? cart : []);
 
       // 1. Calculate Delivery Fee strictly based on Customer & Restaurant Delivery Zone / Distance
-      let deliveryFee = parseFloat(settings.deliveryCharge) || 40;
+      let deliveryFee = (settings.deliveryCharge !== undefined && settings.deliveryCharge !== '' && !isNaN(Number(settings.deliveryCharge))) ? Number(settings.deliveryCharge) : 40;
       let distance = null;
       let zoneName = 'Flat Rate';
 
       const useDynamic = settings.useDynamicDistancePricing !== false;
       if (useDynamic && typeof getDynamicDeliveryCharge === 'function') {
         const dynFee = getDynamicDeliveryCharge(numericSubtotal, user);
-        deliveryFee = parseFloat(dynFee.charge) || deliveryFee;
+        deliveryFee = (dynFee.charge !== undefined && !isNaN(Number(dynFee.charge))) ? Number(dynFee.charge) : deliveryFee;
         distance = dynFee.distance;
         zoneName = dynFee.zoneName || 'Delivery Zone';
+      }
+
+      // Check if freeship coupon is active
+      let isFreeDelivery = false;
+      let freeDeliveryReason = null;
+      const couponObj = (window.appliedCouponData) || (appliedCouponCode && typeof getCoupons === 'function' ? getCoupons().find(x => x.code === appliedCouponCode) : null);
+      if (appliedCouponCode && couponObj && couponObj.type === 'freeship') {
+        isFreeDelivery = true;
+        freeDeliveryReason = `Free Delivery Coupon (${appliedCouponCode})`;
+        deliveryFee = 0;
       }
 
       // 2. Loyalty / Wallet Points Discount:
@@ -4119,8 +4181,8 @@ function renderHomeScreen(forceReRender = false) {
       return {
         subtotal: numericSubtotal,
         deliveryFee: Math.round(deliveryFee),
-        isFreeDelivery: false,
-        freeDeliveryReason: null,
+        isFreeDelivery: isFreeDelivery,
+        freeDeliveryReason: freeDeliveryReason,
         loyaltyDiscount: Math.round(loyaltyDiscount),
         couponDiscount: Math.round(couponDiscount),
         grandTotal: grandTotal,
@@ -4187,13 +4249,13 @@ function renderHomeScreen(forceReRender = false) {
       const couponPillVal = document.getElementById('cart-applied-coupon-value');
 
       if (couponRow && couponDiscountEl && couponCodeLabel) {
-        if (financials.couponDiscount > 0 || (appliedCouponCode && financials.deliveryFee === 0 && getCoupons().find(x => x.code === appliedCouponCode)?.type === 'freeship')) {
+        if (financials.couponDiscount > 0 || financials.isFreeDelivery) {
           couponRow.style.display = 'flex';
           couponCodeLabel.innerText = appliedCouponCode;
-          couponDiscountEl.innerText = `-₹${financials.couponDiscount}`;
+          couponDiscountEl.innerText = financials.isFreeDelivery ? (currentLang === 'ta' ? 'இலவச டெலிவரி' : 'Free Delivery') : `-₹${financials.couponDiscount}`;
           if (couponPill && couponPillVal) {
             couponPill.style.display = 'flex';
-            couponPillVal.innerText = `${appliedCouponCode} (-₹${financials.couponDiscount})`;
+            couponPillVal.innerText = financials.isFreeDelivery ? `${appliedCouponCode} (Free Delivery)` : `${appliedCouponCode} (-₹${financials.couponDiscount})`;
           }
         } else {
           couponRow.style.display = 'none';
@@ -4203,7 +4265,7 @@ function renderHomeScreen(forceReRender = false) {
          if (couponPill) {
            if (appliedCouponCode) {
              couponPill.style.display = 'flex';
-             couponPillVal.innerText = `${appliedCouponCode} (-₹${financials.couponDiscount})`;
+             couponPillVal.innerText = financials.isFreeDelivery ? `${appliedCouponCode} (Free Delivery)` : `${appliedCouponCode} (-₹${financials.couponDiscount})`;
            } else {
              couponPill.style.display = 'none';
            }

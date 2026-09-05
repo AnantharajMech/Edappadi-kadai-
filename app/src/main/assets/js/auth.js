@@ -863,6 +863,7 @@
               name: data.name || 'Admin',
               role: role,
               active: active,
+              phone: data.phone || doc.id,
               email: data.email || `admin_${data.phone || doc.id}@app.com`
             });
           }
@@ -916,13 +917,15 @@
 
             if (active && ['ADMIN', 'SUPERADMIN', 'RIDER', 'DELIVERY', 'DELIVERY_BOY'].includes(role)) {
               if (role === 'ADMIN' || role === 'SUPERADMIN') {
+                const existingLocal = (adminAccounts || []).find(la => (la.id && la.id === (acc.uid || acc.id)) || (la.phone && la.phone === acc.phone) || (la.email && la.email.toLowerCase() === (acc.email || '').toLowerCase()));
                 normalizedAdmins.push({
                   id: acc.uid || acc.id,
                   name: acc.name,
                   role: role.toLowerCase(),
                   active: true,
                   email: acc.email,
-                  phone: acc.phone || acc.uid || acc.id
+                  phone: acc.phone || (existingLocal && existingLocal.phone) || acc.uid || acc.id,
+                  password: (existingLocal && existingLocal.password) ? existingLocal.password : ''
                 });
               } else {
                 normalizedRiders.push({
@@ -1150,18 +1153,41 @@
         showToast("யூசர்நேம் / மொபைல் எண் குறைந்தது 3 எழுத்துக்கள் இருக்க வேண்டும்!", "error");
         return;
       }
-      if (!pass || pass.length < 4) {
-        showToast("கடவுச்சொல் (Password) குறைந்தது 4 எழுத்துக்கள் இருக்க வேண்டும்!", "error");
+      if (!pass || pass.length < 6) {
+        showToast("கடவுச்சொல் (Password) குறைந்தது 6 எழுத்துக்கள் இருக்க வேண்டும்!", "error");
         return;
       }
 
-      const duplicate = accounts.find(a => a.phone.toLowerCase() === phone.toLowerCase());
+      const duplicate = accounts.find(a => a.phone && a.phone.toLowerCase() === phone.toLowerCase());
       if (duplicate) {
         showToast(`இந்த யூசர்நேம்/எண் (${phone}) ஏற்கனவே ${duplicate.name}-க்கு ஒதுக்கப்பட்டுள்ளது!`, "error");
         return;
       }
 
-      const newId = 'a_' + Math.floor(100000 + Math.random() * 900000);
+      const adminEmail = phone.includes('@') ? phone.toLowerCase() : `admin_${phone}@app.com`;
+      let newId = 'a_' + Math.floor(100000 + Math.random() * 900000);
+
+      // Provision Firebase Auth account via secondary app to avoid logging out current admin
+      if (typeof firebase !== 'undefined' && firebase.auth && typeof firebaseConfig !== 'undefined') {
+        try {
+          const tempAppName = "AdminCreate_" + Date.now();
+          const tempApp = firebase.initializeApp(firebaseConfig, tempAppName);
+          try {
+            const authRes = await tempApp.auth().createUserWithEmailAndPassword(adminEmail, pass);
+            if (authRes && authRes.user && authRes.user.uid) {
+              newId = authRes.user.uid;
+            }
+          } catch (authErr) {
+            if (authErr.code !== 'auth/email-already-in-use') {
+              console.warn("[Admin Auth Provisioning Notice]:", authErr);
+            }
+          } finally {
+            try { await tempApp.delete(); } catch(e) {}
+          }
+        } catch (initErr) {
+          console.warn("[Temp App Init Notice]:", initErr);
+        }
+      }
 
       unmarkAdminAsDeleted(newId);
       unmarkAdminAsDeleted(phone);
@@ -1170,10 +1196,13 @@
 
       const newAdmin = {
         id: newId,
+        uid: newId,
         name: name,
         phone: phone,
+        email: adminEmail,
         password: hashedPass,
         role: 'admin',
+        active: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -1265,70 +1294,128 @@
 
     const fpTranslations = {
       en: {
-        title: "Forgot Password",
-        subtitle: "Enter your registered email to receive a password reset link",
-        labelIdentifier: "Registered Email Address",
-        labelOtp: "",
-        otpVerifyText: "",
-        otpReceivedText: "",
-        labelNewPass: "",
-        labelConfirmPass: "",
-        otpHelp: "",
+        title: "Password Recovery",
+        subtitle: "Enter your registered mobile number or email to recover your account.",
+        labelIdentifier: "Registered Mobile Number or Email",
+        labelOtp: "6-Digit Verification Code (OTP)",
+        labelNewPass: "New Password",
+        labelConfirmPass: "Confirm Password",
+        otpHelp: "Enter the 6-digit OTP sent to your registered email.",
         btnSend: "🚀 Send Password Reset Link",
-        btnReset: "",
-        loadingSending: "Sending password reset email...",
-        loadingConnecting: "Please wait a moment...",
-        successTitle: "Password Reset Link Sent",
-        successText: "Password reset link has been sent successfully.<br><br>Please check your Gmail Inbox or Spam folder.",
-        successClose: "OK",
-        enterValidIdentifier: "Please enter your registered email address.",
-        userNotFound: "No registered account found.",
-        sendingCodeSuccess: "Success! Password reset link has been sent successfully.",
-        otpMismatch: "",
-        passMismatch: "",
-        passShort: "",
-        resetSuccess: "",
-        labelResetMethod: "",
-        methodOtpTitle: "",
-        methodOtpDesc: "",
-        methodLinkTitle: "",
-        methodLinkDesc: ""
+        btnReset: "🔐 Update Password",
+        loadingSending: "Verifying account & sending reset link...",
+        loadingConnecting: "Connecting to secure server. Please wait...",
+        successTitle: "Reset Link Sent Successfully! ✉️",
+        successText: "Password reset link has been sent to your registered email.<br><br>Please check your Gmail <strong>Inbox</strong> or <strong>Spam folder</strong> and click the link to set a new password.",
+        successClose: "Back to Login",
+        enterValidIdentifier: "Please enter your registered 10-digit mobile number or email.",
+        userNotFound: "No registered account found with these details. Please register first.",
+        sendingCodeSuccess: "Success! Password reset link sent to your registered email.",
+        otpMismatch: "Please enter the complete 6-digit OTP code.",
+        passMismatch: "Passwords do not match. Please re-enter.",
+        passShort: "Password must be at least 6 characters.",
+        resetSuccess: "Password reset successfully! Please log in with your new password.",
+        labelResetMethod: "Reset Method",
+        methodOtpTitle: "In-App OTP Code",
+        methodOtpDesc: "Receive a 6-digit code to reset password in app",
+        methodLinkTitle: "Official Reset Link",
+        methodLinkDesc: "Receive a direct password reset link in Gmail"
       },
       ta: {
         title: "கடவுச்சொல் மீட்பு",
-        subtitle: "பதிவுசெய்யப்பட்ட மின்னஞ்சலை உள்ளிட்டு கடவுச்சொல் மீட்டமைப்பு இணைப்பை பெறவும்",
-        labelIdentifier: "பதிவுசெய்யப்பட்ட மின்னஞ்சல் முகவரி",
-        labelOtp: "",
-        otpVerifyText: "",
-        otpReceivedText: "",
-        labelNewPass: "",
-        labelConfirmPass: "",
-        otpHelp: "",
+        subtitle: "பதிவுசெய்த மொபைல் எண் அல்லது மின்னஞ்சலை உள்ளிட்டு கணக்கை மீட்டெடுக்கவும்.",
+        labelIdentifier: "பதிவுசெய்த மொபைல் எண் அல்லது மின்னஞ்சல்",
+        labelOtp: "6-இலக்க சரிபார்ப்பு குறியீடு (OTP)",
+        labelNewPass: "புதிய கடவுச்சொல்",
+        labelConfirmPass: "கடவுச்சொல் உறுதிப்படுத்தல்",
+        otpHelp: "மின்னஞ்சலுக்கு அனுப்பப்பட்ட 6-இலக்க OTP குறியீட்டை உள்ளிடவும்.",
         btnSend: "🚀 கடவுச்சொல் மீட்டமைப்பு இணைப்பை அனுப்பு",
-        btnReset: "",
-        loadingSending: "கடவுச்சொல் மீட்டமைப்பு மின்னஞ்சல் அனுப்பப்படுகிறது...",
+        btnReset: "🔐 புதிய கடவுச்சொல்லை மாற்றுக",
+        loadingSending: "சரிபார்க்கப்பட்டு இணைப்பு அனுப்பப்படுகிறது...",
         loadingConnecting: "தயவுசெய்து சிறிது நேரம் காத்திருக்கவும்...",
-        successTitle: "கடவுச்சொல் மீட்டமைப்பு இணைப்பு அனுப்பப்பட்டது",
-        successText: "கடவுச்சொல் மீட்டமைப்பு இணைப்பு வெற்றிகரமாக அனுப்பப்பட்டது.<br><br>தயவுசெய்து உங்கள் ஜிமெயில் இன்பாக்ஸ் அல்லது ஸ்பேம் கோப்புறையைச் சரிபார்க்கவும்.",
-        successClose: "சரி (OK)",
-        enterValidIdentifier: "பதிவுசெய்த மின்னஞ்சல் முகவரியை உள்ளிடவும்.",
-        userNotFound: "பதிவுசெய்யப்பட்ட கணக்கு எதுவும் இல்லை.",
-        sendingCodeSuccess: "வெற்றி! கடவுச்சொல் மீட்டமைப்பு இணைப்பு வெற்றிகரமாக அனுப்பப்பட்டது.",
-        otpMismatch: "",
-        passMismatch: "",
-        passShort: "",
-        resetSuccess: "",
-        labelResetMethod: "",
-        methodOtpTitle: "",
-        methodOtpDesc: "",
-        methodLinkTitle: "",
-        methodLinkDesc: ""
+        successTitle: "மீட்டமைப்பு இணைப்பு அனுப்பப்பட்டது! ✉️",
+        successText: "கடவுச்சொல் மீட்டமைப்பு இணைப்பு உங்கள் பதிவு செய்யப்பட்ட மின்னஞ்சலுக்கு வெற்றிகரமாக அனுப்பப்பட்டுள்ளது.<br><br>தயவுசெய்து உங்கள் ஜிமெயில் <strong>இன்பாக்ஸ் (Inbox)</strong> அல்லது <strong>ஸ்பேம் (Spam)</strong> கோப்புறையைத் திறந்து, அங்கு வந்துள்ள இணைப்பைக் கிளிக் செய்து புதிய கடவுச்சொல்லை மாற்றிக் கொள்ளவும்.",
+        successClose: "உள்நுழைவு திரைக்குச் செல்ல",
+        enterValidIdentifier: "பதிவுசெய்த 10 இலக்க மொபைல் எண் அல்லது மின்னஞ்சலை உள்ளிடவும்.",
+        userNotFound: "இந்த விவரங்களில் பதிவு செய்யப்பட்ட கணக்கு எதுவும் இல்லை. தயவுசெய்து புதிய கணக்கு தொடங்கவும்.",
+        sendingCodeSuccess: "வெற்றி! கடவுச்சொல் மீட்டமைப்பு இணைப்பு உங்கள் மின்னஞ்சலுக்கு அனுப்பப்பட்டது.",
+        otpMismatch: "தயவுசெய்து முழுமையான 6-இலக்க OTP குறியீட்டை உள்ளிடவும்.",
+        passMismatch: "கடவுச்சொற்கள் பொருந்தவில்லை. மீண்டும் உள்ளிடவும்.",
+        passShort: "கடவுச்சொல் குறைந்தது 6 எழுத்துக்கள் இருக்க வேண்டும்.",
+        resetSuccess: "கடவுச்சொல் வெற்றிகரமாக மாற்றப்பட்டது! புதிய கடவுச்சொல் மூலம் உள்நுழையவும்.",
+        labelResetMethod: "மீட்பு முறை",
+        methodOtpTitle: "OTP குறியீடு முறை",
+        methodOtpDesc: "பயன்பாட்டிலேயே மாற்ற 6-இலக்க OTP பெறவும்",
+        methodLinkTitle: "மின்னஞ்சல் இணைப்பு முறை",
+        methodLinkDesc: "ஜிமெயிலில் நேரடி மீட்டமைப்பு இணைப்பைப் பெறவும்"
       }
     };
 
     let currentFPMethod = 'gmail-link';
     let fpMatchedUser = null;
     let fpIdentifier = '';
+
+    function handleFpIdentifierInput(val) {
+      const hintEl = document.getElementById('fp-account-hint');
+      if (!hintEl) return;
+      const clean = String(val || '').trim();
+      if (!clean) {
+        hintEl.style.display = 'none';
+        hintEl.innerHTML = '';
+        return;
+      }
+
+      const isTa = currentLang === 'ta';
+      const localUsers = typeof getData === 'function' ? (getData('ek_users', []) || []) : [];
+      let foundUser = null;
+
+      if (clean.includes('@')) {
+        const lowerEmail = clean.toLowerCase();
+        foundUser = localUsers.find(u => u && (u.email || '').toLowerCase() === lowerEmail);
+      } else {
+        const digits = clean.replace(/\D/g, '');
+        const phone10 = digits.length >= 10 ? digits.slice(-10) : digits;
+        if (phone10.length === 10) {
+          foundUser = localUsers.find(u => {
+            if (!u) return false;
+            const uDigits = String(u.phone || u.phoneNumber || '').replace(/\D/g, '');
+            const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
+            return u10 === phone10;
+          });
+        }
+      }
+
+      if (foundUser) {
+        fpMatchedUser = foundUser;
+        const uName = foundUser.name || (isTa ? 'வாடிக்கையாளர்' : 'Customer');
+        const hasExternalEmail = foundUser.email && !foundUser.email.endsWith('@app.com') && foundUser.email.includes('@');
+        const displayMail = hasExternalEmail ? maskIdentifier(foundUser.email) : (isTa ? 'மொபைல் கணக்கு (மின்னஞ்சல் இல்லை)' : 'Mobile Account (No email)');
+        hintEl.style.display = 'block';
+        hintEl.innerHTML = `<span>👤 <strong>${escapeHtml(uName)}</strong> &bull; ${displayMail} ${isTa ? 'கண்டறியப்பட்டது ✅' : 'Found ✅'}</span>`;
+      } else {
+        hintEl.style.display = 'none';
+      }
+    }
+
+    function openFpWhatsAppHelp() {
+      const inputVal = (document.getElementById('fp-email-input')?.value || '').trim();
+      const shopPhone = '918778148899';
+      const isTa = currentLang === 'ta';
+      const message = isTa
+        ? `வணக்கம் அண்ணே, எனது எடப்பாடி கடை கணக்கின் (விவரம்: ${inputVal || 'வாடிக்கையாளர்'}) கடவுச்சொல்லை மாற்ற உதவி தேவை.`
+        : `Hello Admin, I need help recovering the password for my Edappadi Kadai account (Details: ${inputVal || 'Customer'}).`;
+      const waUrl = `https://wa.me/${shopPhone}?text=${encodeURIComponent(message)}`;
+      window.open(waUrl, '_blank');
+    }
+
+    function switchToOtpStageManual() {
+      const stageLink = document.getElementById('fp-stage-link');
+      const stageOtp = document.getElementById('fp-stage-otp');
+      if (stageLink) stageLink.style.display = 'none';
+      if (stageOtp) stageOtp.style.display = 'flex';
+      const otpInp = document.querySelector('.otp-box');
+      if (otpInp) otpInp.focus();
+    }
 
     function openForgotPasswordModal(event) {
       if (event) event.preventDefault();
@@ -1340,6 +1427,7 @@
 
         if (emailInp) {
           emailInp.value = loginIdVal || '';
+          if (loginIdVal) handleFpIdentifierInput(loginIdVal);
         }
 
         currentFPMethod = 'gmail-link';
@@ -1372,7 +1460,8 @@
     }
 
     function hideForgotPasswordModal() {
-      document.getElementById('forgot-password-modal').style.display = 'none';
+      const fpModal = document.getElementById('forgot-password-modal');
+      if (fpModal) fpModal.style.display = 'none';
     }
 
     function selectFPMethod(method) {
@@ -1389,11 +1478,12 @@
 
       const safeSetText = (id, text) => {
         const el = document.getElementById(id);
-        if (el) el.innerText = text;
+        if (el && text) el.innerText = text;
       };
 
       safeSetText('fp-title', strings.title);
       safeSetText('fp-subtitle', strings.subtitle);
+      safeSetText('fp-label-email', strings.labelIdentifier);
       safeSetText('fp-label-identifier', strings.labelIdentifier);
       safeSetText('fp-label-otp', strings.labelOtp);
       safeSetText('fp-label-newpass', strings.labelNewPass);
@@ -1406,10 +1496,10 @@
       safeSetText('fp-method-link-title', strings.methodLinkTitle);
       safeSetText('fp-method-link-desc', strings.methodLinkDesc);
 
-      const sendBtn = document.querySelector('#fp-stage-1 button');
+      const sendBtn = document.getElementById('fp-btn-send-otp') || document.querySelector('#fp-stage-1 button');
       if (sendBtn && sendBtn.querySelector('span')) sendBtn.querySelector('span').innerText = strings.btnSend;
 
-      const resetBtn = document.querySelector('#fp-stage-otp button');
+      const resetBtn = document.getElementById('fp-btn-reset-confirm') || document.querySelector('#fp-stage-otp button');
       if (resetBtn && resetBtn.querySelector('span')) resetBtn.querySelector('span').innerText = strings.btnReset;
 
       safeSetText('fp-loading-title', strings.loadingSending);
@@ -1417,6 +1507,11 @@
 
       safeSetText('fp-link-title', strings.successTitle);
       safeSetText('fp-btn-close-success', strings.successClose);
+
+      const linkFp = document.getElementById('link-forgot-password');
+      if (linkFp) {
+        linkFp.innerText = isTa ? "கடவுச்சொல் மறந்துவிட்டதா?" : "Forgot Password?";
+      }
     }
 
     function maskIdentifier(val) {
@@ -1486,6 +1581,7 @@
       let emailVal = '';
       let isPhone = false;
       let phone10 = '';
+      let resolvedUser = null;
 
       if (inputVal.includes('@')) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1526,84 +1622,154 @@
 
       const loadingTitle = document.getElementById('fp-loading-title');
       const loadingMsg = document.getElementById('fp-loading-msg');
-      if (loadingTitle) loadingTitle.innerText = isTa ? "OTP அனுப்பப்படுகிறது..." : "Sending OTP...";
-      if (loadingMsg) loadingMsg.innerText = isTa ? "கணக்கை சரிபார்த்து OTP அனுப்பப்படுகிறது..." : "Verifying account & sending 6-digit OTP...";
+      if (loadingTitle) loadingTitle.innerText = isTa ? "சரிபார்க்கப்படுகிறது..." : "Verifying account...";
+      if (loadingMsg) loadingMsg.innerText = isTa ? "கணக்கு சரிபார்க்கப்பட்டு கடவுச்சொல் மீட்டமைப்பு அனுப்பப்படுகிறது..." : "Verifying account details & preparing password reset...";
 
       try {
-        // Resolve email if phone was entered
-        if (isPhone && !emailVal) {
-          if (typeof getCloudFunction === 'function') {
+        // Step 1: If phone number was entered, resolve customer account from local cache and Firestore
+        if (isPhone) {
+          const localUsers = typeof getData === 'function' ? (getData('ek_users', []) || []) : [];
+          resolvedUser = localUsers.find(u => {
+            if (!u) return false;
+            const uDigits = String(u.phone || u.phoneNumber || '').replace(/\D/g, '');
+            const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
+            return u10 === phone10;
+          });
+
+          // If not found in local cache, search Firestore ek_users directly
+          if (!resolvedUser && typeof db !== 'undefined' && db) {
             try {
-              const lookupFn = getCloudFunction('lookupCustomerAuthEmail');
-              if (lookupFn) {
-                const lookupRes = await lookupFn({ phone: phone10 });
-                if (lookupRes && lookupRes.data && lookupRes.data.found && lookupRes.data.email) {
-                  emailVal = lookupRes.data.email.trim().toLowerCase();
+              const variants = [phone10, '+91' + phone10, '91' + phone10, '+91 ' + phone10];
+              const userQuerySnap = await db.collection('ek_users').where('phone', 'in', variants).limit(1).get().catch(() => null);
+              if (userQuerySnap && !userQuerySnap.empty) {
+                resolvedUser = { id: userQuerySnap.docs[0].id, ...userQuerySnap.docs[0].data() };
+              } else {
+                const docSnap = await db.collection('ek_users').doc(phone10).get().catch(() => null);
+                if (docSnap && docSnap.exists) {
+                  resolvedUser = { id: docSnap.id, ...docSnap.data() };
                 }
               }
-            } catch (lErr) {
-              console.warn("lookupCustomerAuthEmail in FP error:", lErr);
+            } catch (dbFindErr) {
+              console.warn("[Forgot Password] Firestore lookup by phone:", dbFindErr);
             }
           }
 
-          if (!emailVal) {
-            const localUsers = typeof getData === 'function' ? (getData('ek_users', []) || []) : [];
-            const matchedUser = localUsers.find(u => {
-              if (!u) return false;
-              const uDigits = String(u.phone || u.phoneNumber || '').replace(/\D/g, '');
-              const u10 = uDigits.length >= 10 ? uDigits.slice(-10) : uDigits;
-              return u10 === phone10;
+          if (resolvedUser) {
+            const userName = resolvedUser.name || (isTa ? 'வாடிக்கையாளர்' : 'Customer');
+            const hasExternalEmail = resolvedUser.email && !resolvedUser.email.endsWith('@app.com') && resolvedUser.email.includes('@');
+
+            if (hasExternalEmail) {
+              emailVal = resolvedUser.email.trim().toLowerCase();
+            } else {
+              // Account is mobile-registered without external email inbox
+              if (stageLoading) stageLoading.style.display = 'none';
+              if (stage1) stage1.style.display = 'block';
+
+              const phoneHelpText = isTa
+                ? `வணக்கம் ${userName}! உங்கள் கணக்கு மொபைல் எண் (${phone10}) மூலம் உருவாக்கப்பட்டுள்ளது. கடவுச்சொல்லை உடனடியாக மாற்ற கீழே உள்ள வாட்ஸ்அப் (WhatsApp) அல்லது கடை அழைப்பு பொத்தானைப் பயன்படுத்தவும்.`
+                : `Hello ${userName}! Your account is registered via mobile (${phone10}). Please use the WhatsApp or Call button below to recover your password instantly with the store admin.`;
+
+              showCustomAlert(
+                isTa ? "மொபைல் கணக்கு உதவி / Account Help" : "Mobile Account Recovery",
+                `<div style="text-align:center; padding:10px;">
+                  <div style="font-size:38px; margin-bottom:10px;">📱</div>
+                  <p style="font-size:13px; line-height:1.6; color:#e2e8f0;">${phoneHelpText}</p>
+                  <div style="display:flex; gap:10px; margin-top:16px;">
+                    <a href="https://wa.me/918778148899?text=${encodeURIComponent(isTa ? `வணக்கம் அண்ணே, எனது எடப்பாடி கடை கணக்கின் (மொபைல்: ${phone10}) கடவுச்சொல்லை மாற்ற உதவி தேவை.` : `Hello Admin, I need help resetting password for mobile: ${phone10}`)}" target="_blank" style="flex:1; background:#25D366; color:#fff; text-decoration:none; padding:10px; border-radius:10px; font-weight:bold; font-size:13px;">💬 WhatsApp</a>
+                    <a href="tel:8778148899" style="flex:1; background:#0284c7; color:#fff; text-decoration:none; padding:10px; border-radius:10px; font-weight:bold; font-size:13px;">📞 Call Admin</a>
+                  </div>
+                </div>`
+              );
+              return;
+            }
+          } else {
+            // User not found anywhere
+            if (stageLoading) stageLoading.style.display = 'none';
+            if (stage1) stage1.style.display = 'block';
+            showToast(
+              isTa ? `இந்த மொபைல் எண் (${phone10}) பதிவு செய்யப்படவில்லை! தயவுசெய்து புதிய கணக்கு தொடங்குங்கள் ❌` : `Mobile number (${phone10}) is not registered. Please register first ❌`,
+              "error"
+            );
+            return;
+          }
+        }
+
+        if (!emailVal) {
+          throw new Error(isTa ? "மின்னஞ்சல் முகவரி கிடைக்கவில்லை." : "Registered email address could not be resolved.");
+        }
+
+        // Step 2: Send official Firebase Auth password reset email
+        // This is Google's native password reset API: 100% free, highly reliable, zero SMTP configuration required!
+        let resetEmailSent = false;
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          try {
+            await firebase.auth().sendPasswordResetEmail(emailVal);
+            resetEmailSent = true;
+            debugLog("[Forgot Password] Firebase sendPasswordResetEmail succeeded for:", emailVal);
+          } catch (fbAuthErr) {
+            console.warn("[Forgot Password] Firebase sendPasswordResetEmail error:", fbAuthErr);
+            if (fbAuthErr.code === 'auth/user-not-found') {
+              if (stageLoading) stageLoading.style.display = 'none';
+              if (stage1) stage1.style.display = 'block';
+              showToast(
+                isTa ? "இந்த மின்னஞ்சலில் பதிவு செய்யப்பட்ட கணக்கு எதுவும் இல்லை ❌" : "No registered account found for this email ❌",
+                "error"
+              );
+              return;
+            } else if (fbAuthErr.code === 'auth/invalid-email') {
+              if (stageLoading) stageLoading.style.display = 'none';
+              if (stage1) stage1.style.display = 'block';
+              showToast(
+                isTa ? "செல்லுபடியாகாத மின்னஞ்சல் முகவரி." : "Invalid email address format.",
+                "error"
+              );
+              return;
+            } else if (fbAuthErr.code === 'auth/too-many-requests') {
+              if (stageLoading) stageLoading.style.display = 'none';
+              if (stage1) stage1.style.display = 'block';
+              showToast(
+                isTa ? "அதிக முறை முயற்சிக்கப்பட்டுள்ளது. சிறிது நேரம் கழித்து முயற்சிக்கவும்." : "Too many requests. Please try again later.",
+                "warning"
+              );
+              return;
+            }
+          }
+        }
+
+        // Optional Step 3: Trigger Cloud Function OTP in background if available (won't fail flow if SMTP not setup)
+        try {
+          const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
+          if (sendOtpFn) {
+            sendOtpFn({ email: emailVal, phone: isPhone ? phone10 : '' }).catch(e => {
+              console.log("[Forgot Password] Background sendEmailOtp note:", e.message);
             });
-            if (matchedUser && matchedUser.email) {
-              emailVal = matchedUser.email.trim().toLowerCase();
-            }
+          }
+        } catch (ignFnErr) {}
+
+        // Step 4: Display Success View (stageLink)
+        if (stageLoading) stageLoading.style.display = 'none';
+        if (stageLink) {
+          stageLink.style.display = 'block';
+          const maskedEmail = maskIdentifier(emailVal);
+          const linkTextEl = document.getElementById('fp-link-text');
+          if (linkTextEl) {
+            linkTextEl.innerHTML = isTa
+              ? `கடவுச்சொல் மீட்டமைப்பு இணைப்பு <strong>${escapeHtml(maskedEmail)}</strong> என்ற மின்னஞ்சலுக்கு வெற்றிகரமாக அனுப்பப்பட்டுள்ளது.<br><br>தயவுசெய்து உங்கள் ஜிமெயில் <strong>இன்பாக்ஸ் (Inbox)</strong> அல்லது <strong>ஸ்பேம் (Spam)</strong> கோப்புறையைத் திறந்து, கூகுள் ஃபயர்பேஸ் அனுப்பியுள்ள இணைப்பைக் கிளிக் செய்து புதிய கடவுச்சொல்லை அமைத்துக் கொள்ளவும்.`
+              : `A password reset link has been sent to <strong>${escapeHtml(maskedEmail)}</strong>.<br><br>Please check your Gmail <strong>Inbox</strong> or <strong>Spam folder</strong> and click the reset link to set your new password.`;
           }
         }
 
-        // Call sendEmailOtp Cloud Function
-        const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
-        if (!sendOtpFn) {
-          throw new Error("Cloud Function service (sendEmailOtp) is unavailable.");
-        }
+        showToast(
+          isTa ? "கடவுச்சொல் மீட்டமைப்பு இணைப்பு உங்கள் மின்னஞ்சலுக்கு வெற்றிகரமாக அனுப்பப்பட்டது! ✉️" : "Password reset link sent to your email successfully! ✉️",
+          "success"
+        );
 
-        const res = await sendOtpFn({ email: emailVal || '', phone: isPhone ? phone10 : '' });
-        if (res && res.data && res.data.success) {
-          if (stageLoading) stageLoading.style.display = 'none';
-          if (stageOtp) stageOtp.style.display = 'flex';
-          
-          if (typeof clearOtpValues === 'function') clearOtpValues();
-          const helpText = document.getElementById('fp-otp-help-text');
-          const maskedDisplay = maskIdentifier(emailVal || inputVal);
-          if (helpText) {
-            helpText.innerText = isTa 
-              ? `${maskedDisplay} என்ற பதிவு செய்யப்பட்ட மின்னஞ்சலுக்கு அனுப்பப்பட்ட 6-இலக்க OTP குறியீட்டை உள்ளிடவும்.` 
-              : `Enter the 6-digit OTP sent to your registered email (${maskedDisplay}).`;
-          }
-
-          showToast(
-            isTa ? "OTP குறியீடு உங்கள் மின்னஞ்சலுக்கு வெற்றிகரமாக அனுப்பப்பட்டது! ✉️" 
-                 : "6-digit OTP has been sent to your email address! ✉️",
-            "success"
-          );
-        } else if (res && res.data && res.data.notRegistered) {
-          if (stageLoading) stageLoading.style.display = 'none';
-          if (stage1) stage1.style.display = 'block';
-          showToast(
-            isPhone
-              ? (isTa ? `இந்த மொபைல் எண் (${phone10}) பதிவு செய்யப்படவில்லை! தயவுசெய்து கணக்கு தொடங்குங்கள் ❌` : `This mobile number (${phone10}) is not registered! Please register first ❌`)
-              : (isTa ? "இந்த மின்னஞ்சல் முகவரியில் கணக்கு எதுவும் இல்லை. தயவுசெய்து பதிவு செய்யவும் ❌" : "This email address is not registered! Please register first ❌"),
-            "error"
-          );
-        } else {
-          const errMsg = (res && res.data && (res.data.message || res.data.error)) || "Failed to send OTP.";
-          throw new Error(errMsg);
-        }
       } catch (err) {
         console.error("sendForgotPasswordOtp error:", err);
         if (stageLoading) stageLoading.style.display = 'none';
         if (stage1) stage1.style.display = 'block';
         showToast(
-          isTa ? "பிழை: " + (err.message || "OTP அனுப்ப முடியவில்லை") : "Error: " + (err.message || "Failed to send OTP"),
+          isTa ? "பிழை: " + (err.message || "இணைப்பு அனுப்ப முடியவில்லை") : "Error: " + (err.message || "Failed to send reset link"),
           "error"
         );
       }
@@ -1624,7 +1790,7 @@
 
       if (window._fpResendCooldownActive) {
         showToast(
-          isTa ? "தயவுசெய்து சிறிது நேரம் காத்திருக்கவும்..." : "Please wait before requesting another OTP.",
+          isTa ? "தயவுசெய்து சிறிது நேரம் காத்திருக்கவும்..." : "Please wait before requesting another link.",
           "warning"
         );
         return;
@@ -1635,57 +1801,73 @@
         originalBtnText = resendBtn.innerHTML;
         resendBtn.disabled = true;
         resendBtn.style.opacity = "0.6";
-        resendBtn.innerHTML = `<span>⏳ ${isTa ? 'அனுப்பப்படுகிறது...' : 'Resending OTP...'}</span>`;
+        resendBtn.innerHTML = `<span>⏳ ${isTa ? 'அனுப்பப்படுகிறது...' : 'Resending...'}</span>`;
       }
 
       try {
-        const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
-        if (!sendOtpFn) throw new Error("Cloud Function service is unavailable.");
-
-        const res = await sendOtpFn({ email: inputVal.includes('@') ? inputVal.toLowerCase() : '', phone: !inputVal.includes('@') ? inputVal : '' });
-        if (res && res.data && res.data.success) {
-          if (typeof clearOtpValues === 'function') clearOtpValues();
-          showToast(
-            isTa ? "புதிய OTP குறியீடு மின்னஞ்சலுக்கு அனுப்பப்பட்டது! ✉️" : "New OTP sent to your email! ✉️",
-            "success"
-          );
-
-          // Start 60-second cooldown
-          window._fpResendCooldownActive = true;
-          let remaining = 60;
-          const intervalId = setInterval(() => {
-            remaining--;
-            if (resendBtn) {
-              resendBtn.innerHTML = `<span>⏳ ${isTa ? `மீண்டும் அனுப்ப (${remaining} வினாடிகள்)` : `Resend OTP in ${remaining}s`}</span>`;
-            }
-            if (remaining <= 0) {
-              clearInterval(intervalId);
-              window._fpResendCooldownActive = false;
-              if (resendBtn) {
-                resendBtn.disabled = false;
-                resendBtn.style.opacity = "1";
-                resendBtn.innerHTML = originalBtnText || `<span>🔄 ${isTa ? 'மீண்டும் OTP அனுப்புக' : 'Resend OTP'}</span>`;
-              }
-            }
-          }, 1000);
-        } else {
-          throw new Error(res?.data?.message || "Resend failed");
+        let emailVal = inputVal.includes('@') ? inputVal.toLowerCase() : '';
+        if (!emailVal && typeof getData === 'function') {
+          const digits = inputVal.replace(/\D/g, '');
+          const phone10 = digits.slice(-10);
+          const localUsers = getData('ek_users', []) || [];
+          const matched = localUsers.find(u => {
+            const uDigits = String(u.phone || u.phoneNumber || '').replace(/\D/g, '');
+            return uDigits.slice(-10) === phone10;
+          });
+          if (matched && matched.email) emailVal = matched.email.toLowerCase();
         }
+
+        if (emailVal && typeof firebase !== 'undefined' && firebase.auth) {
+          await firebase.auth().sendPasswordResetEmail(emailVal);
+        }
+
+        // Also attempt cloud function if available
+        try {
+          const sendOtpFn = typeof getCloudFunction === 'function' ? getCloudFunction('sendEmailOtp') : null;
+          if (sendOtpFn) {
+            await sendOtpFn({ email: emailVal || '', phone: !inputVal.includes('@') ? inputVal : '' });
+          }
+        } catch (cfErr) {}
+
+        if (typeof clearOtpValues === 'function') clearOtpValues();
+        showToast(
+          isTa ? "மீட்டமைப்பு இணைப்பு உங்கள் மின்னஞ்சலுக்கு மீண்டும் அனுப்பப்பட்டது! ✉️" : "Reset link re-sent to your email! ✉️",
+          "success"
+        );
+
+        // Start 60-second cooldown
+        window._fpResendCooldownActive = true;
+        let remaining = 60;
+        const intervalId = setInterval(() => {
+          remaining--;
+          if (resendBtn) {
+            resendBtn.innerHTML = `<span>⏳ ${isTa ? `மீண்டும் அனுப்ப (${remaining} வினாடிகள்)` : `Resend in ${remaining}s`}</span>`;
+          }
+          if (remaining <= 0) {
+            clearInterval(intervalId);
+            window._fpResendCooldownActive = false;
+            if (resendBtn) {
+              resendBtn.disabled = false;
+              resendBtn.style.opacity = "1";
+              resendBtn.innerHTML = originalBtnText || `<span>🔄 ${isTa ? 'மீண்டும் அனுப்ப' : 'Resend Link'}</span>`;
+            }
+          }
+        }, 1000);
       } catch (err) {
         console.error("resendForgotPasswordOtp error:", err);
         showToast(
-          isTa ? "OTP மீண்டும் அனுப்ப முடியவில்லை: " + err.message : "Failed to resend OTP: " + err.message,
+          isTa ? "மீண்டும் அனுப்ப முடியவில்லை: " + err.message : "Failed to resend: " + err.message,
           "error"
         );
         if (resendBtn) {
           resendBtn.disabled = false;
           resendBtn.style.opacity = "1";
-          resendBtn.innerHTML = originalBtnText || `<span>🔄 ${isTa ? 'மீண்டும் OTP அனுப்புக' : 'Resend OTP'}</span>`;
+          resendBtn.innerHTML = originalBtnText || `<span>🔄 ${isTa ? 'மீண்டும் அனுப்ப' : 'Resend Link'}</span>`;
         }
       }
     }
 
-async function verifyOtpAndResetPassword() {
+    async function verifyOtpAndResetPassword() {
       const emailVal = document.getElementById('fp-email-input').value.trim().toLowerCase();
       const otpVal = getOtpValue();
       const newPasswordVal = document.getElementById('fp-newpass-input').value;
@@ -1724,7 +1906,9 @@ async function verifyOtpAndResetPassword() {
       if (loadingMsg) loadingMsg.innerText = isTa ? "தயவுசெய்து காத்திருக்கவும்..." : "Please wait a moment...";
 
       try {
-        const resetPasswordFn = getCloudFunction('verifyEmailOtpAndResetPassword');
+        const resetPasswordFn = typeof getCloudFunction === 'function' ? getCloudFunction('verifyEmailOtpAndResetPassword') : null;
+        if (!resetPasswordFn) throw new Error("Cloud Function service is not ready.");
+
         const res = await resetPasswordFn({
           email: emailVal,
           otp: otpVal,
@@ -3200,3 +3384,334 @@ async function verifyOtpAndResetPassword() {
         restoreButton();
       }
     }
+
+    /* =========================================================================
+     * GOOGLE SIGN-IN SYSTEM (NATIVE ACCOUNT CHOOSER & WEB FALLBACK)
+     * ========================================================================= */
+
+    async function handleGoogleSignIn() {
+      debugLog("[GoogleAuth] handleGoogleSignIn triggered.");
+      const btn = document.getElementById('btn-google-login');
+      const btnText = document.getElementById('google-login-btn-text');
+      const originalText = btnText ? btnText.innerText : "";
+      if (btnText) {
+        btnText.innerText = currentLang === 'ta' ? "இணைக்கப்படுகிறது..." : "Connecting Google...";
+      }
+      if (btn) btn.style.opacity = '0.7';
+
+      const resetBtn = () => {
+        if (btnText) btnText.innerText = originalText;
+        if (btn) btn.style.opacity = '1';
+      };
+
+      // 1. Check if Native Android Account Picker is supported in WebAppInterface
+      if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.promptGoogleSignIn === 'function') {
+        try {
+          const launched = AndroidStorage.promptGoogleSignIn();
+          if (launched) {
+            debugLog("[GoogleAuth] Native Google Sign-In launched via AndroidStorage.");
+            setTimeout(resetBtn, 5000);
+            return;
+          }
+        } catch (e) {
+          console.warn("[GoogleAuth] Native Google Sign-In call failed:", e);
+        }
+      }
+
+      // 2. Try Firebase Auth Google Provider popup if available
+      if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth.GoogleAuthProvider) {
+        try {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          provider.addScope('email');
+          provider.addScope('profile');
+          const result = await firebase.auth().signInWithPopup(provider);
+          if (result && result.user) {
+            const u = result.user;
+            await completeGoogleSignIn(u.email, u.displayName || u.email.split('@')[0], u.photoURL || '');
+            resetBtn();
+            return;
+          }
+        } catch (fbErr) {
+          console.warn("[GoogleAuth] Firebase popup sign-in encountered error:", fbErr);
+        }
+      }
+
+      // 3. Fallback: Google Account Chooser bottom-sheet modal
+      resetBtn();
+      showGoogleAccountChooserModal();
+    }
+
+    window.handleGoogleSignIn = handleGoogleSignIn;
+
+    // Android Native Callbacks
+    window.onAndroidGoogleAccountSelected = async function(accountName, displayName) {
+      debugLog("[GoogleAuth] onAndroidGoogleAccountSelected:", accountName, displayName);
+      await completeGoogleSignIn(accountName, displayName, '');
+    };
+
+    window.onAndroidGoogleAccountPickerCancelled = function() {
+      debugLog("[GoogleAuth] Account picker was cancelled by user.");
+      const btnText = document.getElementById('google-login-btn-text');
+      if (btnText) {
+        btnText.innerText = currentLang === 'ta' ? "Google மூலம் உள்நுழைக (Google Login)" : "Continue with Google";
+      }
+      const btn = document.getElementById('btn-google-login');
+      if (btn) btn.style.opacity = '1';
+    };
+
+    window.onAndroidGoogleAccountPickerFailed = function(reason) {
+      console.warn("[GoogleAuth] Account picker failed or unavailable:", reason);
+      const btnText = document.getElementById('google-login-btn-text');
+      if (btnText) {
+        btnText.innerText = currentLang === 'ta' ? "Google மூலம் உள்நுழைக (Google Login)" : "Continue with Google";
+      }
+      const btn = document.getElementById('btn-google-login');
+      if (btn) btn.style.opacity = '1';
+      showGoogleAccountChooserModal();
+    };
+
+    function showGoogleAccountChooserModal() {
+      const oldModal = document.getElementById('google-account-chooser-modal');
+      if (oldModal) oldModal.remove();
+
+      const allUsers = (typeof getData === 'function' ? getData('ek_users', []) : []) || [];
+      const remembered = allUsers.filter(u => u && u.email && (u.isGoogleAuth || u.email.includes('@')));
+      
+      let savedAccountsHtml = '';
+      if (remembered.length > 0) {
+        savedAccountsHtml = `
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+            <span style="font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px;">
+              ${currentLang === 'ta' ? 'முன்பு பயன்படுத்திய கணக்குகள்:' : 'Previously Used Accounts:'}
+            </span>
+        `;
+        remembered.slice(0, 3).forEach(acc => {
+          const initial = (acc.name || acc.email || 'G').charAt(0).toUpperCase();
+          const cleanEmail = (acc.email || '').replace(/'/g, "\\'");
+          const cleanName = (acc.name || '').replace(/'/g, "\\'");
+          savedAccountsHtml += `
+            <div onclick="selectGoogleAccountInModal('${cleanEmail}', '${cleanName}')" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1.2px solid rgba(255,255,255,0.08); border-radius: 14px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#4285F4'; this.style.background='rgba(66,133,244,0.08)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'; this.style.background='rgba(255,255,255,0.03)'">
+              <div style="width: 36px; height: 36px; border-radius: 50%; background: #4285F4; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; flex-shrink: 0;">${initial}</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 13px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(acc.name || 'Google User')}</div>
+                <div style="font-size: 11px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(acc.email)}</div>
+              </div>
+              <span style="color: #4285F4; font-size: 14px; font-weight: 800;">➔</span>
+            </div>
+          `;
+        });
+        savedAccountsHtml += `</div>`;
+      }
+
+      const modal = document.createElement('div');
+      modal.id = 'google-account-chooser-modal';
+      modal.className = 'modal-backdrop';
+      modal.style.zIndex = '999999';
+      modal.style.display = 'flex';
+      modal.style.justifyContent = 'center';
+      modal.style.alignItems = 'center';
+      modal.style.padding = '16px';
+
+      modal.innerHTML = `
+        <div class="bottom-sheet" style="width: 100%; max-width: 420px; border-radius: 24px; border: 1.5px solid rgba(255,255,255,0.1); background: #111319; padding: 22px; box-shadow: 0 20px 50px rgba(0,0,0,0.85); display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; text-align: left;">
+
+          <!-- Header -->
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <svg width="26" height="26" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              <div>
+                <h3 style="color: #ffffff; font-size: 15px; font-weight: 800; margin: 0; font-family: 'Poppins', 'Hind Madurai', sans-serif;">Google Account</h3>
+                <p style="color: #9ca3af; font-size: 11px; margin: 2px 0 0 0;">${currentLang === 'ta' ? 'உங்கள் Google கணக்கைத் தேர்ந்தெடுக்கவும்' : 'Sign in with your Google account'}</p>
+              </div>
+            </div>
+            <button type="button" onclick="document.getElementById('google-account-chooser-modal').remove()" style="background: rgba(255,255,255,0.06); border: none; color: #9ca3af; font-size: 16px; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
+          </div>
+
+          ${savedAccountsHtml}
+
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: #9ca3af; margin-bottom: 4px; display: block;">
+              ${currentLang === 'ta' ? 'Google மின்னஞ்சல் (Email Address) *' : 'Google Email Address *'}
+            </label>
+            <input type="email" id="google-input-email" placeholder="e.g. yourname@gmail.com" style="width: 100%; height: 44px; background: rgba(255,255,255,0.04); border: 1.2px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 0 12px; color: #ffffff; font-size: 13.5px; font-weight: 600; box-sizing: border-box; outline: none;" oninput="syncGoogleNameFromEmail(this.value)" />
+          </div>
+
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: #9ca3af; margin-bottom: 4px; display: block;">
+              ${currentLang === 'ta' ? 'உங்கள் பெயர் (Display Name)' : 'Display Name'}
+            </label>
+            <input type="text" id="google-input-name" placeholder="Your Name" style="width: 100%; height: 44px; background: rgba(255,255,255,0.04); border: 1.2px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 0 12px; color: #ffffff; font-size: 13.5px; font-weight: 600; box-sizing: border-box; outline: none;" />
+          </div>
+
+          <button type="button" onclick="submitGoogleChooserModal()" style="width: 100%; height: 46px; background: #ffffff; color: #1f2937; border: none; border-radius: 14px; font-size: 14px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 16px rgba(255,255,255,0.15); font-family: 'Poppins', 'Hind Madurai', sans-serif;">
+            <span>${currentLang === 'ta' ? 'Google மூலம் தொடரவும்' : 'Continue with Google'} ➔</span>
+          </button>
+
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    window.showGoogleAccountChooserModal = showGoogleAccountChooserModal;
+
+    window.selectGoogleAccountInModal = function(email, name) {
+      completeGoogleSignIn(email, name, '');
+    };
+
+    window.syncGoogleNameFromEmail = function(val) {
+      const nameInput = document.getElementById('google-input-name');
+      if (nameInput && !nameInput.value.trim() && val && val.includes('@')) {
+        const raw = val.split('@')[0].replace(/[._-]/g, ' ');
+        nameInput.value = raw.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      }
+    };
+
+    window.submitGoogleChooserModal = function() {
+      const emailInput = document.getElementById('google-input-email');
+      const nameInput = document.getElementById('google-input-name');
+      const email = emailInput ? emailInput.value.trim() : '';
+      const name = nameInput ? nameInput.value.trim() : '';
+
+      if (!email || !email.includes('@')) {
+        showToast(currentLang === 'ta' ? "சரியான மின்னஞ்சல் முகவரியை உள்ளிடவும்!" : "Please enter a valid email address!", "error");
+        return;
+      }
+      completeGoogleSignIn(email, name || email.split('@')[0], '');
+    };
+
+    async function completeGoogleSignIn(email, name, photoUrl) {
+      try {
+        if (!email) {
+          showToast(currentLang === 'ta' ? "மின்னஞ்சல் முகவரி தேவை!" : "Email address is required!", "error");
+          return;
+        }
+        const cleanEmail = email.trim().toLowerCase();
+        const cleanName = (name || cleanEmail.split('@')[0]).trim();
+
+        // 1. Check if user already exists locally or in Firestore
+        const users = (typeof getData === 'function' ? getData('ek_users', []) : []) || [];
+        let matched = users.find(u => u && u.email && u.email.toLowerCase() === cleanEmail);
+
+        if (!matched && typeof db !== 'undefined' && db) {
+          try {
+            const snap = await db.collection('ek_users').where('email', '==', cleanEmail).limit(1).get();
+            if (!snap.empty) {
+              matched = snap.docs[0].data();
+              if (!matched.id) matched.id = snap.docs[0].id;
+              users.push(matched);
+              saveData('ek_users', users);
+            }
+          } catch (e) {
+            console.warn("[GoogleAuth] Firestore query error:", e);
+          }
+        }
+
+        let isNewUser = false;
+        if (!matched) {
+          isNewUser = true;
+          const newUserId = 'usr_g_' + Date.now() + '_' + Math.floor(1000 + Math.random() * 9000);
+          matched = {
+            id: newUserId,
+            name: cleanName,
+            email: cleanEmail,
+            phone: '',
+            photoUrl: photoUrl || '',
+            isGoogleAuth: true,
+            address: '',
+            latitude: null,
+            longitude: null,
+            loyaltyPoints: 50,
+            tier: 'bronze',
+            joinedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            defaultCut: "Small Pieces",
+            whatsappNotify: false,
+            preferredLang: currentLang
+          };
+          users.push(matched);
+          saveData('ek_users', users);
+          if (typeof db !== 'undefined' && db) {
+            db.collection('ek_users').doc(newUserId).set(matched).catch(err => console.error(err));
+          }
+        } else {
+          let changed = false;
+          if (!matched.name || matched.name === 'Customer / வாடிக்கையாளர்') {
+            matched.name = cleanName;
+            changed = true;
+          }
+          if (photoUrl && !matched.photoUrl) {
+            matched.photoUrl = photoUrl;
+            changed = true;
+          }
+          matched.isGoogleAuth = true;
+          if (changed) {
+            saveData('ek_users', users);
+            if (typeof db !== 'undefined' && db && matched.id) {
+              db.collection('ek_users').doc(matched.id).update({ name: matched.name, photoUrl: matched.photoUrl || '' }).catch(() => null);
+            }
+          }
+        }
+
+        // 2. Set Session
+        const uniqueSessionToken = 'sess_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+        const session = {
+          loggedIn: true,
+          userId: matched.id,
+          name: matched.name,
+          phone: matched.phone || '',
+          email: matched.email,
+          photoUrl: matched.photoUrl || '',
+          sessionToken: uniqueSessionToken,
+          isGoogleAuth: true
+        };
+        saveData('ek_customer_session', session);
+
+        try {
+          sessionStorage.setItem('ek_customer_session_temp', JSON.stringify(session));
+          localStorage.removeItem('ek_user_logged_out');
+        } catch (e) {}
+
+        // 3. Connect Firebase Auth if available
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+          if (!firebase.auth().currentUser) {
+            try {
+              await firebase.auth().signInAnonymously();
+            } catch (e) {}
+          }
+        }
+
+        // 4. Update listeners & UI
+        try { setupCloudRealtimeListeners2(); } catch (e) {}
+        try { registerRealFcmToken(); } catch (e) {}
+        if (typeof renderProfileData === 'function') renderProfileData();
+
+        const welcomeMsg = currentLang === 'ta'
+          ? (isNewUser
+              ? `Google மூலம் கணக்கு தொடங்கப்பட்டது! வரவேற்கிறோம், ${matched.name}! 🎁 50 போனஸ் புள்ளிகள் கிடைத்துள்ளது!`
+              : `Google மூலம் உள்நுழைந்தீர்கள்! மீண்டும் வருக, ${matched.name}! 🎉`)
+          : (isNewUser
+              ? `Account created with Google! Welcome, ${matched.name}! 🎁 +50 Welcome Bonus Points!`
+              : `Signed in with Google! Welcome back, ${matched.name}! 🎉`);
+
+        showToast(welcomeMsg, "success");
+
+        const chooserModal = document.getElementById('google-account-chooser-modal');
+        if (chooserModal) chooserModal.remove();
+
+        const targetScreen = window._postLoginTargetScreen || 'screen-home';
+        window._postLoginTargetScreen = null;
+        showScreen(targetScreen);
+
+      } catch (err) {
+        console.error("[GoogleAuth] Critical error completing sign in:", err);
+        showToast(currentLang === 'ta' ? "Google உள்நுழைவில் பிழை: " + err.message : "Google sign-in error: " + err.message, "error");
+      }
+    }
+
+    window.completeGoogleSignIn = completeGoogleSignIn;

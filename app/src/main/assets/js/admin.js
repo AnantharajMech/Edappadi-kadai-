@@ -431,9 +431,9 @@
         if (elMinAmt) elMinAmt.value = settings.minOrderAmount !== undefined ? settings.minOrderAmount : 0;
 
         const elMinAppVer = document.getElementById('setting-min-app-version');
-        if (elMinAppVer) elMinAppVer.value = settings.minAppVersion || '7.0.0';
+        if (elMinAppVer) elMinAppVer.value = settings.minAppVersion || '8.0.0';
         const elRecAppVer = document.getElementById('setting-recommended-app-version');
-        if (elRecAppVer) elRecAppVer.value = settings.recommendedVersion || '7.0.0';
+        if (elRecAppVer) elRecAppVer.value = settings.recommendedVersion || '8.0.0';
         const elPlayUrl = document.getElementById('setting-playstore-url');
         if (elPlayUrl) elPlayUrl.value = settings.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.edappadikadai.app';
         const elPrivacyUrl = document.getElementById('setting-privacy-policy-url');
@@ -446,7 +446,7 @@
         const elBdTxt = document.getElementById('admin-broadcast-text');
         if (elBdTxt) elBdTxt.value = settings.announcement || '';
 
-        try { if (typeof renderAdminBannerSettings === "function") renderAdminBannerSettings(); } catch(e) {}
+        try { if (typeof renderAdminBannerList === "function") renderAdminBannerList(); } catch(e) {}
 
         if (typeof loadAdminEmailOtpConfig === 'function') {
           try { loadAdminEmailOtpConfig(); } catch(e) {}
@@ -502,6 +502,7 @@
         } else if (tab === 'tab-preorders') {
           const el = document.getElementById('admin-tab-preorders');
           if (el) el.style.display = 'block';
+          try { renderAdminPreOrders(); } catch(err) { console.error("renderAdminPreOrders error:", err); }
         } else if (tab === 'tab-products') {
           const el = document.getElementById('admin-tab-products');
           if (el) el.style.display = 'block';
@@ -1031,6 +1032,170 @@
       }
       renderAdminOrders();
     }
+
+    let adminPreOrderStatusFilter = 'all';
+    function filterAdminPreOrdersByStatus(status, element) {
+      adminPreOrderStatusFilter = status || 'all';
+      document.querySelectorAll('#admin-preorder-status-pills .pill').forEach(b => b.classList.remove('active'));
+      if (element) {
+        element.classList.add('active');
+      } else {
+        const targetPill = Array.from(document.querySelectorAll('#admin-preorder-status-pills .pill')).find(p => {
+          const onclickAttr = p.getAttribute('onclick') || '';
+          return onclickAttr.includes(`'${status}'`) || onclickAttr.includes(`"${status}"`);
+        });
+        if (targetPill) targetPill.classList.add('active');
+      }
+      renderAdminPreOrders();
+    }
+    window.filterAdminPreOrdersByStatus = filterAdminPreOrdersByStatus;
+
+    function renderAdminPreOrders(forceRefresh = false) {
+      const container = document.getElementById('admin-preorders-list');
+      if (!container) return;
+
+      let orders = typeof getDataCached === 'function' ? getDataCached('ek_orders', []) : getData('ek_orders', []);
+      if (!orders || orders.length === 0) {
+        orders = getData('ek_orders', []);
+      }
+
+      const deletedOrderIds = typeof getDeletedOrderIds === 'function' ? getDeletedOrderIds() : [];
+      let preOrders = orders.filter(o => {
+        if (!o || deletedOrderIds.includes(o.id) || o.hiddenByAdmin === true) return false;
+        const st = String(o.status || '').toLowerCase().trim();
+        const dType = String(o.deliveryType || o.orderType || '').toLowerCase();
+        return o.isPreOrder === true || dType === 'preorder' || dType.includes('schedule') || st.includes('preorder') || st.includes('schedule') || Boolean(o.scheduledDate || o.scheduledSlot);
+      }).sort((a, b) => safeParseTime(b.createdAt) - safeParseTime(a.createdAt));
+
+      const searchInput = document.getElementById('admin-preorders-search');
+      const search = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+      if (adminPreOrderStatusFilter !== 'all') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (adminPreOrderStatusFilter === 'upcoming') {
+          preOrders = preOrders.filter(o => !isDeliveredOrderStatus(o.status) && !isCancelledOrderStatus(o.status));
+        } else if (adminPreOrderStatusFilter === 'today') {
+          preOrders = preOrders.filter(o => {
+            const sDate = String(o.scheduledDate || o.deliveryDate || o.createdAt || '');
+            return sDate.includes(todayStr);
+          });
+        } else if (adminPreOrderStatusFilter === 'confirmed') {
+          preOrders = preOrders.filter(o => {
+            const st = String(o.status || '').toLowerCase();
+            return st === 'accepted' || st === 'confirmed' || st.includes('accept') || st.includes('confirm');
+          });
+        } else if (adminPreOrderStatusFilter === 'cancelled') {
+          preOrders = preOrders.filter(o => isCancelledOrderStatus(o.status));
+        }
+      }
+
+      if (search) {
+        const cleanSearch = search.replace(/\D/g, '');
+        preOrders = preOrders.filter(o => {
+          const oId = (o.id || '').toLowerCase();
+          const oCustName = (o.customerName || '').toLowerCase();
+          const oPhone = (o.customerPhone || '').replace(/\D/g, '');
+          const phoneMatches = cleanSearch ? oPhone.includes(cleanSearch) : false;
+          return oId.includes(search) || oCustName.includes(search) || phoneMatches || (o.customerPhone || '').includes(search);
+        });
+      }
+
+      if (preOrders.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="text-align: center; padding: 28px 16px; border-style: dashed; background: rgba(255,255,255,0.01);">
+            <span style="font-size: 34px;">⏳</span>
+            <h4 style="color: var(--text-primary); margin-top: 8px; font-size: 14px; font-weight: 700;">No Pre-Orders / திட்டமிடப்பட்ட ஆர்டர்கள் இல்லை</h4>
+            <p style="color: var(--text-muted); font-size: 12px; max-width: 320px; margin: 4px auto 14px;">Pre-orders are scheduled reservations by customers for festival dates and specific delivery slots.</p>
+            <button class="btn btn-secondary" style="width: auto; margin: 0 auto; font-size: 12px; padding: 6px 16px;" onclick="switchAdminTab('tab-orders')">
+              📋 View Live Orders / நேரலை ஆர்டர்கள்
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      const rawDeliveryPersons = typeof getDataCached === 'function' ? getDataCached('ek_delivery_persons', []) : (getData('ek_delivery_persons', []) || []);
+      const deletedRiderIds = typeof getDeletedRiderIds === 'function' ? getDeletedRiderIds() : [];
+      const deliveryPersons = rawDeliveryPersons.filter(dp => !deletedRiderIds.includes(dp.id));
+
+      let html = '';
+      preOrders.forEach(o => {
+        const scheduledText = o.scheduledDate || o.deliveryDate || (o.scheduledSlot ? `Slot: ${o.scheduledSlot}` : 'Scheduled Order');
+        const itemRows = (o.items || []).map(i => {
+          return `• ${i.tamilName || i.name} (${i.englishName || ''}) - <strong>${getFormattedItemQty(i, currentLang)}</strong>`;
+        }).join('<br>');
+
+        const isUnverifiedUpi = o.status === 'payment_pending_verification' || o.paymentStatus === 'PENDING_VERIFICATION' || o.needsPaymentVerification === true;
+        const isUpi = !isUnverifiedUpi && o.paymentMethod && (o.paymentMethod.toUpperCase().includes('UPI') || o.paymentMethod.toUpperCase().includes('ONLINE'));
+        const paymentBadge = isUnverifiedUpi 
+          ? `<span class="badge" style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #f87171; font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 4px;">⚠️ UPI UNVERIFIED</span>`
+          : isUpi 
+          ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 4px;">📱 UPI PAID</span>`
+          : `<span class="badge" style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #f59e0b; font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 4px;">💵 CASH ON DELIVERY</span>`;
+
+        const waPreOrderMsg = encodeURIComponent(
+`🟧 *EDAPPADI KADAI — PRE-ORDER UPDATE* 🟧
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👋 Hi *${o.customerName || 'Customer'}*!
+Your scheduled pre-order (*${o.id}*) is confirmed for delivery:
+📅 *Schedule:* ${scheduledText}
+💵 *Amount:* ₹${o.totalAmount || o.price || 0}
+📍 *Address:* ${o.deliveryAddress || 'Registered Location'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+*Edappadi Kadai* — Fresh. Fast. Local. ✨`
+        );
+
+        html += `
+          <div class="card" style="border-left: 4px solid #f59e0b; margin-bottom: 12px; padding: 14px; background: var(--bg-card);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <div>
+                <span class="badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-weight:800; font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.3);">⏳ PRE-ORDER</span>
+                <strong style="color:var(--accent-orange); display:inline-block; margin-left:6px; font-size:13px; font-family:'JetBrains Mono', monospace;">${o.id}</strong>
+              </div>
+              <div>
+                <span class="badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; font-weight:700; font-size:10.5px; padding:2px 7px; border-radius:6px;">${String(o.status || 'Scheduled').toUpperCase()}</span>
+              </div>
+            </div>
+
+            <div style="background:rgba(245,158,11,0.06); padding:8px 10px; border-radius:8px; margin:6px 0 8px; border:1px dashed rgba(245,158,11,0.25); font-size:12px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+              <span>📅 <strong>Scheduled Delivery:</strong> ${scheduledText}</span>
+            </div>
+
+            <div style="font-size:12.5px; color:var(--text-primary); margin-bottom:6px;">
+              <strong>👤 ${o.customerName || 'Customer'}</strong> • <a href="tel:${o.customerPhone}" style="color:var(--accent-orange); text-decoration:none; font-weight:700;">📞 ${o.customerPhone || 'N/A'}</a>
+            </div>
+
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-bottom:8px;">
+              📍 ${o.deliveryAddress || 'No address provided'}
+            </div>
+
+            <div style="background:rgba(0,0,0,0.2); padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:8px; line-height:1.5;">
+              ${itemRows}
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:13px;">
+              <div>${paymentBadge}</div>
+              <strong style="color:var(--accent-green); font-size:15px;">₹${o.totalAmount || o.price || 0}</strong>
+            </div>
+
+            <div style="display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px;">
+              <a class="btn btn-secondary" style="width:auto; flex:1; min-width:80px; font-size:11px; padding:6px 8px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px;" href="https://wa.me/91${(o.customerPhone || '').replace(/\D/g,'')}?text=${waPreOrderMsg}" target="_blank">
+                <span>💬</span> <span>WhatsApp</span>
+              </a>
+              <button class="btn btn-primary" style="width:auto; flex:1; min-width:80px; font-size:11px; padding:6px 8px; display:inline-flex; align-items:center; justify-content:center; gap:4px;" onclick="changeOrderStatusDirectly('${o.id}', 'accepted')">
+                <span>✅</span> <span>Confirm</span>
+              </button>
+              <button class="btn btn-secondary" style="width:auto; font-size:11px; padding:6px 8px;" onclick="toggleOrderDetails('${o.id}')">
+                <span>🔍 Details</span>
+              </button>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+    window.renderAdminPreOrders = renderAdminPreOrders;
 
     let _lastAdminOrderDoc = null;
     let _isFetchingAdminOrderHistory = false;
@@ -4080,11 +4245,19 @@ ${o.items.map((it, idx) => {
         }
 
         const o = orders[idx];
-        const oldFee = o.deliveryFee !== undefined ? o.deliveryFee : (o.deliveryCharge !== undefined ? o.deliveryCharge : 0);
+        const oldFee = o.deliveryFee !== undefined ? parseFloat(o.deliveryFee) : (parseFloat(o.deliveryCharge) || 0);
         const oldEta = o.estimatedTime || o.eta || 30;
 
+        const subtotal = o.subtotalAmount !== undefined ? parseFloat(o.subtotalAmount) : (parseFloat(o.subtotal) || (parseFloat(o.totalAmount || 0) - oldFee));
+        const loyaltyDisc = parseFloat(o.loyaltyDiscount || 0);
+        const couponDisc = parseFloat(o.couponDiscount || 0);
+        const newTotal = Math.max(0, Math.round(subtotal - loyaltyDisc - couponDisc + newDeliveryCharge));
+
+        o.subtotalAmount = subtotal;
         o.deliveryFee = newDeliveryCharge;
         o.deliveryCharge = newDeliveryCharge;
+        o.totalAmount = newTotal;
+        o.grandTotal = newTotal;
         o.estimatedTime = newEtaMinutes;
         o.eta = newEtaMinutes;
         o.updatedAt = new Date().toISOString();
@@ -4093,8 +4266,11 @@ ${o.items.map((it, idx) => {
 
         if (typeof db !== 'undefined' && db) {
           await db.collection('ek_orders').doc(orderId).set({
+            subtotalAmount: subtotal,
             deliveryFee: newDeliveryCharge,
             deliveryCharge: newDeliveryCharge,
+            totalAmount: newTotal,
+            grandTotal: newTotal,
             estimatedTime: newEtaMinutes,
             eta: newEtaMinutes,
             updatedAt: new Date().toISOString()
@@ -4941,3 +5117,4 @@ ${o.items.map((it, idx) => {
     window.initAdminZonesMap = initAdminZonesMap;
     window.renderAdminDeliveryZones = renderAdminDeliveryZones;
     window.fetchAdminOrdersLive = fetchAdminOrdersLive;
+    window.renderAdminBannerSettings = function() { if (typeof renderAdminBannerList === 'function') renderAdminBannerList(); };

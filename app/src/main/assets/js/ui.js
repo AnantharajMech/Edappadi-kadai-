@@ -2532,6 +2532,23 @@
         const finalTitle = currentLang === 'ta' ? titleTa : titleEn;
         const finalBody = currentLang === 'ta' ? bodyTa : bodyEn;
 
+        // Propagate real-time in-app notification to customer via Firestore
+        if (typeof db !== 'undefined' && db && (order.customerId || order.customerPhone)) {
+          db.collection('ek_customer_notifications').add({
+            targetUserId: order.customerId || '',
+            targetPhone: order.customerPhone || order.phone || '',
+            orderId: order.id || '',
+            titleTa: titleTa,
+            titleEn: titleEn,
+            bodyTa: bodyTa,
+            bodyEn: bodyEn,
+            type: "order_status_update",
+            newStatus: newStatus,
+            createdAt: new Date().toISOString(),
+            read: false
+          }).catch(e => console.warn('[Customer Notif Queue] Write failed:', e));
+        }
+
         if (typeof db !== 'undefined' && db) {
           db.collection('ek_fcm_queue').add({
             targetToken: targetFcmToken,
@@ -2693,19 +2710,25 @@
     async function sendDirectAdminCustomerMessage(targetUserOrId, messageText) {
       try {
         if (!targetUserOrId || !messageText || !messageText.trim()) return false;
-        let targetToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(targetUserOrId) : null;
-        if (!targetToken) {
-          showToast("Selected customer has no registered FCM token for push notifications.", "warning");
-          return false;
-        }
 
         let customerName = "Customer";
+        let targetUserId = "";
+        let targetPhone = "";
+        let userObj = null;
+
         if (typeof targetUserOrId === 'object') {
-          customerName = targetUserOrId.name || targetUserOrId.customerName || "Customer";
+          userObj = targetUserOrId;
+          targetUserId = userObj.id || userObj.userId || userObj.uid || '';
+          customerName = userObj.name || userObj.customerName || "Customer";
+          targetPhone = userObj.phone || '';
         } else {
-          const users = getDataCached('ek_users', []);
-          const u = users.find(x => x && (x.id === targetUserOrId || x.phone === targetUserOrId));
-          if (u) customerName = u.name || "Customer";
+          targetUserId = String(targetUserOrId);
+          const users = typeof getDataCached === 'function' ? getDataCached('ek_users', []) : [];
+          userObj = users.find(x => x && (x.id === targetUserId || x.phone === targetUserId));
+          if (userObj) {
+            customerName = userObj.name || "Customer";
+            targetPhone = userObj.phone || '';
+          }
         }
 
         const titleTa = "💬 நிர்வாகியிடமிருந்து செய்தி";
@@ -2718,32 +2741,59 @@
         const finalTitle = currentLang === 'ta' ? titleTa : titleEn;
         const finalBody = currentLang === 'ta' ? bodyTa : bodyEn;
 
-        if (typeof db !== 'undefined' && db) {
-          await db.collection('ek_fcm_queue').add({
-            targetToken: targetToken,
-            title: finalTitle,
-            body: finalBody,
-            targetUserId: typeof targetUserOrId === 'string' ? targetUserOrId : targetUserOrId.id,
+        // 1. Deliver to Cloud Firestore in-app customer notifications collection
+        if (typeof db !== 'undefined' && db && db.collection) {
+          await db.collection('ek_customer_notifications').add({
+            targetUserId: targetUserId,
+            targetPhone: targetPhone,
+            titleTa: titleTa,
+            titleEn: titleEn,
+            bodyTa: bodyTa,
+            bodyEn: bodyEn,
             type: "support_chat_reply",
             createdAt: new Date().toISOString(),
-            processed: false
-          }).catch(e => console.warn('[FCM Direct Message Queue] Error:', e));
+            read: false
+          }).catch(e => console.warn('[Customer Notif Queue] Write failed:', e));
         }
 
-        if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
-          try {
-            AndroidStorage.simulateFcmPushNotification(
-              targetToken,
-              finalTitle,
-              finalBody,
-              JSON.stringify({ type: "support_chat_reply", text: messageText })
-            );
-          } catch (simErr) {
-            console.warn("[FCM Simulator] Fail:", simErr);
+        // 2. Deliver via Push Notification if FCM Token is available
+        let targetToken = typeof getCustomerFcmToken === 'function' ? await getCustomerFcmToken(userObj || targetUserId) : null;
+        if (targetToken) {
+          if (typeof db !== 'undefined' && db) {
+            await db.collection('ek_fcm_queue').add({
+              targetToken: targetToken,
+              title: finalTitle,
+              body: finalBody,
+              targetUserId: targetUserId,
+              type: "support_chat_reply",
+              createdAt: new Date().toISOString(),
+              processed: false
+            }).catch(e => console.warn('[FCM Direct Message Queue] Error:', e));
+          }
+
+          if (typeof AndroidStorage !== 'undefined' && typeof AndroidStorage.simulateFcmPushNotification === 'function') {
+            try {
+              AndroidStorage.simulateFcmPushNotification(
+                targetToken,
+                finalTitle,
+                finalBody,
+                JSON.stringify({ type: "support_chat_reply", text: messageText })
+              );
+            } catch (simErr) {
+              console.warn("[FCM Simulator] Fail:", simErr);
+            }
           }
         }
 
-        showToast(`Direct message sent to ${customerName}! 💬`, "success");
+        // 3. If customer is active in current session (e.g. testing)
+        const activeCust = typeof getActiveUser === 'function' ? getActiveUser() : null;
+        if (activeCust && (activeCust.id === targetUserId || (targetPhone && activeCust.phone === targetPhone))) {
+          if (typeof window.addNotification === 'function') {
+            window.addNotification(titleTa, titleEn, bodyTa, bodyEn, '💬');
+          }
+        }
+
+        showToast(currentLang === 'ta' ? `${customerName} அவர்களுக்கு நேரடி செய்தி அனுப்பப்பட்டது! 💬` : `Direct message sent to ${customerName}! 💬`, "success");
         return true;
       } catch (err) {
         console.error("[FCM Direct Message Error]", err);
@@ -2879,21 +2929,32 @@
     function getNotifications() {
       return getData('ek_notifications', []);
     }
+    window.getNotifications = getNotifications;
 
     function saveNotifications(list) {
       saveData('ek_notifications', list);
       updateNotificationUnreadCount();
     }
+    window.saveNotifications = saveNotifications;
 
     function addNotification(titleTa, titleEn, bodyTa, bodyEn, icon = "🔔") {
+      if (!titleEn) titleEn = titleTa;
+      if (!bodyEn) bodyEn = bodyTa;
       const list = getNotifications();
+      const isDuplicate = list.some(n =>
+        (n.titleTa === titleTa || n.titleEn === titleEn) &&
+        (n.bodyTa === bodyTa || n.bodyEn === bodyEn) &&
+        (Date.now() - new Date(n.createdAt || 0).getTime() < 180000)
+      );
+      if (isDuplicate) return;
+
       const newNotif = {
         id: "NT" + Math.floor(10000 + Math.random() * 90000),
-        titleTa,
-        titleEn,
-        bodyTa,
-        bodyEn,
-        icon,
+        titleTa: titleTa || '📢 எடப்பாடி கடை',
+        titleEn: titleEn || '📢 Edappadi Kadai',
+        bodyTa: bodyTa || '',
+        bodyEn: bodyEn || '',
+        icon: icon || '🔔',
         read: false,
         createdAt: new Date().toISOString()
       };
@@ -2901,6 +2962,7 @@
       if (list.length > 50) list.pop(); // Optimize list length count
       saveNotifications(list);
     }
+    window.addNotification = addNotification;
 
     function updateNotificationUnreadCount() {
       const list = getNotifications();
@@ -2916,6 +2978,7 @@
         }
       }
     }
+    window.updateNotificationUnreadCount = updateNotificationUnreadCount;
 
     function openNotificationCenter() {
       if (typeof AndroidStorage !== 'undefined') {

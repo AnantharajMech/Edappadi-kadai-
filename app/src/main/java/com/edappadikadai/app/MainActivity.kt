@@ -336,6 +336,67 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    val googleSignInLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val accountName = result.data?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME) ?: ""
+            if (accountName.isNotEmpty()) {
+                val cleanName = accountName.substringBefore("@").replace(".", " ").replace("_", " ").split(" ")
+                    .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                runOnUiThread {
+                    webView?.evaluateJavascript(
+                        "javascript:(function() { " +
+                        "  if (typeof onAndroidGoogleAccountSelected === 'function') { " +
+                        "    onAndroidGoogleAccountSelected('$accountName', '$cleanName'); " +
+                        "  } " +
+                        "})()", null
+                    )
+                }
+            } else {
+                runOnUiThread {
+                    webView?.evaluateJavascript(
+                        "javascript:(function() { " +
+                        "  if (typeof onAndroidGoogleAccountPickerFailed === 'function') { " +
+                        "    onAndroidGoogleAccountPickerFailed('No account selected'); " +
+                        "  } " +
+                        "})()", null
+                    )
+                }
+            }
+        } else {
+            runOnUiThread {
+                webView?.evaluateJavascript(
+                    "javascript:(function() { " +
+                    "  if (typeof onAndroidGoogleAccountPickerCancelled === 'function') { " +
+                    "    onAndroidGoogleAccountPickerCancelled(); " +
+                    "  } " +
+                    "})()", null
+                )
+            }
+        }
+    }
+
+    fun startGoogleSignInFlow() {
+        try {
+            val intent = android.accounts.AccountManager.newChooseAccountIntent(
+                null, null, arrayOf("com.google"), null, null, null, null
+            )
+            googleSignInLauncher.launch(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("GOOGLE_SIGNIN", "Failed to launch account chooser", e)
+            runOnUiThread {
+                webView?.evaluateJavascript(
+                    "javascript:(function() { " +
+                    "  if (typeof onAndroidGoogleAccountPickerFailed === 'function') { " +
+                    "    onAndroidGoogleAccountPickerFailed('${e.message ?: "Account chooser error"}'); " +
+                    "  } " +
+                    "})()", null
+                )
+            }
+        }
+    }
+
     val startupPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -445,6 +506,12 @@ class MainActivity : ComponentActivity() {
                 val gmsAvailability = com.google.android.gms.common.GoogleApiAvailability.getInstance()
                 val gmsResult = gmsAvailability.isGooglePlayServicesAvailable(this)
                 if (gmsResult == com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                    try {
+                        com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all_customers")
+                        com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("announcements")
+                    } catch (tEx: Exception) {
+                        android.util.Log.i("FCM_INIT", "Topic subscription skipped: ${tEx.message}")
+                    }
                     com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                         if (task.isSuccessful) {
                             val token = task.result
@@ -590,13 +657,30 @@ class MainActivity : ComponentActivity() {
                                         setSupportZoom(false)
                                         builtInZoomControls = false
                                         displayZoomControls = false
-                                        offscreenPreRaster = true
-                                        @Suppress("DEPRECATION")
-                                        setRenderPriority(WebSettings.RenderPriority.HIGH)
                                     }
 
                                     // Handle native intent actions (tel, whatsapp, intents, maps)
                                     webViewClient = object : WebViewClient() {
+                                        override fun onRenderProcessGone(
+                                            view: WebView?,
+                                            detail: android.webkit.RenderProcessGoneDetail?
+                                        ): Boolean {
+                                            android.util.Log.e("WebView", "Render process gone. Did crash: ${detail?.didCrash()}")
+                                            try {
+                                                val container = view?.parent as? android.view.ViewGroup
+                                                container?.removeView(view)
+                                                view?.destroy()
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("WebView", "Error cleaning up destroyed webView: ${e.message}")
+                                            }
+                                            runOnUiThread {
+                                                if (!isAppLoadedState.value) {
+                                                    hasLoadFailedState.value = true
+                                                }
+                                            }
+                                            return true // Prevent host application termination
+                                        }
+
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
                                             val sharedPrefs = getSharedPreferences("EdappadiKadaiPrefs", Context.MODE_PRIVATE)
@@ -961,6 +1045,15 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun promptOneSignalNotificationPermission() {
             requestNotificationPermission()
+        }
+
+        @JavascriptInterface
+        fun promptGoogleSignIn(): Boolean {
+            val activity = context as? MainActivity ?: return false
+            activity.runOnUiThread {
+                activity.startGoogleSignInFlow()
+            }
+            return true
         }
 
         @JavascriptInterface

@@ -146,6 +146,8 @@
       updatedAt: "1970-01-01T00:00:00.000Z",
       _isAdminModified: false,
       shopOpen: true,
+      leaveMode: false,
+      leaveNotice: "",
       deliveryCharge: 40,
       minOrderWeight: 50,
       minOrderAmount: 0,
@@ -156,7 +158,7 @@
       upiQrUrl: "",
       rainMode: false,
       rainCharge: 20,
-      minAppVersion: "7.0.0",
+      minAppVersion: "8.0.0",
       recommendedVersion: "8.0.0",
       playStoreUrl: "https://play.google.com/store/apps/details?id=com.edappadikadai.app",
       privacyPolicyUrl: "privacy_policy.html",
@@ -777,7 +779,7 @@
 
     function mapErrorMessage(message) {
       if (!message) return "Something went wrong. Please try again.";
-      console.error("[Toast Error System] Original error message before mapping:", message);
+      debugLog("[Toast Error System] Original error message before mapping:", message);
       let lower = String(message).toLowerCase();
 
       if (lower.includes("insufficient permission") ||
